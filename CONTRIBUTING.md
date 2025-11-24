@@ -20,4 +20,7 @@ Thanks for wanting to improve the resilience toolkit!
 - Conventional commits are appreciated (`feat:`, `fix:`, `chore:`, `docs:`...).
 
 ## Releases
-- Releases are automated via release-plz when changes land on `main`. Bump notes belong in PR descriptions or changelog entries (release-plz will compile them).
+- Releases are automated via release-plz, gated by labels `release` **and** `release-ready` on the release PR.
+- Monitoring: maintainers watch GitHub Actions workflows (`Release` and `CI`) for failures; enable notifications in repo settings.
+- Incident response: if a release job fails, triage the workflow logs, fix forward, and rerun; if a published crate is bad, yank the version on crates.io and cut a follow-up patch release.
+- Rollback/manual publish: yanking on crates.io is the rollback path; manual `cargo publish` may be run locally using the `CARGO_REGISTRY_TOKEN` secret if automation is degraded.

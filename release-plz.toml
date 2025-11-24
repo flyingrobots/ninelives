@@ -1,9 +1,12 @@
-release = true
-pr_labels = ["release"]
+release = false
+pr_labels = ["release", "release-ready"]
 
 [workspace]
+backend = "github"
 semver_check = true
 
 [[packages]]
 name = "ninelives"
 release = true
+changelog_update = true
+publish = true
