@@ -16,6 +16,17 @@ pub struct RetryPolicy<E> {
     pub(crate) sleeper: Arc<dyn Sleeper>,
 }
 
+impl<E> std::fmt::Debug for RetryPolicy<E> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RetryPolicy")
+            .field("max_attempts", &self.max_attempts)
+            .field("backoff", &self.backoff)
+            .field("jitter", &self.jitter)
+            .field("sleeper", &"<sleeper>")
+            .finish()
+    }
+}
+
 impl<E> RetryPolicy<E>
 where
     E: std::error::Error + Send + Sync + 'static,

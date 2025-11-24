@@ -5,7 +5,7 @@ use std::future::Future;
 use std::sync::Arc;
 use tokio::sync::Semaphore;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct BulkheadPolicy {
     semaphore: Arc<Semaphore>,
     max_concurrent: usize,

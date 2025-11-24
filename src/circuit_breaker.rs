@@ -40,7 +40,7 @@ pub enum CircuitState {
     HalfOpen,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct CircuitBreakerConfig {
     pub failure_threshold: usize,
     pub recovery_timeout: Duration,
@@ -57,6 +57,7 @@ impl CircuitBreakerConfig {
     }
 }
 
+#[derive(Debug)]
 struct CircuitBreakerState {
     state: AtomicU8,
     failure_count: AtomicUsize,
@@ -64,7 +65,7 @@ struct CircuitBreakerState {
     half_open_calls: AtomicUsize,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct CircuitBreakerPolicy {
     state: Arc<CircuitBreakerState>,
     config: CircuitBreakerConfig,

@@ -4,7 +4,7 @@ use crate::ResilienceError;
 use std::future::Future;
 use std::time::{Duration, Instant};
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct TimeoutPolicy {
     duration: Duration,
 }
