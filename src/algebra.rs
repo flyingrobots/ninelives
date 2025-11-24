@@ -24,11 +24,7 @@ pub struct CombinedLayer<A, B> {
     pub inner: B,
 }
 
-impl<L1, L2> Add<Policy<L2>> for Policy<L1>
-where
-    L1: Layer,
-    L2: Layer,
-{
+impl<L1, L2> Add<Policy<L2>> for Policy<L1> {
     type Output = Policy<CombinedLayer<L1, L2>>;
     fn add(self, rhs: Policy<L2>) -> Self::Output {
         Policy(CombinedLayer { outer: self.0, inner: rhs.0 })
@@ -54,11 +50,7 @@ pub struct FallbackLayer<A, B> {
     pub secondary: B,
 }
 
-impl<L1, L2> BitOr<Policy<L2>> for Policy<L1>
-where
-    L1: Layer,
-    L2: Layer,
-{
+impl<L1, L2> BitOr<Policy<L2>> for Policy<L1> {
     type Output = Policy<FallbackLayer<L1, L2>>;
     fn bitor(self, rhs: Policy<L2>) -> Self::Output {
         Policy(FallbackLayer { primary: self.0, secondary: rhs.0 })
@@ -67,9 +59,11 @@ where
 
 impl<S, A, B> Layer<S> for FallbackLayer<A, B>
 where
-    S: Clone,
+    S: Clone + Send + 'static,
     A: Layer<S>,
     B: Layer<S>,
+    A::Service: Send + 'static,
+    B::Service: Send + 'static,
 {
     type Service = FallbackService<A::Service, B::Service>;
 
@@ -93,8 +87,15 @@ where
     Request: Clone + Send + 'static,
     S1: tower_service::Service<Request> + Clone + Send + 'static,
     S1::Future: Send + 'static,
-    S2: tower_service::Service<Request, Response = S1::Response, Error = S1::Error> + Clone + Send + 'static,
+    S1::Response: Send + 'static,
+    S1::Error: Send + 'static,
+    S2: tower_service::Service<Request, Response = S1::Response, Error = S1::Error>
+        + Clone
+        + Send
+        + 'static,
     S2::Future: Send + 'static,
+    S2::Response: Send + 'static,
+    S2::Error: Send + 'static,
 {
     type Response = S1::Response;
     type Error = S1::Error;
