@@ -312,6 +312,27 @@ mod tests {
     }
 
     #[test]
+    fn decorrelated_respects_upper_bound_factor() {
+        let jitter =
+            Jitter::decorrelated(Duration::from_millis(10), Duration::from_millis(200)).unwrap();
+        let mut prev = Duration::from_millis(10);
+        for _ in 0..200 {
+            let next = jitter.apply_stateful();
+            let upper = std::cmp::min(prev.as_millis() * 3, 200) as u64;
+            let lower = std::cmp::max(prev.as_millis(), 10) as u64;
+            assert!(
+                next.as_millis() as u64 >= lower && next.as_millis() as u64 <= upper,
+                "decorrelated jitter out of bounds: prev={:?}, next={:?}, lower={}, upper={}",
+                prev,
+                next,
+                lower,
+                upper
+            );
+            prev = next;
+        }
+    }
+
+    #[test]
     fn saturates_large_durations_without_panicking() {
         let huge = Duration::from_secs(u64::MAX);
         let jitter = Jitter::full();

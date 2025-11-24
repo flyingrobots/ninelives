@@ -560,4 +560,36 @@ mod tests {
         let err = RetryPolicy::<TestError>::builder().max_attempts(0).build();
         assert!(matches!(err, Err(BuildError::InvalidMaxAttempts(0))));
     }
+
+    #[tokio::test]
+    async fn should_retry_false_short_circuits() {
+        let policy = RetryPolicy::builder()
+            .max_attempts(5)
+            .backoff(Backoff::constant(Duration::from_millis(1)))
+            .with_jitter(Jitter::None)
+            .should_retry(|_| false)
+            .with_sleeper(InstantSleeper)
+            .build()
+            .expect("builder");
+
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let attempts_clone = attempts.clone();
+
+        let result = policy
+            .execute(|| {
+                let attempts = attempts_clone.clone();
+                async move {
+                    attempts.fetch_add(1, Ordering::SeqCst);
+                    Err::<(), _>(ResilienceError::Inner(TestError("nope".into())))
+                }
+            })
+            .await;
+
+        assert!(matches!(result, Err(ResilienceError::Inner(_))));
+        assert_eq!(attempts.load(Ordering::SeqCst), 1, "should not retry");
+    }
+
+    // end of tests module
 }
+
+// end of file

@@ -297,4 +297,14 @@ mod tests {
         let policy = TimeoutPolicy::new(MAX_TIMEOUT).expect("should accept max boundary");
         assert_eq!(policy.duration(), MAX_TIMEOUT);
     }
+
+    #[test]
+    fn new_with_max_respects_custom_boundaries() {
+        let custom_max = Duration::from_secs(5);
+        let ok = TimeoutPolicy::new_with_max(Duration::from_secs(5), custom_max).unwrap();
+        assert_eq!(ok.duration(), custom_max);
+
+        let err = TimeoutPolicy::new_with_max(Duration::from_secs(6), custom_max).unwrap_err();
+        assert!(matches!(err, TimeoutError::ExceedsMaximum(_)));
+    }
 }

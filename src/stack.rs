@@ -351,4 +351,11 @@ mod tests {
             .expect_err("invalid circuit breaker should fail");
         assert!(matches!(err, StackError::CircuitBreaker(_)));
     }
+
+    #[tokio::test]
+    async fn default_stack_executes() {
+        let stack: ResilienceStack<TestError> = ResilienceStack::default();
+        let result = stack.execute(|| async { Ok::<_, ResilienceError<TestError>>(99) }).await;
+        assert_eq!(result.unwrap(), 99);
+    }
 }
