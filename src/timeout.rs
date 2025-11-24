@@ -42,8 +42,10 @@
 //! ```
 
 use crate::ResilienceError;
+use futures::future::BoxFuture;
 use std::future::Future;
 use std::time::{Duration, Instant};
+use tower_service::Service;
 
 /// Maximum allowed timeout duration (30 days) to avoid runaway timers while permitting long jobs.
 /// Intended to guard accidental timeouts of `u64::MAX`; override via [`TimeoutPolicy::new_with_max`]
@@ -152,6 +154,73 @@ impl TimeoutPolicy {
                 Err(ResilienceError::Timeout { elapsed, timeout: self.duration })
             }
         }
+    }
+}
+
+/// Tower-native timeout layer; wraps services to enforce a maximum duration per call.
+#[derive(Debug, Clone, Copy)]
+pub struct TimeoutLayer {
+    duration: Duration,
+}
+
+impl TimeoutLayer {
+    /// Build a timeout layer with the provided duration.
+    pub fn new(duration: Duration) -> Result<Self, TimeoutError> {
+        TimeoutPolicy::new(duration).map(|p| TimeoutLayer { duration: p.duration })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct TimeoutService<S> {
+    inner: S,
+    duration: Duration,
+}
+
+impl<S> TimeoutService<S> {
+    fn new(inner: S, duration: Duration) -> Self {
+        Self { inner, duration }
+    }
+}
+
+impl<S, Request> Service<Request> for TimeoutService<S>
+where
+    S: Service<Request>,
+    S::Future: Send + 'static,
+    Request: Send + 'static,
+    S::Error: std::error::Error + Send + Sync + 'static,
+    S::Response: Send + 'static,
+{
+    type Response = S::Response;
+    type Error = ResilienceError<S::Error>;
+    type Future = futures::future::BoxFuture<'static, Result<Self::Response, Self::Error>>;
+
+    fn poll_ready(
+        &mut self,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Result<(), Self::Error>> {
+        self.inner.poll_ready(cx).map_err(ResilienceError::Inner)
+    }
+
+    fn call(&mut self, req: Request) -> Self::Future {
+        let duration = self.duration;
+        let fut = self.inner.call(req);
+        Box::pin(async move {
+            let start = Instant::now();
+            match tokio::time::timeout(duration, fut).await {
+                Ok(Ok(r)) => Ok(r),
+                Ok(Err(e)) => Err(ResilienceError::Inner(e)),
+                Err(_) => {
+                    Err(ResilienceError::Timeout { elapsed: start.elapsed(), timeout: duration })
+                }
+            }
+        })
+    }
+}
+
+impl<S> tower_layer::Layer<S> for TimeoutLayer {
+    type Service = TimeoutService<S>;
+    fn layer(&self, service: S) -> Self::Service {
+        TimeoutService::new(service, self.duration)
     }
 }
 

@@ -1,0 +1,32 @@
+- [ ] Convert policies to tower Layers/Services
+  - [ ] timeout.rs -> TimeoutLayer + TimeoutService (Layer/Service impl)
+  - [ ] retry.rs -> RetryLayer + RetryService (Layer/Service impl)
+  - [ ] bulkhead.rs -> BulkheadLayer + BulkheadService (Layer/Service impl)
+  - [ ] circuit_breaker.rs -> CircuitBreakerLayer + CircuitBreakerService (Layer/Service impl)
+  - [ ] Backoff/Jitter integration with new retry layer
+- [ ] Algebra DSL completeness
+  - [x] Policy wrapper
+  - [x] `+` CombinedLayer composition
+  - [x] `|` FallbackLayer/FallbackService
+  - [ ] `&` (forked/parallel) operator or omit explicitly
+  - [ ] Doc comments and examples for algebra API
+- [ ] Remove obsolete fixed stack
+  - [ ] Delete src/stack.rs and usages
+  - [ ] Remove ResilienceStack exports from lib/prelude
+- [ ] Update lib.rs & prelude.rs
+  - [ ] Add algebra module
+  - [ ] Update top-level docs with new quick start (Policy + tower ServiceBuilder)
+  - [ ] Re-export new Layers/Policy from prelude
+- [ ] Update examples to new API (tower-native)
+  - [ ] retry_only.rs
+  - [ ] full_stack.rs
+  - [ ] decorrelated_jitter.rs
+- [ ] Update README
+  - [ ] Describe Policy algebra, operators, quick start
+  - [ ] Remove legacy stack references
+- [ ] Update tests
+  - [ ] Adapt integration/unit tests to Layer/Service architecture
+  - [ ] Add coverage for algebra composition (Combined/Fallback)
+- [ ] CI/tooling
+  - [ ] Ensure docs and clippy pass after refactor
+  - [ ] Consider doc tests for algebra examples
