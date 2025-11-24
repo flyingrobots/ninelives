@@ -35,11 +35,11 @@
   - Algebraic composition examples
   - Tower integration guide
   - Quick start with `Policy(A) + Policy(B) | Policy(C)`
-- [ ] Update examples/:
-  - [ ] retry_only.rs (tower-native)
-  - [ ] decorrelated_jitter.rs (tower-native)
-  - [ ] Create algebra_composition.rs example
-- [ ] Add doc tests for algebra operators
+- [x] Update examples/:
+  - [x] retry_only.rs (tower-native)
+  - [x] decorrelated_jitter.rs (tower-native)
+  - [x] Create algebra_composition.rs example
+- [x] Add doc tests for algebra operators
 
 ### Testing & CI
 - [ ] Adapt integration tests to Layer/Service architecture
