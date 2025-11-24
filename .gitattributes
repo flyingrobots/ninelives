@@ -1,0 +1,8 @@
+# Enforce LF endings for source and text files
+*.rs text eol=lf
+*.toml text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.rs.in text eol=lf
+Cargo.lock text eol=lf

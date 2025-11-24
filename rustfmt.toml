@@ -1,5 +1,7 @@
 # Use Rust 2021 edition formatting (matches Cargo.toml)
 edition = "2021"
+# Apply 2021 style rules explicitly
+style_edition = "2021"
 # Keep lines readable but not too short
 max_width = 100
 # Normalize line endings for cross-platform consistency

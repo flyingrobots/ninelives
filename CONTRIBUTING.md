@@ -22,6 +22,7 @@ Thanks for wanting to improve Nine Lives!
 - Commands to run locally: `cargo fmt -- --check`, `cargo clippy --all-targets --all-features -- -D warnings`, `cargo test --all-features --all-targets`.
 - CI expectation: GitHub Actions runs the same format/clippy/test set; PRs must be green.
 - Keep this section in sync with exported module docs rather than file paths to avoid stale references.
+- Line endings: the repo enforces LF via `.gitattributes`/`.editorconfig`; set `git config core.autocrlf false` and optionally `git config core.safecrlf warn` locally to avoid CRLF churn.
 
 ## Coding guidelines
 - Keep public APIs minimal and well-documented.
