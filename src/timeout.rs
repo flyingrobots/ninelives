@@ -169,20 +169,23 @@ mod tests {
 
     #[tokio::test]
     async fn test_times_out_long_operation() {
+        tokio::time::pause();
         let timeout = TimeoutPolicy::new(Duration::from_millis(50)).unwrap();
         let counter = Arc::new(AtomicUsize::new(0));
         let counter_clone = counter.clone();
 
-        let result = timeout
-            .execute(|| {
-                let counter = counter_clone.clone();
-                async move {
-                    counter.fetch_add(1, Ordering::SeqCst);
-                    tokio::time::sleep(Duration::from_millis(200)).await;
-                    Ok::<_, ResilienceError<TestError>>(42)
-                }
-            })
-            .await;
+        let fut = timeout.execute(|| {
+            let counter = counter_clone.clone();
+            async move {
+                counter.fetch_add(1, Ordering::SeqCst);
+                tokio::time::sleep(Duration::from_millis(500)).await;
+                Ok::<_, ResilienceError<TestError>>(42)
+            }
+        });
+
+        tokio::pin!(fut);
+        tokio::time::advance(Duration::from_millis(500)).await;
+        let result = fut.await;
 
         assert!(result.is_err());
         assert!(result.unwrap_err().is_timeout());
