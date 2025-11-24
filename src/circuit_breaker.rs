@@ -56,14 +56,14 @@ pub enum CircuitBreakerError {
     /// Failure threshold must be greater than zero
     InvalidFailureThreshold {
         /// The invalid threshold value provided
-        provided: usize
+        provided: usize,
     },
     /// Recovery timeout duration must be greater than zero
     InvalidRecoveryTimeout(Duration),
     /// Half-open call limit must be greater than zero
     InvalidHalfOpenLimit {
         /// The invalid limit value provided
-        provided: usize
+        provided: usize,
     },
 }
 
