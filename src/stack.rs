@@ -1,6 +1,9 @@
 //! Resilience stack builder for composing policies
 
-use crate::{BulkheadPolicy, CircuitBreakerConfig, CircuitBreakerPolicy, ResilienceError, RetryPolicy, TimeoutPolicy};
+use crate::{
+    BulkheadPolicy, CircuitBreakerConfig, CircuitBreakerPolicy, ResilienceError, RetryPolicy,
+    TimeoutPolicy,
+};
 use std::future::Future;
 use std::time::Duration;
 
@@ -148,9 +151,9 @@ where
                 .timeout
                 .unwrap_or_else(|| TimeoutPolicy::new(Duration::from_secs(30))),
             bulkhead: self.bulkhead.unwrap_or_else(|| BulkheadPolicy::new(100)),
-            circuit_breaker: self.circuit_breaker.unwrap_or_else(|| {
-                CircuitBreakerPolicy::new(5, Duration::from_secs(60))
-            }),
+            circuit_breaker: self
+                .circuit_breaker
+                .unwrap_or_else(|| CircuitBreakerPolicy::new(5, Duration::from_secs(60))),
             retry: self.retry.unwrap_or_else(|| RetryPolicy::builder().build()),
         }
     }

@@ -2,15 +2,38 @@
 
 use crate::ResilienceError;
 use std::future::Future;
-use std::sync::atomic::{AtomicU8, AtomicUsize, AtomicU64, Ordering};
-use std::sync::{Arc, OnceLock};
+use std::sync::atomic::{AtomicU64, AtomicU8, AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
-
-static PROCESS_START: OnceLock<Instant> = OnceLock::new();
 
 const STATE_CLOSED: u8 = 0;
 const STATE_OPEN: u8 = 1;
 const STATE_HALF_OPEN: u8 = 2;
+
+/// Clock abstraction so circuit breaker timing can be faked in tests
+pub trait Clock: Send + Sync + std::fmt::Debug {
+    fn now_millis(&self) -> u64;
+}
+
+/// Monotonic clock backed by `Instant::now()`
+#[derive(Debug, Clone)]
+pub struct MonotonicClock {
+    start: Instant,
+}
+
+impl Default for MonotonicClock {
+    fn default() -> Self {
+        Self {
+            start: Instant::now(),
+        }
+    }
+}
+
+impl Clock for MonotonicClock {
+    fn now_millis(&self) -> u64 {
+        self.start.elapsed().as_millis() as u64
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CircuitState {
@@ -47,12 +70,11 @@ struct CircuitBreakerState {
 pub struct CircuitBreakerPolicy {
     state: Arc<CircuitBreakerState>,
     config: CircuitBreakerConfig,
+    clock: Arc<dyn Clock>,
 }
 
 impl CircuitBreakerPolicy {
     pub fn new(failure_threshold: usize, recovery_timeout: Duration) -> Self {
-        PROCESS_START.get_or_init(Instant::now);
-
         Self {
             state: Arc::new(CircuitBreakerState {
                 state: AtomicU8::new(STATE_CLOSED),
@@ -65,12 +87,11 @@ impl CircuitBreakerPolicy {
                 recovery_timeout,
                 half_open_max_calls: 1,
             },
+            clock: Arc::new(MonotonicClock::default()),
         }
     }
 
     pub fn with_config(config: CircuitBreakerConfig) -> Self {
-        PROCESS_START.get_or_init(Instant::now);
-
         Self {
             state: Arc::new(CircuitBreakerState {
                 state: AtomicU8::new(STATE_CLOSED),
@@ -79,7 +100,14 @@ impl CircuitBreakerPolicy {
                 half_open_calls: AtomicUsize::new(0),
             }),
             config,
+            clock: Arc::new(MonotonicClock::default()),
         }
+    }
+
+    /// Override the clock (useful for deterministic tests)
+    pub fn with_clock<C: Clock + 'static>(mut self, clock: C) -> Self {
+        self.clock = Arc::new(clock);
+        self
     }
 
     pub fn with_half_open_limit(mut self, limit: usize) -> Self {
@@ -101,7 +129,7 @@ impl CircuitBreakerPolicy {
             match current_state {
                 STATE_OPEN => {
                     let opened_at = self.state.opened_at_millis.load(Ordering::Acquire);
-                    let now = Self::now_millis();
+                    let now = self.now_millis();
                     let elapsed = now.saturating_sub(opened_at);
 
                     if elapsed >= self.config.recovery_timeout.as_millis() as u64 {
@@ -226,7 +254,7 @@ impl CircuitBreakerPolicy {
                 {
                     self.state
                         .opened_at_millis
-                        .store(Self::now_millis(), Ordering::Release);
+                        .store(self.now_millis(), Ordering::Release);
                     tracing::warn!(failures, "Circuit breaker: test failed → open");
                 }
             }
@@ -245,7 +273,7 @@ impl CircuitBreakerPolicy {
                     {
                         self.state
                             .opened_at_millis
-                            .store(Self::now_millis(), Ordering::Release);
+                            .store(self.now_millis(), Ordering::Release);
                         tracing::error!(
                             failures,
                             threshold = self.config.failure_threshold,
@@ -258,19 +286,15 @@ impl CircuitBreakerPolicy {
         }
     }
 
-    fn now_millis() -> u64 {
-        PROCESS_START
-            .get()
-            .expect("PROCESS_START not initialized")
-            .elapsed()
-            .as_millis() as u64
+    fn now_millis(&self) -> u64 {
+        self.clock.now_millis()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
     use std::sync::Arc;
 
     #[derive(Debug, Clone, PartialEq, Eq)]
@@ -283,6 +307,29 @@ mod tests {
     }
 
     impl std::error::Error for TestError {}
+
+    #[derive(Debug, Clone)]
+    struct ManualClock {
+        now: Arc<AtomicU64>,
+    }
+
+    impl ManualClock {
+        fn new() -> Self {
+            Self {
+                now: Arc::new(AtomicU64::new(0)),
+            }
+        }
+
+        fn advance(&self, millis: u64) {
+            self.now.fetch_add(millis, Ordering::SeqCst);
+        }
+    }
+
+    impl Clock for ManualClock {
+        fn now_millis(&self) -> u64 {
+            self.now.load(Ordering::SeqCst)
+        }
+    }
 
     #[tokio::test]
     async fn test_circuit_starts_closed() {
@@ -323,7 +370,11 @@ mod tests {
                 .await;
         }
 
-        assert_eq!(counter.load(Ordering::SeqCst), 3, "Should have executed 3 times");
+        assert_eq!(
+            counter.load(Ordering::SeqCst),
+            3,
+            "Should have executed 3 times"
+        );
 
         // Next call should fail immediately without executing
         counter.store(0, Ordering::SeqCst);
@@ -340,7 +391,11 @@ mod tests {
 
         assert!(result.is_err());
         assert!(result.unwrap_err().is_circuit_open());
-        assert_eq!(counter.load(Ordering::SeqCst), 0, "Should not execute when circuit is open");
+        assert_eq!(
+            counter.load(Ordering::SeqCst),
+            0,
+            "Should not execute when circuit is open"
+        );
     }
 
     #[tokio::test]
@@ -394,7 +449,11 @@ mod tests {
             .await;
 
         assert_eq!(result.unwrap(), 100);
-        assert_eq!(counter.load(Ordering::SeqCst), 1, "Should execute in half-open state");
+        assert_eq!(
+            counter.load(Ordering::SeqCst),
+            1,
+            "Should execute in half-open state"
+        );
     }
 
     #[tokio::test]
@@ -444,7 +503,11 @@ mod tests {
                 .await;
             assert!(result.is_ok());
         }
-        assert_eq!(counter.load(Ordering::SeqCst), 5, "All calls should succeed when closed");
+        assert_eq!(
+            counter.load(Ordering::SeqCst),
+            5,
+            "All calls should succeed when closed"
+        );
     }
 
     #[tokio::test]
@@ -479,8 +542,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_half_open_limits_concurrent_calls() {
-        let breaker = CircuitBreakerPolicy::new(2, Duration::from_millis(100))
-            .with_half_open_limit(1);
+        let breaker =
+            CircuitBreakerPolicy::new(2, Duration::from_millis(100)).with_half_open_limit(1);
         let counter = Arc::new(AtomicUsize::new(0));
 
         // Open the circuit
@@ -517,10 +580,20 @@ mod tests {
 
         let results: Vec<_> = futures::future::join_all(handles).await;
 
-        let successes = results.iter().filter(|r| r.as_ref().unwrap().is_ok()).count();
-        let circuit_opens = results.iter().filter(|r| {
-            r.as_ref().unwrap().as_ref().err().map_or(false, |e| e.is_circuit_open())
-        }).count();
+        let successes = results
+            .iter()
+            .filter(|r| r.as_ref().unwrap().is_ok())
+            .count();
+        let circuit_opens = results
+            .iter()
+            .filter(|r| {
+                r.as_ref()
+                    .unwrap()
+                    .as_ref()
+                    .err()
+                    .map_or(false, |e| e.is_circuit_open())
+            })
+            .count();
 
         assert_eq!(successes, 1, "Only 1 call should succeed in half-open");
         assert_eq!(circuit_opens, 2, "Other 2 calls should be rejected");
@@ -545,7 +618,11 @@ mod tests {
                 .await;
         }
 
-        assert_eq!(counter.load(Ordering::SeqCst), 1000, "All calls should execute with disabled breaker");
+        assert_eq!(
+            counter.load(Ordering::SeqCst),
+            1000,
+            "All calls should execute with disabled breaker"
+        );
 
         // One more call should still work
         counter.store(0, Ordering::SeqCst);
@@ -597,5 +674,44 @@ mod tests {
                 panic!("Expected Inner error, not circuit open");
             }
         }
+    }
+
+    #[tokio::test]
+    async fn test_custom_clock_allows_instant_recovery() {
+        let clock = ManualClock::new();
+        let breaker =
+            CircuitBreakerPolicy::new(1, Duration::from_millis(100)).with_clock(clock.clone());
+
+        // First call fails → opens circuit
+        let _ = breaker
+            .execute(|| async {
+                Err::<(), _>(ResilienceError::Inner(TestError("fail".to_string())))
+            })
+            .await;
+
+        // Immediately try again: should still be open (0ms elapsed)
+        let open_result = breaker
+            .execute(|| async { Ok::<_, ResilienceError<TestError>>(()) })
+            .await;
+        assert!(open_result.unwrap_err().is_circuit_open());
+
+        // Advance virtual clock beyond recovery timeout
+        clock.advance(150);
+
+        // Should transition to half-open and allow a successful call
+        let counter = Arc::new(AtomicUsize::new(0));
+        let counter_clone = counter.clone();
+        let success = breaker
+            .execute(|| {
+                let counter = counter_clone.clone();
+                async move {
+                    counter.fetch_add(1, Ordering::SeqCst);
+                    Ok::<_, ResilienceError<TestError>>(42)
+                }
+            })
+            .await;
+
+        assert_eq!(success.unwrap(), 42);
+        assert_eq!(counter.load(Ordering::SeqCst), 1);
     }
 }

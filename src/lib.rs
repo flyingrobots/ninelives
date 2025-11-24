@@ -33,23 +33,25 @@
 //! }
 //! ```
 
-pub mod error;
-pub mod sleeper;
 pub mod backoff;
+pub mod bulkhead;
+pub mod circuit_breaker;
+pub mod error;
 pub mod jitter;
 pub mod retry;
-pub mod circuit_breaker;
-pub mod bulkhead;
-pub mod timeout;
+pub mod sleeper;
 pub mod stack;
+pub mod timeout;
 
 // Re-exports
-pub use error::ResilienceError;
-pub use sleeper::{Sleeper, TokioSleeper, InstantSleeper, TrackingSleeper};
 pub use backoff::Backoff;
+pub use bulkhead::BulkheadPolicy;
+pub use circuit_breaker::{
+    CircuitBreakerConfig, CircuitBreakerPolicy, CircuitState, Clock, MonotonicClock,
+};
+pub use error::ResilienceError;
 pub use jitter::Jitter;
 pub use retry::{RetryPolicy, RetryPolicyBuilder};
-pub use circuit_breaker::{CircuitBreakerPolicy, CircuitBreakerConfig, CircuitState};
-pub use bulkhead::BulkheadPolicy;
-pub use timeout::TimeoutPolicy;
+pub use sleeper::{InstantSleeper, Sleeper, TokioSleeper, TrackingSleeper};
 pub use stack::{ResilienceStack, ResilienceStackBuilder};
+pub use timeout::TimeoutPolicy;

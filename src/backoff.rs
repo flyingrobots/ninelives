@@ -10,7 +10,10 @@ pub enum Backoff {
     /// Linearly increasing delay
     Linear { base: Duration },
     /// Exponentially increasing delay with optional cap
-    Exponential { base: Duration, max: Option<Duration> },
+    Exponential {
+        base: Duration,
+        max: Option<Duration>,
+    },
 }
 
 impl Backoff {
@@ -51,7 +54,8 @@ impl Backoff {
                 let exponent = (attempt.saturating_sub(1)) as u32;
                 let multiplier = 2u32.saturating_pow(exponent);
 
-                let exp_delay = base.checked_mul(multiplier)
+                let exp_delay = base
+                    .checked_mul(multiplier)
                     .unwrap_or(Duration::from_secs(u64::MAX));
 
                 if let Some(max) = max {
@@ -88,17 +92,17 @@ mod tests {
     #[test]
     fn exponential_backoff_doubles_each_time() {
         let backoff = Backoff::exponential(Duration::from_millis(100));
-        assert_eq!(backoff.delay(1), Duration::from_millis(100));  // 100 * 2^0
-        assert_eq!(backoff.delay(2), Duration::from_millis(200));  // 100 * 2^1
-        assert_eq!(backoff.delay(3), Duration::from_millis(400));  // 100 * 2^2
-        assert_eq!(backoff.delay(4), Duration::from_millis(800));  // 100 * 2^3
+        assert_eq!(backoff.delay(1), Duration::from_millis(100)); // 100 * 2^0
+        assert_eq!(backoff.delay(2), Duration::from_millis(200)); // 100 * 2^1
+        assert_eq!(backoff.delay(3), Duration::from_millis(400)); // 100 * 2^2
+        assert_eq!(backoff.delay(4), Duration::from_millis(800)); // 100 * 2^3
         assert_eq!(backoff.delay(5), Duration::from_millis(1600)); // 100 * 2^4
     }
 
     #[test]
     fn exponential_backoff_respects_max() {
-        let backoff = Backoff::exponential(Duration::from_millis(100))
-            .with_max(Duration::from_secs(1));
+        let backoff =
+            Backoff::exponential(Duration::from_millis(100)).with_max(Duration::from_secs(1));
 
         assert_eq!(backoff.delay(1), Duration::from_millis(100));
         assert_eq!(backoff.delay(2), Duration::from_millis(200));
@@ -126,13 +130,11 @@ mod tests {
 
     #[test]
     fn with_max_only_affects_exponential() {
-        let constant = Backoff::constant(Duration::from_secs(5))
-            .with_max(Duration::from_secs(1));
+        let constant = Backoff::constant(Duration::from_secs(5)).with_max(Duration::from_secs(1));
         // Shouldn't affect constant backoff
         assert_eq!(constant.delay(1), Duration::from_secs(5));
 
-        let linear = Backoff::linear(Duration::from_secs(5))
-            .with_max(Duration::from_secs(1));
+        let linear = Backoff::linear(Duration::from_secs(5)).with_max(Duration::from_secs(1));
         // Shouldn't affect linear backoff
         assert_eq!(linear.delay(2), Duration::from_secs(10));
     }

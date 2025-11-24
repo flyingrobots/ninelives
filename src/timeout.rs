@@ -93,7 +93,11 @@ mod tests {
 
         assert!(result.is_err());
         assert!(result.unwrap_err().is_timeout());
-        assert_eq!(counter.load(Ordering::SeqCst), 1, "Should have started execution");
+        assert_eq!(
+            counter.load(Ordering::SeqCst),
+            1,
+            "Should have started execution"
+        );
     }
 
     #[tokio::test]
@@ -102,7 +106,9 @@ mod tests {
 
         let result = timeout
             .execute(|| async {
-                Err::<(), _>(ResilienceError::Inner(TestError("operation failed".to_string())))
+                Err::<(), _>(ResilienceError::Inner(TestError(
+                    "operation failed".to_string(),
+                )))
             })
             .await;
 
@@ -143,7 +149,10 @@ mod tests {
         match result.unwrap_err() {
             ResilienceError::Timeout { elapsed, timeout } => {
                 assert_eq!(timeout, timeout_duration);
-                assert!(elapsed >= timeout_duration, "Elapsed time should be at least the timeout");
+                assert!(
+                    elapsed >= timeout_duration,
+                    "Elapsed time should be at least the timeout"
+                );
             }
             e => panic!("Expected Timeout error, got {:?}", e),
         }

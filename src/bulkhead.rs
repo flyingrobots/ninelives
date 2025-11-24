@@ -196,9 +196,15 @@ mod tests {
 
         // All should succeed
         let results: Vec<_> = futures::future::join_all(handles).await;
-        let successes = results.iter().filter(|r| r.as_ref().unwrap().is_ok()).count();
+        let successes = results
+            .iter()
+            .filter(|r| r.as_ref().unwrap().is_ok())
+            .count();
 
-        assert_eq!(successes, 100, "All operations should succeed with unlimited bulkhead");
+        assert_eq!(
+            successes, 100,
+            "All operations should succeed with unlimited bulkhead"
+        );
     }
 
     #[tokio::test]
@@ -238,15 +244,33 @@ mod tests {
         // Wait for all to complete
         let results: Vec<_> = futures::future::join_all(handles).await;
 
-        let successes = results.iter().filter(|r| r.as_ref().unwrap().is_ok()).count();
-        let rejections = results.iter().filter(|r| {
-            r.as_ref().unwrap().as_ref().err().map_or(false, |e| e.is_bulkhead())
-        }).count();
+        let successes = results
+            .iter()
+            .filter(|r| r.as_ref().unwrap().is_ok())
+            .count();
+        let rejections = results
+            .iter()
+            .filter(|r| {
+                r.as_ref()
+                    .unwrap()
+                    .as_ref()
+                    .err()
+                    .map_or(false, |e| e.is_bulkhead())
+            })
+            .count();
 
         // Should have limited concurrency to 5
         let max_observed = max_concurrent.load(Ordering::SeqCst);
-        assert!(max_observed <= 5, "Should not exceed bulkhead limit of 5, got {}", max_observed);
-        assert_eq!(successes + rejections, 10, "All operations should either succeed or be rejected");
+        assert!(
+            max_observed <= 5,
+            "Should not exceed bulkhead limit of 5, got {}",
+            max_observed
+        );
+        assert_eq!(
+            successes + rejections,
+            10,
+            "All operations should either succeed or be rejected"
+        );
     }
 
     #[tokio::test]
@@ -255,7 +279,9 @@ mod tests {
 
         let result = bulkhead
             .execute(|| async {
-                Err::<(), _>(ResilienceError::Inner(TestError("operation failed".to_string())))
+                Err::<(), _>(ResilienceError::Inner(TestError(
+                    "operation failed".to_string(),
+                )))
             })
             .await;
 

@@ -13,10 +13,7 @@ pub enum Jitter {
     /// Equal jitter: random between delay/2 and delay
     Equal,
     /// Decorrelated jitter: AWS-style with state
-    Decorrelated {
-        base: Duration,
-        max: Duration,
-    },
+    Decorrelated { base: Duration, max: Duration },
 }
 
 impl Jitter {
@@ -180,10 +177,7 @@ mod tests {
 
     #[test]
     fn decorrelated_jitter_respects_bounds() {
-        let jitter = Jitter::decorrelated(
-            Duration::from_millis(100),
-            Duration::from_secs(10),
-        );
+        let jitter = Jitter::decorrelated(Duration::from_millis(100), Duration::from_secs(10));
         let delay = Duration::from_secs(1);
 
         for _ in 0..100 {
@@ -195,16 +189,19 @@ mod tests {
 
     #[test]
     fn jitter_handles_zero_delay() {
-        assert_eq!(Jitter::full().apply(Duration::from_millis(0)), Duration::from_millis(0));
-        assert_eq!(Jitter::equal().apply(Duration::from_millis(0)), Duration::from_millis(0));
+        assert_eq!(
+            Jitter::full().apply(Duration::from_millis(0)),
+            Duration::from_millis(0)
+        );
+        assert_eq!(
+            Jitter::equal().apply(Duration::from_millis(0)),
+            Duration::from_millis(0)
+        );
     }
 
     #[test]
     fn decorrelated_jitter_caps_at_max() {
-        let jitter = Jitter::decorrelated(
-            Duration::from_secs(1),
-            Duration::from_secs(5),
-        );
+        let jitter = Jitter::decorrelated(Duration::from_secs(1), Duration::from_secs(5));
         let huge_delay = Duration::from_secs(100);
 
         for _ in 0..50 {

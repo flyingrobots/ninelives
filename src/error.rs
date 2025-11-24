@@ -12,20 +12,14 @@ pub enum ResilienceError<E> {
         timeout: Duration,
     },
     /// The bulkhead rejected the operation due to capacity
-    Bulkhead {
-        in_flight: usize,
-        max: usize,
-    },
+    Bulkhead { in_flight: usize, max: usize },
     /// The circuit breaker is open
     CircuitOpen {
         failure_count: usize,
         open_duration: Duration,
     },
     /// All retry attempts were exhausted
-    RetryExhausted {
-        attempts: usize,
-        failures: Vec<E>,
-    },
+    RetryExhausted { attempts: usize, failures: Vec<E> },
     /// The underlying operation failed
     Inner(E),
 }
@@ -34,16 +28,36 @@ impl<E: fmt::Display> fmt::Display for ResilienceError<E> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Timeout { elapsed, timeout } => {
-                write!(f, "operation timed out after {:?} (limit: {:?})", elapsed, timeout)
+                write!(
+                    f,
+                    "operation timed out after {:?} (limit: {:?})",
+                    elapsed, timeout
+                )
             }
             Self::Bulkhead { in_flight, max } => {
-                write!(f, "bulkhead rejected request ({} in-flight, max {})", in_flight, max)
+                write!(
+                    f,
+                    "bulkhead rejected request ({} in-flight, max {})",
+                    in_flight, max
+                )
             }
-            Self::CircuitOpen { failure_count, open_duration } => {
-                write!(f, "circuit breaker open ({} failures, open for {:?})", failure_count, open_duration)
+            Self::CircuitOpen {
+                failure_count,
+                open_duration,
+            } => {
+                write!(
+                    f,
+                    "circuit breaker open ({} failures, open for {:?})",
+                    failure_count, open_duration
+                )
             }
             Self::RetryExhausted { attempts, failures } => {
-                write!(f, "retry exhausted after {} attempts ({} failures)", attempts, failures.len())
+                write!(
+                    f,
+                    "retry exhausted after {} attempts ({} failures)",
+                    attempts,
+                    failures.len()
+                )
             }
             Self::Inner(e) => write!(f, "{}", e),
         }
@@ -54,7 +68,9 @@ impl<E: std::error::Error + 'static> std::error::Error for ResilienceError<E> {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Inner(e) => Some(e),
-            Self::RetryExhausted { failures, .. } => failures.last().map(|e| e as &dyn std::error::Error),
+            Self::RetryExhausted { failures, .. } => {
+                failures.last().map(|e| e as &dyn std::error::Error)
+            }
             _ => None,
         }
     }
