@@ -12,10 +12,9 @@ jobs:
       pull-requests: write
     steps:
       - uses: actions/checkout@v4
-      - uses: actions-rs/toolchain@v1
+      - uses: dtolnay/rust-toolchain@v1
         with:
-          toolchain: stable
-          override: true
+          toolchain: 1.83.0
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
       - name: Release-plz
