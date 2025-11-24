@@ -1,12 +1,22 @@
 //! Abstraction for sleeping/waiting
 //!
-//! Enables fast, deterministic tests without real time delays
+//! Implementations provided:
+//! - `TokioSleeper`: production async sleeps via `tokio::time::sleep`.
+//! - `InstantSleeper`: test helper that returns immediately (no real delay).
+//! - `TrackingSleeper`: test helper that records every requested sleep for assertions.
+//!
+//! Use `TokioSleeper` in production stacks; prefer `InstantSleeper` or `TrackingSleeper` in
+//! tests to avoid wall-clock delays while still validating retry/backoff behavior.
 
 use async_trait::async_trait;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
-/// Abstraction for sleeping/waiting
+/// Contract for sleeping/waiting.
+///
+/// Implementations must be `Send + Sync + Debug`, tolerate concurrent calls, and avoid panics on
+/// normal use. They may be real (sleeping) or virtual (test doubles). Duration arguments should be
+/// honored or intentionally no-oped as documented by each implementation.
 #[async_trait]
 pub trait Sleeper: Send + Sync + std::fmt::Debug {
     async fn sleep(&self, duration: Duration);
@@ -34,41 +44,58 @@ impl Sleeper for InstantSleeper {
     }
 }
 
-/// Test sleeper that tracks all sleep calls
+/// Test sleeper that tracks all sleep calls. Clones share the same recorded history via `Arc`, so
+/// any clone observing or pushing sleeps sees the combined timeline.
 #[derive(Debug, Clone)]
 pub struct TrackingSleeper {
-    calls: Arc<Mutex<Vec<Duration>>>,
+    calls: Arc<RwLock<Vec<Duration>>>,
 }
 
 impl TrackingSleeper {
     pub fn new() -> Self {
-        Self { calls: Arc::new(Mutex::new(Vec::new())) }
+        Self { calls: Arc::new(RwLock::new(Vec::new())) }
     }
 
     /// Number of recorded sleep calls.
     pub fn calls(&self) -> usize {
-        self.calls.lock().expect("TrackingSleeper.calls: mutex poisoned").len()
+        self.calls.read().unwrap_or_else(|e| e.into_inner()).len()
     }
 
     /// Get a recorded call duration by index, if present.
     pub fn call_at(&self, index: usize) -> Option<Duration> {
-        self.calls.lock().expect("TrackingSleeper.call_at: mutex poisoned").get(index).copied()
+        self.calls.read().unwrap_or_else(|e| e.into_inner()).get(index).copied()
     }
 
+    /// Returns a clone of all recorded sleep calls.
+    /// **Note:** clones the full vector; prefer `calls()` and `call_at()` when you only need counts
+    /// or specific entries.
+    pub fn all_calls(&self) -> Vec<Duration> {
+        self.calls.read().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+
+    /// Remove all recorded sleep calls.
+    /// Recovers from a poisoned lock by taking ownership of the inner vector and clearing it.
     pub fn clear(&self) {
-        self.calls.lock().expect("TrackingSleeper.clear: mutex poisoned").clear();
+        self.calls.write().unwrap_or_else(|e| e.into_inner()).clear();
+    }
+}
+
+impl Default for TrackingSleeper {
+    fn default() -> Self {
+        Self::new()
     }
 }
 #[async_trait]
 impl Sleeper for TrackingSleeper {
     async fn sleep(&self, duration: Duration) {
-        self.calls.lock().expect("TrackingSleeper.sleep: mutex poisoned").push(duration);
+        self.calls.write().unwrap_or_else(|e| e.into_inner()).push(duration);
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
 
     #[tokio::test]
     async fn instant_sleeper_doesnt_sleep() {
@@ -115,7 +142,44 @@ mod tests {
         let start = std::time::Instant::now();
         sleeper.sleep(Duration::from_millis(50)).await;
         let elapsed = start.elapsed();
-        // Should take at least the requested duration
-        assert!(elapsed >= Duration::from_millis(45)); // Small tolerance for timing jitter
+        // Should take at least the requested duration (small tolerance for jitter)
+        assert!(elapsed >= Duration::from_millis(48));
+    }
+
+    #[tokio::test]
+    async fn tracking_sleeper_call_at_out_of_range() {
+        let sleeper = TrackingSleeper::new();
+        sleeper.sleep(Duration::from_millis(10)).await;
+        assert!(sleeper.call_at(1).is_none());
+        assert!(sleeper.call_at(999).is_none());
+    }
+
+    #[tokio::test]
+    async fn tracking_sleeper_concurrent_recording() {
+        let sleeper = Arc::new(TrackingSleeper::new());
+        let a = sleeper.clone();
+        let b = sleeper.clone();
+
+        let h1 = tokio::spawn(async move { a.sleep(Duration::from_millis(1)).await });
+        let h2 = tokio::spawn(async move { b.sleep(Duration::from_millis(2)).await });
+
+        let _ = futures::future::join_all([h1, h2]).await;
+
+        assert_eq!(sleeper.calls(), 2);
+        // Order is not guaranteed, but both durations should be present.
+        let mut recorded = sleeper.all_calls();
+        recorded.sort();
+        assert_eq!(recorded, vec![Duration::from_millis(1), Duration::from_millis(2)]);
+    }
+
+    #[tokio::test]
+    async fn tracking_sleeper_clone_shares_state() {
+        let sleeper = TrackingSleeper::new();
+        let clone = sleeper.clone();
+
+        clone.sleep(Duration::from_millis(5)).await;
+
+        assert_eq!(sleeper.calls(), 1);
+        assert_eq!(sleeper.call_at(0), Some(Duration::from_millis(5)));
     }
 }
