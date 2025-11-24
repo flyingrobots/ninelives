@@ -2,10 +2,10 @@
 name = "ninelives"
 version = "0.1.0"
 edition = "2021"
-authors = ["James"]
-license = "MIT"
-description = "Production-grade resilience patterns: retry policies, circuit breakers, bulkheads, and timeouts"
-repository = "https://github.com/yourusername/ninelives"
+authors = ["James Ross <james@flyingrobots.dev> (https://github.com/flyingrobots)"]
+license = "Apache 2.0"
+description = "Resilience patterns for Rust. It's not what happens to you, but how you react to it that matters."
+repository = "https://github.com/flyingrobots/ninelives"
 keywords = ["resilience", "retry", "circuit-breaker", "bulkhead", "timeout"]
 categories = ["asynchronous", "network-programming"]
 rust-version = "1.70"

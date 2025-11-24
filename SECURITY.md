@@ -2,7 +2,7 @@
 
 ## Reporting a vulnerability
 
-- Email: security@example.com
+- Email: james@flyingrobots.dev
 - Please include a minimal reproduction and affected versions if possible.
 - We aim to acknowledge reports within 72 hours and provide a fix or mitigation timeline within 7 days.
 
