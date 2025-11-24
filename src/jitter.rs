@@ -22,6 +22,7 @@
 //! ```
 
 use rand::{rng, Rng};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 #[derive(Debug)]
@@ -29,13 +30,13 @@ use std::time::Duration;
 pub struct DecorrelatedConfig {
     base: Duration,
     max: Duration,
-    previous: std::sync::Mutex<Duration>,
+    previous: AtomicU64,
 }
 
 impl Clone for DecorrelatedConfig {
     fn clone(&self) -> Self {
-        let prev = self.previous.lock().map(|g| *g).unwrap_or(self.base);
-        Self { base: self.base, max: self.max, previous: std::sync::Mutex::new(prev) }
+        let prev = self.previous.load(Ordering::Relaxed);
+        Self { base: self.base, max: self.max, previous: AtomicU64::new(prev) }
     }
 }
 
@@ -69,10 +70,12 @@ impl Jitter {
             return Err("decorrelated jitter: base must not exceed max");
         }
 
+        let base_millis = Self::as_millis_saturated(base);
+
         Ok(Jitter::Decorrelated(DecorrelatedConfig {
             base,
             max,
-            previous: std::sync::Mutex::new(base),
+            previous: AtomicU64::new(base_millis),
         }))
     }
 
@@ -116,8 +119,7 @@ impl Jitter {
                 let base_millis = Self::as_millis_saturated(config.base);
                 let max_millis = Self::as_millis_saturated(config.max);
 
-                let mut prev = config.previous.lock().unwrap();
-                let prev_millis = Self::as_millis_saturated(*prev);
+                let prev_millis = config.previous.load(Ordering::Relaxed);
 
                 // upper bound grows from previous sleep, capped by max
                 let upper = prev_millis.saturating_mul(3).min(max_millis);
@@ -126,8 +128,8 @@ impl Jitter {
 
                 let jittered = rng.random_range(lower..=upper);
 
-                *prev = Duration::from_millis(jittered);
-                *prev
+                config.previous.store(jittered, Ordering::Relaxed);
+                Duration::from_millis(jittered)
             }
         }
     }
