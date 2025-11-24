@@ -31,7 +31,7 @@
 ### Documentation & Examples
 - [x] Update lib.rs with new quick start (Policy + tower ServiceBuilder)
 - [x] Update prelude.rs with algebra re-exports
-- [ ] Create README.md with:
+- [x] Create README.md with:
   - Algebraic composition examples
   - Tower integration guide
   - Quick start with `Policy(A) + Policy(B) | Policy(C)`
