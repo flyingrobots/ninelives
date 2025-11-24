@@ -10,22 +10,32 @@ pub struct TimeoutPolicy {
 }
 
 impl TimeoutPolicy {
+    /// Create a timeout policy. Panics if duration is zero or `Duration::MAX`.
     pub fn new(duration: Duration) -> Self {
+        assert!(
+            duration > Duration::ZERO && duration < Duration::MAX,
+            "timeout duration must be non-zero and finite",
+        );
         Self { duration }
     }
 
-    pub async fn execute<T, E, Fut, Op>(&self, mut operation: Op) -> Result<T, ResilienceError<E>>
+    /// Inspect the configured timeout duration.
+    pub fn duration(&self) -> Duration {
+        self.duration
+    }
+
+    pub async fn execute<T, E, Fut, Op>(&self, operation: Op) -> Result<T, ResilienceError<E>>
     where
         T: Send,
         E: std::error::Error + Send + Sync + 'static,
         Fut: Future<Output = Result<T, ResilienceError<E>>> + Send,
-        Op: FnMut() -> Fut + Send,
+        Op: FnOnce() -> Fut + Send,
     {
         let start = Instant::now();
 
         match tokio::time::timeout(self.duration, operation()).await {
             Ok(result) => result,
-            Err(_elapsed) => {
+            Err(_) => {
                 let elapsed = start.elapsed();
                 Err(ResilienceError::Timeout { elapsed, timeout: self.duration })
             }
