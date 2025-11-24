@@ -29,6 +29,17 @@ jobs:
       - name: Format check
         run: cargo fmt -- --check
       - name: Clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --all-targets --all-features -- -D warnings -D missing_docs
       - name: Tests (all features)
         run: cargo test --all-features --all-targets
+
+  docs:
+    needs: actionlint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.1.6
+      - uses: dtolnay/rust-toolchain@v1.1.3
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2.7.3
+      - name: Docs
+        run: cargo doc --no-deps

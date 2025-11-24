@@ -1,3 +1,4 @@
+//! Integration tests covering stack composition and layers.
 use ninelives::{
     Backoff, Jitter, ResilienceError, ResilienceStack, ResilienceStackBuilder, RetryPolicy,
 };

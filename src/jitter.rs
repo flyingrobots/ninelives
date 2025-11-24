@@ -14,6 +14,7 @@
 //! - Thread-safety: `Decorrelated` stores its state in an `AtomicU64`; sharing the same handle
 //!   across threads is safe. Cloning a decorrelated jitter copies the state, creating an independent
 //!   handle.
+//!
 //! Invariants:
 //! - None leaves delay unchanged.
 //! - Full/Equal always return values inside their documented ranges.

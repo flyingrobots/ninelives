@@ -8,6 +8,7 @@
 //! - Elapsed is measured from just before invoking the closure to timeout firing and can be
 //!   slightly greater than the configured duration due to scheduling/timeout detection overhead.
 //! - Requires a Tokio runtime.
+//!
 //! Invariants:
 //! - Duration must be > 0 and ≤ configured maximum.
 //! - Successful operations pass through untouched.
@@ -49,9 +50,12 @@ use std::time::{Duration, Instant};
 /// when longer horizons are required.
 pub const MAX_TIMEOUT: Duration = Duration::from_secs(30 * 24 * 60 * 60);
 
+/// Errors returned when configuring timeouts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TimeoutError {
+    /// Duration must be greater than zero.
     ZeroDuration,
+    /// Duration exceeded configured maximum.
     ExceedsMaximum(Duration),
 }
 
@@ -72,6 +76,7 @@ impl std::fmt::Display for TimeoutError {
 
 impl std::error::Error for TimeoutError {}
 
+/// Policy that enforces a maximum duration on async operations.
 #[derive(Debug, Clone, Copy)]
 pub struct TimeoutPolicy {
     duration: Duration,

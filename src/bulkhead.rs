@@ -53,7 +53,10 @@ pub struct BulkheadPolicy {
 /// Errors produced while configuring a bulkhead (e.g., invalid permit counts).
 pub enum BulkheadError {
     /// `max_concurrent` was zero (invalid).
-    InvalidMaxConcurrent { provided: usize },
+    InvalidMaxConcurrent {
+        /// The invalid max_concurrent value supplied.
+        provided: usize,
+    },
 }
 
 impl std::fmt::Display for BulkheadError {
@@ -69,7 +72,7 @@ impl std::fmt::Display for BulkheadError {
 impl std::error::Error for BulkheadError {}
 
 /// Large but finite permit count used to approximate "unlimited".
-pub const UNLIMITED_PERMITS: usize = Semaphore::MAX_PERMITS as usize;
+pub const UNLIMITED_PERMITS: usize = Semaphore::MAX_PERMITS;
 
 impl BulkheadPolicy {
     /// Create a bulkhead with the given maximum concurrent permits.
@@ -329,7 +332,7 @@ mod tests {
         let successes = results.iter().filter(|r| r.as_ref().unwrap().is_ok()).count();
         let rejections = results
             .iter()
-            .filter(|r| r.as_ref().unwrap().as_ref().err().map_or(false, |e| e.is_bulkhead()))
+            .filter(|r| r.as_ref().unwrap().as_ref().err().is_some_and(|e| e.is_bulkhead()))
             .count();
 
         // Should have limited concurrency to 5

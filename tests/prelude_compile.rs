@@ -1,3 +1,4 @@
+//! Compile-time prelude coverage test.
 use ninelives::prelude::*;
 use std::time::Duration;
 

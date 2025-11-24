@@ -6,6 +6,7 @@ authors = ["James Ross <james@flyingrobots.dev>"]
 license = "Apache-2.0"
 description = "Resilience primitives for async Rust: retry, circuit breaker, bulkhead, timeout, and composable stacks."
 repository = "https://github.com/flyingrobots/ninelives"
+readme = "README.md"
 keywords = ["resilience", "retry", "circuit-breaker", "bulkhead", "timeout"]
 categories = ["asynchronous", "network-programming"]
 rust-version = "1.70"

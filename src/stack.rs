@@ -49,11 +49,16 @@ use crate::{
 use std::future::Future;
 use std::time::Duration;
 
+/// Errors surfaced while building the resilience stack.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StackError {
+    /// Timeout layer misconfigured.
     Timeout(TimeoutError),
+    /// Bulkhead layer misconfigured.
     Bulkhead(BulkheadError),
+    /// Circuit breaker layer misconfigured.
     CircuitBreaker(CircuitBreakerError),
+    /// Retry layer misconfigured.
     Retry(BuildError),
 }
 
@@ -107,6 +112,7 @@ where
     ///     .build()
     ///     .expect("valid stack");
     /// ```
+    #[allow(clippy::new_ret_no_self)]
     pub fn new() -> ResilienceStackBuilder<E> {
         ResilienceStackBuilder::new()
     }
@@ -128,7 +134,7 @@ where
     {
         let circuit_breaker = self.circuit_breaker.clone();
         let bulkhead = self.bulkhead.clone();
-        let timeout = self.timeout.clone();
+        let timeout = self.timeout;
         let retry = &self.retry;
 
         retry
@@ -136,20 +142,20 @@ where
                 let op_outer = operation.clone();
                 let circuit_breaker = circuit_breaker.clone();
                 let bulkhead = bulkhead.clone();
-                let timeout = timeout.clone();
+                let timeout_outer = timeout;
 
                 async move {
                     circuit_breaker
                         .execute(|| {
                             let op_cb = op_outer.clone();
                             let bulkhead = bulkhead.clone();
-                            let timeout = timeout.clone();
+                            let timeout_mid = timeout_outer;
                             async move {
                                 bulkhead
                                     .execute(|| {
                                         let op_bh = op_cb.clone();
-                                        let timeout = timeout.clone();
-                                        async move { timeout.execute(op_bh).await }
+                                        let timeout_inner = timeout_mid;
+                                        async move { timeout_inner.execute(op_bh).await }
                                     })
                                     .await
                             }

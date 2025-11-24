@@ -15,10 +15,14 @@ enum CircuitStateConversionError {
     InvalidValue(u8),
 }
 
+/// Current state of the circuit breaker.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CircuitState {
+    /// Normal operating mode.
     Closed,
+    /// Short-circuits calls until recovery timeout elapses.
     Open,
+    /// Probe mode allowing a limited number of calls to test recovery.
     HalfOpen,
 }
 
@@ -41,6 +45,7 @@ fn u8_to_state(v: u8) -> Result<CircuitState, CircuitStateConversionError> {
     }
 }
 
+/// Validated configuration for the circuit breaker.
 #[derive(Debug, Clone)]
 pub struct CircuitBreakerConfig {
     failure_threshold: usize,
@@ -48,11 +53,21 @@ pub struct CircuitBreakerConfig {
     half_open_max_calls: usize,
 }
 
+/// Errors produced when validating breaker configuration.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CircuitBreakerError {
-    InvalidFailureThreshold { provided: usize },
+    /// Failure threshold must be > 0.
+    InvalidFailureThreshold {
+        /// Value provided by caller.
+        provided: usize,
+    },
+    /// Recovery timeout must be > 0 unless breaker disabled.
     InvalidRecoveryTimeout(Duration),
-    InvalidHalfOpenLimit { provided: usize },
+    /// Half-open probe limit must be > 0.
+    InvalidHalfOpenLimit {
+        /// Value provided by caller.
+        provided: usize,
+    },
 }
 
 impl std::fmt::Display for CircuitBreakerError {
@@ -97,14 +112,17 @@ impl CircuitBreakerConfig {
         }
     }
 
+    /// Threshold before opening from Closed.
     pub fn failure_threshold(&self) -> usize {
         self.failure_threshold
     }
 
+    /// Duration to stay Open before Half-Open probes.
     pub fn recovery_timeout(&self) -> Duration {
         self.recovery_timeout
     }
 
+    /// Maximum concurrent calls while Half-Open.
     pub fn half_open_max_calls(&self) -> usize {
         self.half_open_max_calls
     }
@@ -397,8 +415,8 @@ impl CircuitBreakerPolicy {
                 }
             }
             CircuitState::Closed => {
-                if failures >= self.config.failure_threshold {
-                    if self
+                if failures >= self.config.failure_threshold
+                    && self
                         .state
                         .state
                         .compare_exchange(
@@ -408,15 +426,14 @@ impl CircuitBreakerPolicy {
                             Ordering::Acquire,
                         )
                         .is_ok()
-                    {
-                        self.state.half_open_calls.store(0, Ordering::Release);
-                        self.state.opened_at_millis.store(self.now_millis(), Ordering::Release);
-                        tracing::error!(
-                            failures,
-                            threshold = self.config.failure_threshold,
-                            "Circuit breaker → open"
-                        );
-                    }
+                {
+                    self.state.half_open_calls.store(0, Ordering::Release);
+                    self.state.opened_at_millis.store(self.now_millis(), Ordering::Release);
+                    tracing::error!(
+                        failures,
+                        threshold = self.config.failure_threshold,
+                        "Circuit breaker → open"
+                    );
                 }
             }
             _ => {}
@@ -733,11 +750,7 @@ mod tests {
         let circuit_opens = results
             .iter()
             .filter(|r| {
-                r.as_ref()
-                    .expect("join error")
-                    .as_ref()
-                    .err()
-                    .map_or(false, |e| e.is_circuit_open())
+                r.as_ref().expect("join error").as_ref().err().is_some_and(|e| e.is_circuit_open())
             })
             .count();
 

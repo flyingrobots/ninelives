@@ -37,8 +37,15 @@ pub const MAX_BACKOFF: Duration = Duration::from_secs(24 * 60 * 60);
 /// Errors returned by backoff configuration.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BackoffError {
+    /// Provided maximum delay was zero.
     MaxMustBePositive,
-    MaxLessThanBase { base: Duration, max: Duration },
+    /// Maximum delay was smaller than the base delay.
+    MaxLessThanBase {
+        /// Base delay requested.
+        base: Duration,
+        /// Maximum delay provided (must be >= base).
+        max: Duration,
+    },
 }
 
 impl fmt::Display for BackoffError {
@@ -71,19 +78,23 @@ impl BackoffError {
 
 /// Trait implemented by all backoff strategies.
 pub trait BackoffStrategy: Send + Sync + fmt::Debug {
+    /// Compute the delay for the given attempt (0-based; 0 = no delay).
     fn delay(&self, attempt: usize) -> Duration;
 }
 
+/// Constant backoff strategy.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConstantBackoff {
     delay: Duration,
 }
 
 impl ConstantBackoff {
+    /// Create a constant backoff with the provided delay.
     pub fn new(delay: Duration) -> Self {
         Self { delay }
     }
 
+    /// Compute the delay for an attempt (0 => zero).
     pub fn delay(&self, attempt: usize) -> Duration {
         BackoffStrategy::delay(self, attempt)
     }
@@ -99,6 +110,7 @@ impl BackoffStrategy for ConstantBackoff {
     }
 }
 
+/// Linear backoff strategy.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LinearBackoff {
     base: Duration,
@@ -106,10 +118,12 @@ pub struct LinearBackoff {
 }
 
 impl LinearBackoff {
+    /// Create a linear backoff with the given base delay.
     pub fn new(base: Duration) -> Self {
         Self { base, max: None }
     }
 
+    /// Cap the delay at `max` (must be >= base and non-zero).
     pub fn with_max(mut self, max: Duration) -> Result<Self, BackoffError> {
         if max.is_zero() {
             return Err(BackoffError::MaxMustBePositive);
@@ -121,6 +135,7 @@ impl LinearBackoff {
         Ok(self)
     }
 
+    /// Compute the delay for an attempt (0 => zero).
     pub fn delay(&self, attempt: usize) -> Duration {
         BackoffStrategy::delay(self, attempt)
     }
@@ -138,6 +153,7 @@ impl BackoffStrategy for LinearBackoff {
     }
 }
 
+/// Exponential backoff strategy.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExponentialBackoff {
     base: Duration,
@@ -145,10 +161,12 @@ pub struct ExponentialBackoff {
 }
 
 impl ExponentialBackoff {
+    /// Create an exponential backoff with the given base delay.
     pub fn new(base: Duration) -> Self {
         Self { base, max: None }
     }
 
+    /// Cap the delay at `max` (must be >= base and non-zero).
     pub fn with_max(mut self, max: Duration) -> Result<Self, BackoffError> {
         if max.is_zero() {
             return Err(BackoffError::MaxMustBePositive);
@@ -160,6 +178,7 @@ impl ExponentialBackoff {
         Ok(self)
     }
 
+    /// Compute the delay for an attempt (0 => zero).
     pub fn delay(&self, attempt: usize) -> Duration {
         BackoffStrategy::delay(self, attempt)
     }

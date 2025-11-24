@@ -1,5 +1,9 @@
 # Nine Lives 🐱 – Resilience for async Rust
 
+[![CI](https://github.com/flyingrobots/ninelives/actions/workflows/ci.yml/badge.svg)](https://github.com/flyingrobots/ninelives/actions/workflows/ci.yml)
+[![Docs](https://docs.rs/ninelives/badge.svg)](https://docs.rs/ninelives)
+[![Crates.io](https://img.shields.io/crates/v/ninelives.svg)](https://crates.io/crates/ninelives)
+
 Practical retries, circuit breakers, bulkheads, and timeouts that compose in a single stack. Zero `unsafe`, deterministic testing hooks, and clear invariants.
 
 ## Install
@@ -7,6 +11,14 @@ Practical retries, circuit breakers, bulkheads, and timeouts that compose in a s
 [dependencies]
 ninelives = { path = ".", features = ["tokio"] }
 ```
+
+### Features
+| Feature | Default | Description |
+|---------|---------|-------------|
+| `tokio` | ✅      | Enables integration with Tokio timers and primitives (required). |
+
+### MSRV
+- `rust-version = "1.70"` (per Cargo.toml). CI uses the latest stable toolchain; we aim to keep MSRV at or above 1.70 and will bump it in the changelog when required.
 
 ## Quick start (full stack)
 ```rust
@@ -88,6 +100,7 @@ async fn main() -> Result<(), ResilienceError<std::io::Error>> {
 - Deterministic time: circuit breaker accepts custom `Clock`; retries can swap sleepers (`InstantSleeper`, `TrackingSleeper`).  
 - Decorrelated jitter tests include concurrent fuzzing for atomic state.  
 - CI: actionlint → fmt → clippy → tests; release-plz config included.
+- Docs: `cargo doc --no-deps` (also run in CI).
 
 ## Appendix A: Usage snippets
 - Retry only: `RetryPolicy::builder().max_attempts(3).backoff(Backoff::linear(50.ms())).with_jitter(Jitter::equal())`.

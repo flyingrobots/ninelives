@@ -8,13 +8,33 @@ pub const MAX_RETRY_FAILURES: usize = 10;
 #[derive(Debug, Clone)]
 pub enum ResilienceError<E> {
     /// The operation exceeded the timeout duration
-    Timeout { elapsed: Duration, timeout: Duration },
+    Timeout {
+        /// Time spent before timing out.
+        elapsed: Duration,
+        /// Configured timeout limit.
+        timeout: Duration,
+    },
     /// The bulkhead rejected the operation due to capacity
-    Bulkhead { in_flight: usize, max: usize },
+    Bulkhead {
+        /// Current in-flight operations.
+        in_flight: usize,
+        /// Maximum allowed concurrent operations.
+        max: usize,
+    },
     /// The circuit breaker is open
-    CircuitOpen { failure_count: usize, open_duration: Duration },
+    CircuitOpen {
+        /// Failures that triggered opening.
+        failure_count: usize,
+        /// Duration the breaker has been open.
+        open_duration: Duration,
+    },
     /// All retry attempts were exhausted
-    RetryExhausted { attempts: usize, failures: Arc<Vec<E>> },
+    RetryExhausted {
+        /// Total attempts made.
+        attempts: usize,
+        /// Recorded failures (up to MAX_RETRY_FAILURES).
+        failures: Arc<Vec<E>>,
+    },
     /// The underlying operation failed
     Inner(E),
 }

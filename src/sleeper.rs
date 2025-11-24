@@ -25,10 +25,11 @@ use std::time::Duration;
 ///   effects; no panics on normal use.
 #[async_trait]
 pub trait Sleeper: Send + Sync + Debug {
+    /// Sleep for the requested duration; may return early if the future is dropped.
     async fn sleep(&self, duration: Duration);
 }
 
-/// Production sleeper using tokio runtime
+/// Production sleeper using tokio runtime.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct TokioSleeper;
 
@@ -39,7 +40,7 @@ impl Sleeper for TokioSleeper {
     }
 }
 
-/// Test sleeper that doesn't actually sleep
+/// Test sleeper that doesn't actually sleep.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct InstantSleeper;
 
@@ -58,6 +59,7 @@ pub struct TrackingSleeper {
 }
 
 impl TrackingSleeper {
+    /// Create a new tracking sleeper that records all calls.
     pub fn new() -> Self {
         Self { calls: Arc::new(Mutex::new(Vec::new())) }
     }

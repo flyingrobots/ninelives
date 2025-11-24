@@ -11,6 +11,7 @@
 //!   herds.
 //! - Sleeper controls how delays are applied (production uses `TokioSleeper`; tests can inject
 //!   `InstantSleeper`/`TrackingSleeper`).
+//!
 //! Invariants:
 //! - Attempts never exceed `max_attempts`.
 //! - Non-`Inner` errors are propagated without retry.
@@ -47,6 +48,7 @@ use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
 
+/// Retry policy combining backoff, jitter, predicate, and sleeper.
 #[derive(Clone)]
 pub struct RetryPolicy<E> {
     max_attempts: usize,
@@ -72,10 +74,12 @@ impl<E> RetryPolicy<E>
 where
     E: std::error::Error + Send + Sync + 'static,
 {
+    /// Construct a new builder with defaults.
     pub fn builder() -> RetryPolicyBuilder<E> {
         RetryPolicyBuilder::new()
     }
 
+    /// Execute an async operation with retry semantics.
     pub async fn execute<T, Fut, Op>(&self, mut operation: Op) -> Result<T, ResilienceError<E>>
     where
         T: Send,
@@ -130,6 +134,7 @@ where
     }
 }
 
+/// Builder for `RetryPolicy`.
 pub struct RetryPolicyBuilder<E> {
     max_attempts: usize,
     backoff: Backoff,
@@ -138,8 +143,10 @@ pub struct RetryPolicyBuilder<E> {
     sleeper: Arc<dyn Sleeper>,
 }
 
+/// Errors produced while building a retry policy.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BuildError {
+    /// `max_attempts` must be > 0.
     InvalidMaxAttempts(usize),
 }
 
@@ -159,6 +166,7 @@ impl<E> RetryPolicyBuilder<E>
 where
     E: std::error::Error + Send + Sync + 'static,
 {
+    /// Create a builder with sane defaults.
     pub fn new() -> Self {
         Self {
             max_attempts: 3,
@@ -169,11 +177,13 @@ where
         }
     }
 
+    /// Set total attempts (initial + retries). Must be > 0.
     pub fn max_attempts(mut self, attempts: usize) -> Self {
         self.max_attempts = attempts;
         self
     }
 
+    /// Set backoff strategy.
     pub fn backoff<B>(mut self, backoff: B) -> Self
     where
         B: Into<Backoff>,
@@ -182,11 +192,13 @@ where
         self
     }
 
+    /// Set jitter strategy.
     pub fn with_jitter(mut self, jitter: Jitter) -> Self {
         self.jitter = jitter;
         self
     }
 
+    /// Predicate to decide if an `Inner` error is retryable.
     pub fn should_retry<F>(mut self, predicate: F) -> Self
     where
         F: Fn(&E) -> bool + Send + Sync + 'static,
@@ -195,6 +207,7 @@ where
         self
     }
 
+    /// Provide a custom sleeper implementation.
     pub fn with_sleeper<S>(mut self, sleeper: S) -> Self
     where
         S: Sleeper + 'static,
@@ -203,6 +216,7 @@ where
         self
     }
 
+    /// Build the retry policy, validating inputs.
     pub fn build(self) -> Result<RetryPolicy<E>, BuildError> {
         if self.max_attempts == 0 {
             return Err(BuildError::InvalidMaxAttempts(0));
