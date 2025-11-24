@@ -1,6 +1,6 @@
 # Nine Lives 🐱 – Resilience for async Rust
 
-Production-ready retries, circuit breakers, bulkheads, and timeouts that compose in a single stack. Zero `unsafe`, deterministic testing hooks, and clear invariants.
+Practical retries, circuit breakers, bulkheads, and timeouts that compose in a single stack. Zero `unsafe`, deterministic testing hooks, and clear invariants.
 
 ## Install
 ```toml
