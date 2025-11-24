@@ -96,10 +96,10 @@ where
 
                     // If this was the last attempt, return RetryExhausted
                     if attempt + 1 >= self.max_attempts {
-                        return Err(ResilienceError::RetryExhausted {
-                            attempts: self.max_attempts,
-                            failures: std::sync::Arc::new(failures.into_iter().collect()),
-                        });
+                        return Err(ResilienceError::retry_exhausted(
+                            self.max_attempts,
+                            failures.into_iter().collect(),
+                        ));
                     }
 
                     // Calculate backoff delay for this retry (1-indexed: first retry uses delay(1))
