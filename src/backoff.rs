@@ -7,8 +7,8 @@ use std::time::Duration;
 pub enum Backoff {
     /// Fixed delay between retries
     Constant { delay: Duration },
-    /// Linearly increasing delay
-    Linear { base: Duration },
+    /// Linearly increasing delay with optional cap
+    Linear { base: Duration, max: Option<Duration> },
     /// Exponentially increasing delay with optional cap
     Exponential { base: Duration, max: Option<Duration> },
 }
@@ -21,7 +21,7 @@ impl Backoff {
 
     /// Create a linear backoff strategy
     pub fn linear(base: Duration) -> Self {
-        Backoff::Linear { base }
+        Backoff::Linear { base, max: None }
     }
 
     /// Create an exponential backoff strategy
@@ -30,24 +30,39 @@ impl Backoff {
     }
 
     /// Set a maximum delay for exponential backoff
-    pub fn with_max(mut self, max: Duration) -> Self {
-        if let Backoff::Exponential { max: ref mut m, .. } = self {
-            *m = Some(max);
+    pub fn with_max(mut self, max: Duration) -> Result<Self, &'static str> {
+        match &mut self {
+            Backoff::Exponential { max: existing, .. } => {
+                *existing = Some(max);
+                Ok(self)
+            }
+            Backoff::Linear { max: existing, .. } => {
+                *existing = Some(max);
+                Ok(self)
+            }
+            Backoff::Constant { .. } => {
+                Err("with_max only valid for Linear or Exponential backoff")
+            }
         }
-        self
     }
 
     /// Calculate the delay for a given attempt number (1-indexed)
     pub fn delay(&self, attempt: usize) -> Duration {
         match self {
             Backoff::Constant { delay } => *delay,
-            Backoff::Linear { base } => {
-                // Use checked_mul to prevent overflow
-                base.checked_mul(attempt as u32).unwrap_or(Duration::from_secs(u64::MAX))
+            Backoff::Linear { base, max } => {
+                // Use checked_mul to prevent overflow; saturate attempt to u32::MAX
+                let attempt_u32 = attempt.min(u32::MAX as usize) as u32;
+                let linear = base.checked_mul(attempt_u32).unwrap_or(Duration::from_secs(u64::MAX));
+                if let Some(max) = max {
+                    linear.min(*max)
+                } else {
+                    linear
+                }
             }
             Backoff::Exponential { base, max } => {
                 // Calculate 2^(attempt-1) with overflow protection
-                let exponent = (attempt.saturating_sub(1)) as u32;
+                let exponent = attempt.saturating_sub(1).min(u32::MAX as usize) as u32;
                 let multiplier = 2u32.saturating_pow(exponent);
 
                 let exp_delay =
@@ -85,6 +100,18 @@ mod tests {
     }
 
     #[test]
+    fn delay_handles_zero_attempt() {
+        let constant = Backoff::constant(Duration::from_millis(50));
+        assert_eq!(constant.delay(0), Duration::from_millis(50));
+
+        let linear = Backoff::linear(Duration::from_millis(50));
+        assert_eq!(linear.delay(0), Duration::from_millis(0)); // scales from zero
+
+        let exponential = Backoff::exponential(Duration::from_millis(50));
+        assert_eq!(exponential.delay(0), Duration::from_millis(50));
+    }
+
+    #[test]
     fn exponential_backoff_doubles_each_time() {
         let backoff = Backoff::exponential(Duration::from_millis(100));
         assert_eq!(backoff.delay(1), Duration::from_millis(100)); // 100 * 2^0
@@ -96,8 +123,9 @@ mod tests {
 
     #[test]
     fn exponential_backoff_respects_max() {
-        let backoff =
-            Backoff::exponential(Duration::from_millis(100)).with_max(Duration::from_secs(1));
+        let backoff = Backoff::exponential(Duration::from_millis(100))
+            .with_max(Duration::from_secs(1))
+            .unwrap();
 
         assert_eq!(backoff.delay(1), Duration::from_millis(100));
         assert_eq!(backoff.delay(2), Duration::from_millis(200));
@@ -111,7 +139,7 @@ mod tests {
     fn exponential_backoff_handles_overflow() {
         let backoff = Backoff::exponential(Duration::from_secs(1));
         // Attempt 64 would overflow u32, should saturate
-        let delay = backoff.delay(64);
+        let delay = backoff.delay(usize::MAX);
         assert!(delay > Duration::from_secs(1_000_000)); // Very large but not panicking
     }
 
@@ -119,18 +147,18 @@ mod tests {
     fn linear_backoff_handles_overflow() {
         let backoff = Backoff::linear(Duration::from_secs(u64::MAX / 2));
         // Should saturate to max duration instead of panicking
-        let delay = backoff.delay(10);
+        let delay = backoff.delay(usize::MAX);
         assert!(delay >= Duration::from_secs(u64::MAX / 2));
     }
 
     #[test]
     fn with_max_only_affects_exponential() {
         let constant = Backoff::constant(Duration::from_secs(5)).with_max(Duration::from_secs(1));
-        // Shouldn't affect constant backoff
-        assert_eq!(constant.delay(1), Duration::from_secs(5));
+        assert!(constant.is_err());
 
-        let linear = Backoff::linear(Duration::from_secs(5)).with_max(Duration::from_secs(1));
-        // Shouldn't affect linear backoff
-        assert_eq!(linear.delay(2), Duration::from_secs(10));
+        let linear =
+            Backoff::linear(Duration::from_secs(5)).with_max(Duration::from_secs(1)).unwrap();
+        // Linear should respect max
+        assert_eq!(linear.delay(2), Duration::from_secs(1));
     }
 }
