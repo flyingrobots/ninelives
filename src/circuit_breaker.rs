@@ -11,7 +11,7 @@ const STATE_OPEN: u8 = 1;
 const STATE_HALF_OPEN: u8 = 2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CircuitStateConversionError {
+enum CircuitStateConversionError {
     InvalidValue(u8),
 }
 
@@ -87,6 +87,8 @@ impl CircuitBreakerConfig {
         Ok(cfg)
     }
 
+    /// Creates a disabled circuit breaker that never opens.
+    /// Uses `usize::MAX` thresholds and `Duration::MAX` timeout to effectively disable all circuit breaking logic.
     pub fn disabled() -> Self {
         Self {
             failure_threshold: usize::MAX,
@@ -212,15 +214,36 @@ impl CircuitBreakerPolicy {
         Ok(())
     }
 
-    pub async fn execute<T, E, Fut, Op>(&self, mut operation: Op) -> Result<T, ResilienceError<E>>
+    /// Executes the provided async operation under circuit breaker protection.
+    ///
+    /// # Behavior
+    /// - **Closed**: Executes the operation normally. Consecutive failures increment the failure count.
+    /// - **Open**: Rejects calls with `ResilienceError::CircuitOpen` until `recovery_timeout` elapses.
+    /// - **HalfOpen**: Allows limited test calls (`half_open_max_calls`). Success closes the circuit; failure reopens it.
+    ///
+    /// # Errors
+    /// Returns `ResilienceError::CircuitOpen` if the circuit is open or half-open capacity is exceeded.
+    /// Returns `ResilienceError::Inner(E)` if the operation itself fails.
+    pub async fn execute<T, E, Fut, Op>(&self, operation: Op) -> Result<T, ResilienceError<E>>
     where
         T: Send,
         E: std::error::Error + Send + Sync + 'static,
         Fut: Future<Output = Result<T, ResilienceError<E>>> + Send,
-        Op: FnMut() -> Fut + Send,
+        Op: FnOnce() -> Fut + Send,
     {
         // Check state and enforce policy
-        let mut did_increment_half_open = false;
+        struct HalfOpenGuard<'a> {
+            state: &'a CircuitBreakerState,
+            did_increment: bool,
+        }
+        impl<'a> Drop for HalfOpenGuard<'a> {
+            fn drop(&mut self) {
+                if self.did_increment {
+                    self.state.half_open_calls.fetch_sub(1, Ordering::Release);
+                }
+            }
+        }
+        let mut guard: Option<HalfOpenGuard<'_>> = None;
 
         loop {
             let current_state_raw = self.state.state.load(Ordering::Acquire);
@@ -252,6 +275,8 @@ impl CircuitBreakerPolicy {
                                 // We won the race - we're the first half-open caller
                                 tracing::info!("Circuit breaker → half-open");
                                 self.state.half_open_calls.store(1, Ordering::Release);
+                                guard =
+                                    Some(HalfOpenGuard { state: &self.state, did_increment: true });
                                 break; // Proceed to execute
                             }
                             Err(STATE_HALF_OPEN) => {
@@ -288,7 +313,7 @@ impl CircuitBreakerPolicy {
                             open_duration: Duration::from_millis(elapsed),
                         });
                     }
-                    did_increment_half_open = true;
+                    guard = Some(HalfOpenGuard { state: &self.state, did_increment: true });
                     tracing::debug!(
                         in_flight = current + 1,
                         max = self.config.half_open_max_calls,
@@ -304,11 +329,7 @@ impl CircuitBreakerPolicy {
 
         // Execute the operation
         let result = operation().await;
-
-        // Decrement half-open counter if needed
-        if did_increment_half_open {
-            self.state.half_open_calls.fetch_sub(1, Ordering::Release);
-        }
+        drop(guard);
 
         // Update state based on result
         match &result {
@@ -339,6 +360,7 @@ impl CircuitBreakerPolicy {
                     )
                     .is_ok()
                 {
+                    self.state.half_open_calls.store(0, Ordering::Release);
                     self.state.failure_count.store(0, Ordering::Release);
                     self.state.opened_at_millis.store(0, Ordering::Release);
                     tracing::info!("Circuit breaker → closed");
@@ -369,6 +391,7 @@ impl CircuitBreakerPolicy {
                     )
                     .is_ok()
                 {
+                    self.state.half_open_calls.store(0, Ordering::Release);
                     self.state.opened_at_millis.store(self.now_millis(), Ordering::Release);
                     tracing::warn!(failures, "Circuit breaker: test failed → open");
                 }
@@ -386,6 +409,7 @@ impl CircuitBreakerPolicy {
                         )
                         .is_ok()
                     {
+                        self.state.half_open_calls.store(0, Ordering::Release);
                         self.state.opened_at_millis.store(self.now_millis(), Ordering::Release);
                         tracing::error!(
                             failures,
@@ -407,6 +431,8 @@ impl CircuitBreakerPolicy {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use futures::future::join_all;
+    use futures::FutureExt;
     use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
     use std::sync::Arc;
 
@@ -833,5 +859,53 @@ mod tests {
 
         assert_eq!(success.unwrap(), 42);
         assert_eq!(counter.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn half_open_counter_recovers_on_panic() {
+        let breaker = CircuitBreakerPolicy::new(1, Duration::from_millis(10)).unwrap();
+
+        let _ = breaker
+            .execute(|| async { Err::<(), _>(ResilienceError::Inner(TestError("x".into()))) })
+            .await;
+        tokio::time::sleep(Duration::from_millis(20)).await;
+
+        let result: Result<Result<(), ResilienceError<TestError>>, _> =
+            std::panic::AssertUnwindSafe(async {
+                breaker.execute(|| async { panic!("boom") }).await
+            })
+            .catch_unwind()
+            .await;
+        assert!(result.is_err());
+        assert_eq!(breaker.state.half_open_calls.load(Ordering::Acquire), 0);
+    }
+
+    #[tokio::test]
+    async fn stress_concurrent_half_open_transitions() {
+        let breaker = CircuitBreakerPolicy::new(1, Duration::from_millis(5)).unwrap();
+        let _ = breaker
+            .execute(|| async { Err::<(), _>(ResilienceError::Inner(TestError("x".into()))) })
+            .await;
+        tokio::time::sleep(Duration::from_millis(10)).await;
+
+        let tasks = 200;
+        let barrier = Arc::new(tokio::sync::Barrier::new(tasks));
+        let mut handles = vec![];
+        for _ in 0..tasks {
+            let b = breaker.clone();
+            let g = barrier.clone();
+            handles.push(tokio::spawn(async move {
+                g.wait().await;
+                let _ = b
+                    .execute(|| async {
+                        Err::<(), _>(ResilienceError::Inner(TestError("y".into())))
+                    })
+                    .await;
+            }));
+        }
+
+        let _ = join_all(handles).await;
+        let in_half_open = breaker.state.half_open_calls.load(Ordering::Acquire);
+        assert!(in_half_open <= breaker.config.half_open_max_calls);
     }
 }
