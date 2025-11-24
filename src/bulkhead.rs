@@ -35,9 +35,12 @@
 //! ```
 
 use crate::ResilienceError;
+use futures::future::BoxFuture;
 use std::future::Future;
 use std::sync::Arc;
 use tokio::sync::Semaphore;
+use tower_layer::Layer;
+use tower_service::Service;
 
 #[derive(Debug, Clone)]
 /// Concurrency-limiting bulkhead. Clones share the same underlying semaphore via `Arc`, so they
@@ -130,6 +133,84 @@ impl BulkheadPolicy {
 
         // permit released on scope exit
         operation().await
+    }
+}
+
+/// Tower-native bulkhead layer that limits concurrent in-flight requests.
+#[derive(Debug, Clone)]
+pub struct BulkheadLayer {
+    max_concurrent: usize,
+}
+
+impl BulkheadLayer {
+    /// Create a bulkhead layer; returns error if `max_concurrent` is zero.
+    pub fn new(max_concurrent: usize) -> Result<Self, BulkheadError> {
+        BulkheadPolicy::new(max_concurrent)
+            .map(|p| BulkheadLayer { max_concurrent: p.max_concurrent })
+    }
+}
+
+/// Service produced by [`BulkheadLayer`]; enforces permit limits.
+#[derive(Debug, Clone)]
+pub struct BulkheadService<S> {
+    semaphore: Arc<Semaphore>,
+    max_concurrent: usize,
+    inner: S,
+}
+
+impl<S> BulkheadService<S> {
+    fn new(inner: S, max_concurrent: usize) -> Self {
+        Self { semaphore: Arc::new(Semaphore::new(max_concurrent)), max_concurrent, inner }
+    }
+}
+
+impl<S, Request> Service<Request> for BulkheadService<S>
+where
+    S: Service<Request> + Clone + Send + 'static,
+    S::Future: Send + 'static,
+    Request: Send + 'static,
+    S::Error: std::error::Error + Send + Sync + 'static,
+    S::Response: Send + 'static,
+{
+    type Response = S::Response;
+    type Error = ResilienceError<S::Error>;
+    type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
+
+    fn poll_ready(
+        &mut self,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Result<(), Self::Error>> {
+        self.inner.poll_ready(cx).map_err(ResilienceError::Inner)
+    }
+
+    fn call(&mut self, req: Request) -> Self::Future {
+        let available = self.semaphore.available_permits();
+        if available == 0 {
+            let in_flight = self.max_concurrent;
+            return Box::pin(async move {
+                Err(ResilienceError::Bulkhead { in_flight, max: in_flight })
+            });
+        }
+
+        let semaphore = self.semaphore.clone();
+        let mut inner = self.inner.clone();
+        let max = self.max_concurrent;
+        Box::pin(async move {
+            let permit = semaphore
+                .acquire_owned()
+                .await
+                .map_err(|_| ResilienceError::Bulkhead { in_flight: max, max })?;
+            let result = inner.call(req).await;
+            drop(permit);
+            result.map_err(ResilienceError::Inner)
+        })
+    }
+}
+
+impl<S> Layer<S> for BulkheadLayer {
+    type Service = BulkheadService<S>;
+    fn layer(&self, service: S) -> Self::Service {
+        BulkheadService::new(service, self.max_concurrent)
     }
 }
 

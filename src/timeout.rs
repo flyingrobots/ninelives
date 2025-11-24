@@ -193,7 +193,7 @@ where
 {
     type Response = S::Response;
     type Error = ResilienceError<S::Error>;
-    type Future = futures::future::BoxFuture<'static, Result<Self::Response, Self::Error>>;
+    type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
 
     fn poll_ready(
         &mut self,
