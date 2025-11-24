@@ -43,10 +43,13 @@
 
 use crate::error::MAX_RETRY_FAILURES;
 use crate::{Backoff, Jitter, ResilienceError, Sleeper, TokioSleeper};
+use futures::future::BoxFuture;
 use std::collections::VecDeque;
 use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
+use tower_layer::Layer;
+use tower_service::Service;
 
 /// Retry policy combining backoff, jitter, predicate, and sleeper.
 #[derive(Clone)]
@@ -607,3 +610,120 @@ mod tests {
 }
 
 // end of file
+
+/// Tower-native retry layer.
+pub struct RetryLayer<E> {
+    max_attempts: usize,
+    backoff: Backoff,
+    jitter: Jitter,
+    should_retry: Arc<dyn Fn(&E) -> bool + Send + Sync>,
+    sleeper: Arc<dyn Sleeper>,
+}
+
+impl<E> RetryLayer<E>
+where
+    E: std::error::Error + Send + Sync + 'static,
+{
+    pub fn new(
+        max_attempts: usize,
+        backoff: Backoff,
+        jitter: Jitter,
+        should_retry: Arc<dyn Fn(&E) -> bool + Send + Sync>,
+        sleeper: Arc<dyn Sleeper>,
+    ) -> Result<Self, BuildError> {
+        if max_attempts == 0 {
+            return Err(BuildError::InvalidMaxAttempts(0));
+        }
+        Ok(Self { max_attempts, backoff, jitter, should_retry, sleeper })
+    }
+}
+
+impl<E> Clone for RetryLayer<E> {
+    fn clone(&self) -> Self {
+        Self {
+            max_attempts: self.max_attempts,
+            backoff: self.backoff.clone(),
+            jitter: self.jitter.clone(),
+            should_retry: self.should_retry.clone(),
+            sleeper: self.sleeper.clone(),
+        }
+    }
+}
+
+/// Retry service produced by `RetryLayer`.
+#[derive(Clone)]
+pub struct RetryService<S, E> {
+    inner: S,
+    layer: RetryLayer<E>,
+}
+
+impl<S, E> RetryService<S, E> {
+    fn new(inner: S, layer: RetryLayer<E>) -> Self {
+        Self { inner, layer }
+    }
+}
+
+impl<S, E, Request> Service<Request> for RetryService<S, E>
+where
+    Request: Clone + Send + 'static,
+    S: Service<Request> + Clone + Send + 'static,
+    S::Response: Send + 'static,
+    S::Error: std::error::Error + Send + Sync + 'static,
+    S::Future: Send + 'static,
+    E: std::error::Error + Send + Sync + 'static,
+    S::Error: Into<E>,
+{
+    type Response = S::Response;
+    type Error = ResilienceError<E>;
+    type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
+
+    fn poll_ready(
+        &mut self,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Result<(), Self::Error>> {
+        self.inner.poll_ready(cx).map_err(|e| ResilienceError::Inner(e.into()))
+    }
+
+    fn call(&mut self, req: Request) -> Self::Future {
+        let layer = self.layer.clone();
+        let mut inner = self.inner.clone();
+        Box::pin(async move {
+            let mut failures: Vec<E> = Vec::new();
+            for attempt in 0..layer.max_attempts {
+                match inner.call(req.clone()).await {
+                    Ok(resp) => return Ok(resp),
+                    Err(err) => {
+                        let e: E = err.into();
+                        if !(layer.should_retry)(&e) {
+                            return Err(ResilienceError::Inner(e));
+                        }
+                        failures.push(e);
+                        if attempt + 1 >= layer.max_attempts {
+                            return Err(ResilienceError::retry_exhausted(
+                                layer.max_attempts,
+                                failures,
+                            ));
+                        }
+                        let mut delay = layer.backoff.delay(attempt + 1);
+                        delay = match &layer.jitter {
+                            Jitter::Decorrelated(_) => layer.jitter.apply_stateful(),
+                            _ => layer.jitter.apply(delay),
+                        };
+                        layer.sleeper.sleep(delay).await;
+                    }
+                }
+            }
+            Err(ResilienceError::retry_exhausted(layer.max_attempts, failures))
+        })
+    }
+}
+
+impl<S, E> Layer<S> for RetryLayer<E>
+where
+    E: std::error::Error + Send + Sync + 'static,
+{
+    type Service = RetryService<S, E>;
+    fn layer(&self, service: S) -> Self::Service {
+        RetryService::new(service, self.clone())
+    }
+}

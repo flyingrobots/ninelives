@@ -1,7 +1,7 @@
 - [ ] Convert policies to tower Layers/Services
-  - [ ] timeout.rs -> TimeoutLayer + TimeoutService (Layer/Service impl)
-  - [ ] retry.rs -> RetryLayer + RetryService (Layer/Service impl)
-  - [ ] bulkhead.rs -> BulkheadLayer + BulkheadService (Layer/Service impl)
+  - [x] timeout.rs -> TimeoutLayer + TimeoutService (Layer/Service impl)
+  - [x] retry.rs -> RetryLayer + RetryService (Layer/Service impl)
+  - [x] bulkhead.rs -> BulkheadLayer + BulkheadService (Layer/Service impl)
   - [ ] circuit_breaker.rs -> CircuitBreakerLayer + CircuitBreakerService (Layer/Service impl)
   - [ ] Backoff/Jitter integration with new retry layer
 - [ ] Algebra DSL completeness
