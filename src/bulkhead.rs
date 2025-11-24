@@ -8,6 +8,7 @@ use tokio::sync::Semaphore;
 #[derive(Debug, Clone)]
 pub struct BulkheadPolicy {
     semaphore: Arc<Semaphore>,
+    /// Mirrors the initial semaphore capacity; used only for reporting.
     max_concurrent: usize,
 }
 
