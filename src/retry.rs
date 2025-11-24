@@ -296,6 +296,29 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn retry_exhausted_caps_stored_failures() {
+        let policy = RetryPolicy::builder()
+            .max_attempts(20)
+            .expect("max_attempts > 0")
+            .backoff(Backoff::constant(Duration::from_millis(1)))
+            .with_sleeper(InstantSleeper)
+            .build();
+
+        let result = policy
+            .execute(|| async {
+                Err::<(), _>(ResilienceError::Inner(TestError("fail".to_string())))
+            })
+            .await;
+
+        match result.unwrap_err() {
+            ResilienceError::RetryExhausted { failures, .. } => {
+                assert!(failures.len() <= crate::error::MAX_RETRY_FAILURES);
+            }
+            _ => panic!("expected retry exhausted"),
+        }
+    }
+
+    #[tokio::test]
     async fn test_backoff_applied() {
         let sleeper = TrackingSleeper::new();
         let policy = RetryPolicy::builder()

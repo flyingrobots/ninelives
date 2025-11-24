@@ -12,8 +12,7 @@
 //! Example (no_run):
 //! ```no_run
 //! use std::time::Duration;
-//! use ninelives as your_crate;
-//! use your_crate::{Backoff, Jitter, ResilienceError, ResilienceStack, RetryPolicy};
+//! use ninelives::{Backoff, Jitter, ResilienceError, ResilienceStack, RetryPolicy};
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), ResilienceError<std::io::Error>> {
@@ -24,8 +23,8 @@
 //!         .build();
 //!
 //!     let stack = ResilienceStack::<std::io::Error>::new()
+//!         .bulkhead(32).expect("valid bulkhead")
 //!         .timeout(Duration::from_secs(2))
-//!         .bulkhead(32)
 //!         .circuit_breaker(5, Duration::from_secs(30))
 //!         .retry(retry)
 //!         .build();
@@ -49,6 +48,22 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StackError {
+    InvalidBulkhead(usize),
+}
+
+impl std::fmt::Display for StackError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            StackError::InvalidBulkhead(v) => {
+                write!(f, "bulkhead max_concurrent must be > 0 (got {})", v)
+            }
+        }
+    }
+}
+
+impl std::error::Error for StackError {}
 /// Default timeout applied when none is specified (seconds).
 pub const DEFAULT_TIMEOUT_SECS: u64 = 30;
 /// Default bulkhead concurrency limit when unspecified.
@@ -181,18 +196,19 @@ where
         self
     }
 
-    /// Disable timeouts by setting an effectively infinite duration.
+    /// Disable timeouts by setting an effectively infinite duration (u64::MAX seconds).
     pub fn no_timeout(mut self) -> Self {
-        self.timeout = Some(TimeoutPolicy::new(Duration::from_secs(u64::MAX / 1000)));
+        self.timeout = Some(TimeoutPolicy::new(Duration::from_secs(u64::MAX)));
         self
     }
 
     /// Configure a bulkhead with a maximum number of concurrent permits.
-    /// Panics if `max_concurrent` is zero.
-    pub fn bulkhead(mut self, max_concurrent: usize) -> Self {
-        assert!(max_concurrent > 0, "max_concurrent must be > 0");
+    pub fn bulkhead(mut self, max_concurrent: usize) -> Result<Self, StackError> {
+        if max_concurrent == 0 {
+            return Err(StackError::InvalidBulkhead(max_concurrent));
+        }
         self.bulkhead = Some(BulkheadPolicy::new(max_concurrent));
-        self
+        Ok(self)
     }
 
     /// Configure an unlimited bulkhead (no concurrency cap).
