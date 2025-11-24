@@ -1,0 +1,25 @@
+[package]
+name = "ninelives"
+version = "0.1.0"
+edition = "2021"
+authors = ["James"]
+license = "MIT"
+description = "Production-grade resilience patterns: retry policies, circuit breakers, bulkheads, and timeouts"
+repository = "https://github.com/yourusername/ninelives"
+keywords = ["resilience", "retry", "circuit-breaker", "bulkhead", "timeout"]
+categories = ["asynchronous", "network-programming"]
+rust-version = "1.70"
+
+[dependencies]
+tokio = { version = "1.40", features = ["time", "sync", "macros"] }
+tracing = "0.1"
+rand = "0.8"
+
+[dev-dependencies]
+tokio = { version = "1.40", features = ["full", "test-util"] }
+tracing-subscriber = "0.3"
+futures = "0.3"
+
+[lib]
+name = "ninelives"
+path = "src/lib.rs"
