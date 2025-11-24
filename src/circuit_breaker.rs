@@ -532,10 +532,16 @@ mod tests {
 
         let results: Vec<_> = futures::future::join_all(handles).await;
 
-        let successes = results.iter().filter(|r| r.as_ref().unwrap().is_ok()).count();
+        let successes = results.iter().filter(|r| r.as_ref().expect("join error").is_ok()).count();
         let circuit_opens = results
             .iter()
-            .filter(|r| r.as_ref().unwrap().as_ref().err().map_or(false, |e| e.is_circuit_open()))
+            .filter(|r| {
+                r.as_ref()
+                    .expect("join error")
+                    .as_ref()
+                    .err()
+                    .map_or(false, |e| e.is_circuit_open())
+            })
             .count();
 
         assert_eq!(successes, 1, "Only 1 call should succeed in half-open");
