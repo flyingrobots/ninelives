@@ -4,21 +4,21 @@
 //! - `None`: deterministic retries for tests or tightly controlled workflows.
 //! - `Full`: uniform in `[0, delay]`, good default to spread load.
 //! - `Equal`: uniform in `[delay/2, delay]`, keeps a floor while adding randomness.
-//! - `Decorrelated`: AWS-style decorrelated jitter that grows based on previous sleep to avoid synchronization.
+//! - `Decorrelated`: AWS-style decorrelated jitter that grows based on previous sleep to avoid synchronization; it **ignores the `delay` passed to `apply`** and instead uses its own `base`/`max` bounds plus the last jittered sleep.
 //!
 //! Notes:
 //! - RNG: uses `rand`'s thread-local RNG by default; deterministic RNGs can be injected via `apply_with_rng`.
 //! - Precision: millisecond conversions saturate to `u64::MAX` to avoid panics on very large durations.
-//! - Decorrelated jitter here is stateful; it tracks the previous sleep internally to follow the algorithm.
+//! - Decorrelated jitter here is stateful; it tracks the previous sleep internally and ignores the `delay` argument to `apply`. Configure its starting magnitude with `Jitter::decorrelated(base, max)` and your backoff choice; do not expect per-call `delay` inputs to be honored for this variant.
 //!
 //! Example:
 //! ```rust
 //! use ninelives::{Backoff, Jitter};
 //! use std::time::Duration;
 //!
-//! let jitter = Jitter::full();
+//! let jitter = Jitter::decorrelated(Duration::from_millis(100), Duration::from_secs(5)).unwrap();
 //! let backoff = Backoff::exponential(Duration::from_millis(100));
-//! // pass to retry policy, which will call `apply` to randomize each delay
+//! // decorrelated jitter will evolve from its internal state (starting at base) rather than the backoff-provided delay
 //! ```
 
 use rand::{rng, Rng};
