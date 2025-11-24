@@ -18,7 +18,7 @@
 //! #[tokio::main]
 //! async fn main() -> Result<(), ResilienceError<std::io::Error>> {
 //!     let retry = RetryPolicy::builder()
-//!         .max_attempts(3)
+//!         .max_attempts(3).expect("max_attempts > 0")
 //!         .backoff(Backoff::exponential(Duration::from_millis(100)))
 //!         .with_jitter(Jitter::full())
 //!         .build();

@@ -1,6 +1,6 @@
 //! Retry policy implementation
 //!
-//! TODO: Implement based on RUSTLORDE™-approved design
+//! Provides configurable retry with backoff and jitter, plus retry predicate and pluggable sleeper.
 
 use crate::{Backoff, Jitter, ResilienceError, Sleeper, TokioSleeper};
 use std::future::Future;
@@ -9,11 +9,11 @@ use std::time::Duration;
 
 #[derive(Clone)]
 pub struct RetryPolicy<E> {
-    pub(crate) max_attempts: usize,
-    pub(crate) backoff: Backoff,
-    pub(crate) jitter: Option<Jitter>,
-    pub(crate) should_retry: Arc<dyn Fn(&E) -> bool + Send + Sync>,
-    pub(crate) sleeper: Arc<dyn Sleeper>,
+    max_attempts: usize,
+    backoff: Backoff,
+    jitter: Jitter,
+    should_retry: Arc<dyn Fn(&E) -> bool + Send + Sync>,
+    sleeper: Arc<dyn Sleeper>,
 }
 
 impl<E> std::fmt::Debug for RetryPolicy<E> {
@@ -65,10 +65,8 @@ where
                     // Calculate backoff delay (backoff.delay is 1-indexed)
                     let mut delay = self.backoff.delay(attempt + 1);
 
-                    // Apply jitter if configured
-                    if let Some(ref jitter) = self.jitter {
-                        delay = jitter.apply(delay);
-                    }
+                    // Apply jitter
+                    delay = self.jitter.apply(delay);
 
                     // Sleep before next attempt
                     self.sleeper.sleep(delay).await;
@@ -86,10 +84,27 @@ where
 pub struct RetryPolicyBuilder<E> {
     max_attempts: usize,
     backoff: Backoff,
-    jitter: Option<Jitter>,
+    jitter: Jitter,
     should_retry: Arc<dyn Fn(&E) -> bool + Send + Sync>,
     sleeper: Arc<dyn Sleeper>,
 }
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum BuildError {
+    InvalidMaxAttempts(usize),
+}
+
+impl std::fmt::Display for BuildError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BuildError::InvalidMaxAttempts(n) => {
+                write!(f, "max_attempts must be > 0 (got {})", n)
+            }
+        }
+    }
+}
+
+impl std::error::Error for BuildError {}
 
 impl<E> RetryPolicyBuilder<E>
 where
@@ -99,16 +114,18 @@ where
         Self {
             max_attempts: 3,
             backoff: Backoff::exponential(Duration::from_secs(1)),
-            jitter: Some(Jitter::full()),
+            jitter: Jitter::full(),
             should_retry: Arc::new(|_| true),
             sleeper: Arc::new(TokioSleeper),
         }
     }
 
-    pub fn max_attempts(mut self, attempts: usize) -> Self {
-        assert!(attempts > 0, "max_attempts must be > 0");
+    pub fn max_attempts(mut self, attempts: usize) -> Result<Self, BuildError> {
+        if attempts == 0 {
+            return Err(BuildError::InvalidMaxAttempts(attempts));
+        }
         self.max_attempts = attempts;
-        self
+        Ok(self)
     }
 
     pub fn backoff(mut self, backoff: Backoff) -> Self {
@@ -117,7 +134,7 @@ where
     }
 
     pub fn with_jitter(mut self, jitter: Jitter) -> Self {
-        self.jitter = Some(jitter);
+        self.jitter = jitter;
         self
     }
 
@@ -179,6 +196,7 @@ mod tests {
     async fn test_success_first_attempt() {
         let policy = RetryPolicy::builder()
             .max_attempts(3)
+            .expect("max_attempts > 0")
             .backoff(Backoff::constant(Duration::from_millis(100)))
             .with_sleeper(InstantSleeper)
             .build();
@@ -204,6 +222,7 @@ mod tests {
     async fn test_success_after_retries() {
         let policy = RetryPolicy::builder()
             .max_attempts(5)
+            .expect("max_attempts > 0")
             .backoff(Backoff::constant(Duration::from_millis(10)))
             .with_sleeper(InstantSleeper)
             .build();
@@ -233,6 +252,7 @@ mod tests {
     async fn test_retry_exhaustion() {
         let policy = RetryPolicy::builder()
             .max_attempts(3)
+            .expect("max_attempts > 0")
             .backoff(Backoff::constant(Duration::from_millis(10)))
             .with_sleeper(InstantSleeper)
             .build();
@@ -270,6 +290,7 @@ mod tests {
         let sleeper = TrackingSleeper::new();
         let policy = RetryPolicy::builder()
             .max_attempts(4)
+            .expect("max_attempts > 0")
             .backoff(Backoff::linear(Duration::from_millis(100)))
             .with_jitter(Jitter::None)
             .with_sleeper(sleeper.clone())
@@ -302,6 +323,7 @@ mod tests {
         let sleeper = TrackingSleeper::new();
         let policy = RetryPolicy::builder()
             .max_attempts(3)
+            .expect("max_attempts > 0")
             .backoff(Backoff::constant(Duration::from_millis(100)))
             .with_jitter(Jitter::full())
             .with_sleeper(sleeper.clone())
@@ -334,6 +356,7 @@ mod tests {
     async fn test_should_retry_predicate() {
         let policy = RetryPolicy::builder()
             .max_attempts(5)
+            .expect("max_attempts > 0")
             .backoff(Backoff::constant(Duration::from_millis(10)))
             .with_sleeper(InstantSleeper)
             .should_retry(|e: &TestError| e.0.contains("retryable"))
@@ -380,7 +403,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_max_attempts_config() {
-        let policy = RetryPolicy::builder().max_attempts(1).with_sleeper(InstantSleeper).build();
+        let policy = RetryPolicy::builder()
+            .max_attempts(1)
+            .expect("max_attempts > 0")
+            .with_sleeper(InstantSleeper)
+            .build();
 
         let counter = Arc::new(AtomicUsize::new(0));
         let counter_clone = counter.clone();
@@ -403,6 +430,7 @@ mod tests {
     async fn test_resilience_error_not_retried() {
         let policy = RetryPolicy::builder()
             .max_attempts(5)
+            .expect("max_attempts > 0")
             .backoff(Backoff::constant(Duration::from_millis(10)))
             .with_sleeper(InstantSleeper)
             .build();
@@ -434,6 +462,7 @@ mod tests {
         let sleeper = TrackingSleeper::new();
         let policy = RetryPolicy::builder()
             .max_attempts(4)
+            .expect("max_attempts > 0")
             .backoff(Backoff::exponential(Duration::from_millis(100)))
             .with_jitter(Jitter::None)
             .with_sleeper(sleeper.clone())
