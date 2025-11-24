@@ -12,35 +12,39 @@ pub struct BulkheadPolicy {
     max_concurrent: usize,
 }
 
+/// Large but finite permit count used to approximate "unlimited".
+pub const UNLIMITED_PERMITS: usize = 1_000_000_000;
+
 impl BulkheadPolicy {
     pub fn new(max_concurrent: usize) -> Self {
+        assert!(max_concurrent > 0, "bulkhead max_concurrent must be > 0");
         Self { semaphore: Arc::new(Semaphore::new(max_concurrent)), max_concurrent }
     }
 
     pub fn unlimited() -> Self {
         // Semaphore::MAX_PERMITS is approximately usize::MAX / 4
-        // Use a large but safe value: 1 billion concurrent operations
-        Self::new(1_000_000_000)
+        // Use a large but safe value: UNLIMITED_PERMITS concurrent operations
+        Self::new(UNLIMITED_PERMITS)
     }
 
-    pub async fn execute<T, E, Fut, Op>(&self, mut operation: Op) -> Result<T, ResilienceError<E>>
+    pub async fn execute<T, E, Fut, Op>(&self, operation: Op) -> Result<T, ResilienceError<E>>
     where
         T: Send,
         E: std::error::Error + Send + Sync + 'static,
         Fut: Future<Output = Result<T, ResilienceError<E>>> + Send,
-        Op: FnMut() -> Fut + Send,
+        Op: FnOnce() -> Fut + Send,
     {
-        let available = self.semaphore.available_permits();
-        let in_flight = self.max_concurrent.saturating_sub(available);
+        let _permit = match self.semaphore.try_acquire() {
+            Ok(p) => p,
+            Err(_) => {
+                let available = self.semaphore.available_permits();
+                let in_flight = self.max_concurrent.saturating_sub(available);
+                return Err(ResilienceError::Bulkhead { in_flight, max: self.max_concurrent });
+            }
+        };
 
-        let permit = self
-            .semaphore
-            .try_acquire()
-            .map_err(|_| ResilienceError::Bulkhead { in_flight, max: self.max_concurrent })?;
-
-        let result = operation().await;
-        drop(permit);
-        result
+        // permit released on scope exit
+        operation().await
     }
 }
 
@@ -88,19 +92,23 @@ mod tests {
     #[tokio::test]
     async fn test_rejects_when_at_capacity() {
         let bulkhead = BulkheadPolicy::new(2);
-        let barrier = Arc::new(tokio::sync::Barrier::new(3)); // 2 tasks + test
+        let notify = Arc::new(tokio::sync::Notify::new());
+        let started = Arc::new(AtomicUsize::new(0));
 
         // Start 2 concurrent long-running operations
         let mut handles = vec![];
         for _ in 0..2 {
             let bulkhead_clone = bulkhead.clone();
-            let barrier_clone = barrier.clone();
+            let notify_clone = notify.clone();
+            let started_clone = started.clone();
             let handle = tokio::spawn(async move {
                 bulkhead_clone
                     .execute(|| {
-                        let barrier = barrier_clone.clone();
+                        let notify = notify_clone.clone();
+                        let started = started_clone.clone();
                         async move {
-                            barrier.wait().await; // Wait for all tasks to start
+                            started.fetch_add(1, Ordering::SeqCst);
+                            notify.notify_one();
                             tokio::time::sleep(Duration::from_millis(100)).await;
                             Ok::<_, ResilienceError<TestError>>(42)
                         }
@@ -110,17 +118,16 @@ mod tests {
             handles.push(handle);
         }
 
-        // Wait for both operations to be in-flight
-        tokio::time::sleep(Duration::from_millis(10)).await;
+        // Wait until both tasks have acquired permits
+        while started.load(Ordering::SeqCst) < 2 {
+            notify.notified().await;
+        }
 
         // Try to execute a 3rd operation - should be rejected
         let result = bulkhead.execute(|| async { Ok::<_, ResilienceError<TestError>>(99) }).await;
 
         assert!(result.is_err());
         assert!(result.unwrap_err().is_bulkhead());
-
-        // Release the barrier to let tasks complete
-        barrier.wait().await;
 
         // Wait for tasks to finish
         for handle in handles {
