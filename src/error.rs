@@ -7,17 +7,11 @@ use std::time::Duration;
 #[derive(Debug)]
 pub enum ResilienceError<E> {
     /// The operation exceeded the timeout duration
-    Timeout {
-        elapsed: Duration,
-        timeout: Duration,
-    },
+    Timeout { elapsed: Duration, timeout: Duration },
     /// The bulkhead rejected the operation due to capacity
     Bulkhead { in_flight: usize, max: usize },
     /// The circuit breaker is open
-    CircuitOpen {
-        failure_count: usize,
-        open_duration: Duration,
-    },
+    CircuitOpen { failure_count: usize, open_duration: Duration },
     /// All retry attempts were exhausted
     RetryExhausted { attempts: usize, failures: Vec<E> },
     /// The underlying operation failed
@@ -28,23 +22,12 @@ impl<E: fmt::Display> fmt::Display for ResilienceError<E> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Timeout { elapsed, timeout } => {
-                write!(
-                    f,
-                    "operation timed out after {:?} (limit: {:?})",
-                    elapsed, timeout
-                )
+                write!(f, "operation timed out after {:?} (limit: {:?})", elapsed, timeout)
             }
             Self::Bulkhead { in_flight, max } => {
-                write!(
-                    f,
-                    "bulkhead rejected request ({} in-flight, max {})",
-                    in_flight, max
-                )
+                write!(f, "bulkhead rejected request ({} in-flight, max {})", in_flight, max)
             }
-            Self::CircuitOpen {
-                failure_count,
-                open_duration,
-            } => {
+            Self::CircuitOpen { failure_count, open_duration } => {
                 write!(
                     f,
                     "circuit breaker open ({} failures, open for {:?})",
@@ -124,10 +107,7 @@ mod tests {
 
     #[test]
     fn bulkhead_error_display() {
-        let err: ResilienceError<io::Error> = ResilienceError::Bulkhead {
-            in_flight: 50,
-            max: 50,
-        };
+        let err: ResilienceError<io::Error> = ResilienceError::Bulkhead { in_flight: 50, max: 50 };
         let msg = format!("{}", err);
         assert!(msg.contains("bulkhead"));
         assert!(msg.contains("50"));

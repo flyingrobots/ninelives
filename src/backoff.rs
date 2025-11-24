@@ -10,10 +10,7 @@ pub enum Backoff {
     /// Linearly increasing delay
     Linear { base: Duration },
     /// Exponentially increasing delay with optional cap
-    Exponential {
-        base: Duration,
-        max: Option<Duration>,
-    },
+    Exponential { base: Duration, max: Option<Duration> },
 }
 
 impl Backoff {
@@ -46,17 +43,15 @@ impl Backoff {
             Backoff::Constant { delay } => *delay,
             Backoff::Linear { base } => {
                 // Use checked_mul to prevent overflow
-                base.checked_mul(attempt as u32)
-                    .unwrap_or(Duration::from_secs(u64::MAX))
+                base.checked_mul(attempt as u32).unwrap_or(Duration::from_secs(u64::MAX))
             }
             Backoff::Exponential { base, max } => {
                 // Calculate 2^(attempt-1) with overflow protection
                 let exponent = (attempt.saturating_sub(1)) as u32;
                 let multiplier = 2u32.saturating_pow(exponent);
 
-                let exp_delay = base
-                    .checked_mul(multiplier)
-                    .unwrap_or(Duration::from_secs(u64::MAX));
+                let exp_delay =
+                    base.checked_mul(multiplier).unwrap_or(Duration::from_secs(u64::MAX));
 
                 if let Some(max) = max {
                     exp_delay.min(*max)

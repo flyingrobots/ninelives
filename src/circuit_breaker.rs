@@ -23,9 +23,7 @@ pub struct MonotonicClock {
 
 impl Default for MonotonicClock {
     fn default() -> Self {
-        Self {
-            start: Instant::now(),
-        }
+        Self { start: Instant::now() }
     }
 }
 
@@ -252,9 +250,7 @@ impl CircuitBreakerPolicy {
                     )
                     .is_ok()
                 {
-                    self.state
-                        .opened_at_millis
-                        .store(self.now_millis(), Ordering::Release);
+                    self.state.opened_at_millis.store(self.now_millis(), Ordering::Release);
                     tracing::warn!(failures, "Circuit breaker: test failed → open");
                 }
             }
@@ -271,9 +267,7 @@ impl CircuitBreakerPolicy {
                         )
                         .is_ok()
                     {
-                        self.state
-                            .opened_at_millis
-                            .store(self.now_millis(), Ordering::Release);
+                        self.state.opened_at_millis.store(self.now_millis(), Ordering::Release);
                         tracing::error!(
                             failures,
                             threshold = self.config.failure_threshold,
@@ -315,9 +309,7 @@ mod tests {
 
     impl ManualClock {
         fn new() -> Self {
-            Self {
-                now: Arc::new(AtomicU64::new(0)),
-            }
+            Self { now: Arc::new(AtomicU64::new(0)) }
         }
 
         fn advance(&self, millis: u64) {
@@ -370,11 +362,7 @@ mod tests {
                 .await;
         }
 
-        assert_eq!(
-            counter.load(Ordering::SeqCst),
-            3,
-            "Should have executed 3 times"
-        );
+        assert_eq!(counter.load(Ordering::SeqCst), 3, "Should have executed 3 times");
 
         // Next call should fail immediately without executing
         counter.store(0, Ordering::SeqCst);
@@ -391,11 +379,7 @@ mod tests {
 
         assert!(result.is_err());
         assert!(result.unwrap_err().is_circuit_open());
-        assert_eq!(
-            counter.load(Ordering::SeqCst),
-            0,
-            "Should not execute when circuit is open"
-        );
+        assert_eq!(counter.load(Ordering::SeqCst), 0, "Should not execute when circuit is open");
     }
 
     #[tokio::test]
@@ -449,11 +433,7 @@ mod tests {
             .await;
 
         assert_eq!(result.unwrap(), 100);
-        assert_eq!(
-            counter.load(Ordering::SeqCst),
-            1,
-            "Should execute in half-open state"
-        );
+        assert_eq!(counter.load(Ordering::SeqCst), 1, "Should execute in half-open state");
     }
 
     #[tokio::test]
@@ -503,11 +483,7 @@ mod tests {
                 .await;
             assert!(result.is_ok());
         }
-        assert_eq!(
-            counter.load(Ordering::SeqCst),
-            5,
-            "All calls should succeed when closed"
-        );
+        assert_eq!(counter.load(Ordering::SeqCst), 5, "All calls should succeed when closed");
     }
 
     #[tokio::test]
@@ -532,9 +508,7 @@ mod tests {
             .await;
 
         // Circuit should be open again
-        let result = breaker
-            .execute(|| async { Ok::<_, ResilienceError<TestError>>(42) })
-            .await;
+        let result = breaker.execute(|| async { Ok::<_, ResilienceError<TestError>>(42) }).await;
 
         assert!(result.is_err());
         assert!(result.unwrap_err().is_circuit_open());
@@ -580,19 +554,10 @@ mod tests {
 
         let results: Vec<_> = futures::future::join_all(handles).await;
 
-        let successes = results
-            .iter()
-            .filter(|r| r.as_ref().unwrap().is_ok())
-            .count();
+        let successes = results.iter().filter(|r| r.as_ref().unwrap().is_ok()).count();
         let circuit_opens = results
             .iter()
-            .filter(|r| {
-                r.as_ref()
-                    .unwrap()
-                    .as_ref()
-                    .err()
-                    .map_or(false, |e| e.is_circuit_open())
-            })
+            .filter(|r| r.as_ref().unwrap().as_ref().err().map_or(false, |e| e.is_circuit_open()))
             .count();
 
         assert_eq!(successes, 1, "Only 1 call should succeed in half-open");
@@ -655,9 +620,7 @@ mod tests {
         }
 
         // 1 success (should reset count)
-        let _ = breaker
-            .execute(|| async { Ok::<_, ResilienceError<TestError>>(42) })
-            .await;
+        let _ = breaker.execute(|| async { Ok::<_, ResilienceError<TestError>>(42) }).await;
 
         // 2 more failures (should not open since count was reset)
         for _ in 0..2 {
@@ -690,9 +653,8 @@ mod tests {
             .await;
 
         // Immediately try again: should still be open (0ms elapsed)
-        let open_result = breaker
-            .execute(|| async { Ok::<_, ResilienceError<TestError>>(()) })
-            .await;
+        let open_result =
+            breaker.execute(|| async { Ok::<_, ResilienceError<TestError>>(()) }).await;
         assert!(open_result.unwrap_err().is_circuit_open());
 
         // Advance virtual clock beyond recovery timeout

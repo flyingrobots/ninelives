@@ -95,12 +95,7 @@ where
     E: std::error::Error + Send + Sync + 'static,
 {
     pub fn new() -> Self {
-        Self {
-            timeout: None,
-            bulkhead: None,
-            circuit_breaker: None,
-            retry: None,
-        }
+        Self { timeout: None, bulkhead: None, circuit_breaker: None, retry: None }
     }
 
     pub fn timeout(mut self, duration: Duration) -> Self {
@@ -134,9 +129,8 @@ where
     }
 
     pub fn no_circuit_breaker(mut self) -> Self {
-        self.circuit_breaker = Some(CircuitBreakerPolicy::with_config(
-            CircuitBreakerConfig::disabled(),
-        ));
+        self.circuit_breaker =
+            Some(CircuitBreakerPolicy::with_config(CircuitBreakerConfig::disabled()));
         self
     }
 
@@ -147,9 +141,7 @@ where
 
     pub fn build(self) -> ResilienceStack<E> {
         ResilienceStack {
-            timeout: self
-                .timeout
-                .unwrap_or_else(|| TimeoutPolicy::new(Duration::from_secs(30))),
+            timeout: self.timeout.unwrap_or_else(|| TimeoutPolicy::new(Duration::from_secs(30))),
             bulkhead: self.bulkhead.unwrap_or_else(|| BulkheadPolicy::new(100)),
             circuit_breaker: self
                 .circuit_breaker

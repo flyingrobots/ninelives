@@ -40,9 +40,7 @@ pub struct TrackingSleeper {
 
 impl TrackingSleeper {
     pub fn new() -> Self {
-        Self {
-            calls: Arc::new(Mutex::new(Vec::new())),
-        }
+        Self { calls: Arc::new(Mutex::new(Vec::new())) }
     }
 
     pub fn calls(&self) -> Vec<Duration> {

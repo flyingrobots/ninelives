@@ -186,11 +186,7 @@ mod tests {
             .await;
 
         assert_eq!(result.unwrap(), 42);
-        assert_eq!(
-            counter.load(Ordering::SeqCst),
-            1,
-            "Should only execute once"
-        );
+        assert_eq!(counter.load(Ordering::SeqCst), 1, "Should only execute once");
     }
 
     #[tokio::test]
@@ -210,10 +206,7 @@ mod tests {
                 async move {
                     let attempt = counter.fetch_add(1, Ordering::SeqCst);
                     if attempt < 2 {
-                        Err(ResilienceError::Inner(TestError(format!(
-                            "attempt {}",
-                            attempt
-                        ))))
+                        Err(ResilienceError::Inner(TestError(format!("attempt {}", attempt))))
                     } else {
                         Ok(42)
                     }
@@ -222,11 +215,7 @@ mod tests {
             .await;
 
         assert_eq!(result.unwrap(), 42);
-        assert_eq!(
-            counter.load(Ordering::SeqCst),
-            3,
-            "Should succeed on 3rd attempt"
-        );
+        assert_eq!(counter.load(Ordering::SeqCst), 3, "Should succeed on 3rd attempt");
     }
 
     #[tokio::test]
@@ -245,10 +234,7 @@ mod tests {
                 let counter = counter_clone.clone();
                 async move {
                     let attempt = counter.fetch_add(1, Ordering::SeqCst);
-                    Err::<(), _>(ResilienceError::Inner(TestError(format!(
-                        "attempt {}",
-                        attempt
-                    ))))
+                    Err::<(), _>(ResilienceError::Inner(TestError(format!("attempt {}", attempt))))
                 }
             })
             .await;
@@ -329,10 +315,7 @@ mod tests {
         // With full jitter, delays should be in range [0, 100ms]
         // We can't predict exact values, but we can check they're in range
         for call in calls {
-            assert!(
-                call <= Duration::from_millis(100),
-                "Jitter should not exceed base delay"
-            );
+            assert!(call <= Duration::from_millis(100), "Jitter should not exceed base delay");
         }
     }
 
@@ -360,11 +343,7 @@ mod tests {
             .await;
 
         assert!(result.is_err());
-        assert_eq!(
-            counter.load(Ordering::SeqCst),
-            1,
-            "Should not retry non-retryable error"
-        );
+        assert_eq!(counter.load(Ordering::SeqCst), 1, "Should not retry non-retryable error");
 
         // Reset counter
         counter.store(0, Ordering::SeqCst);
@@ -376,9 +355,7 @@ mod tests {
                 async move {
                     let attempt = counter.fetch_add(1, Ordering::SeqCst);
                     if attempt < 2 {
-                        Err(ResilienceError::Inner(TestError(
-                            "retryable error".to_string(),
-                        )))
+                        Err(ResilienceError::Inner(TestError("retryable error".to_string())))
                     } else {
                         Ok(42)
                     }
@@ -387,19 +364,12 @@ mod tests {
             .await;
 
         assert_eq!(result.unwrap(), 42);
-        assert_eq!(
-            counter.load(Ordering::SeqCst),
-            3,
-            "Should retry retryable error"
-        );
+        assert_eq!(counter.load(Ordering::SeqCst), 3, "Should retry retryable error");
     }
 
     #[tokio::test]
     async fn test_max_attempts_config() {
-        let policy = RetryPolicy::builder()
-            .max_attempts(1)
-            .with_sleeper(InstantSleeper)
-            .build();
+        let policy = RetryPolicy::builder().max_attempts(1).with_sleeper(InstantSleeper).build();
 
         let counter = Arc::new(AtomicUsize::new(0));
         let counter_clone = counter.clone();
@@ -415,11 +385,7 @@ mod tests {
             .await;
 
         assert!(result.is_err());
-        assert_eq!(
-            counter.load(Ordering::SeqCst),
-            1,
-            "Should only attempt once"
-        );
+        assert_eq!(counter.load(Ordering::SeqCst), 1, "Should only attempt once");
     }
 
     #[tokio::test]
@@ -448,11 +414,7 @@ mod tests {
             .await;
 
         assert!(result.is_err());
-        assert_eq!(
-            counter.load(Ordering::SeqCst),
-            1,
-            "Should not retry non-Inner errors"
-        );
+        assert_eq!(counter.load(Ordering::SeqCst), 1, "Should not retry non-Inner errors");
         assert!(result.unwrap_err().is_timeout());
     }
 

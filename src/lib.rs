@@ -1,3 +1,7 @@
+#![forbid(unsafe_code)]
+#![deny(warnings)]
+#![cfg_attr(not(test), deny(clippy::all))]
+
 //! # Nine Lives 🐱
 //!
 //! Production-grade resilience patterns for Rust: retry policies, circuit breakers,

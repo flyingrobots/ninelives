@@ -13,10 +13,7 @@ pub struct BulkheadPolicy {
 
 impl BulkheadPolicy {
     pub fn new(max_concurrent: usize) -> Self {
-        Self {
-            semaphore: Arc::new(Semaphore::new(max_concurrent)),
-            max_concurrent,
-        }
+        Self { semaphore: Arc::new(Semaphore::new(max_concurrent)), max_concurrent }
     }
 
     pub fn unlimited() -> Self {
@@ -38,10 +35,7 @@ impl BulkheadPolicy {
         let permit = self
             .semaphore
             .try_acquire()
-            .map_err(|_| ResilienceError::Bulkhead {
-                in_flight,
-                max: self.max_concurrent,
-            })?;
+            .map_err(|_| ResilienceError::Bulkhead { in_flight, max: self.max_concurrent })?;
 
         let result = operation().await;
         drop(permit);
@@ -119,9 +113,7 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(10)).await;
 
         // Try to execute a 3rd operation - should be rejected
-        let result = bulkhead
-            .execute(|| async { Ok::<_, ResilienceError<TestError>>(99) })
-            .await;
+        let result = bulkhead.execute(|| async { Ok::<_, ResilienceError<TestError>>(99) }).await;
 
         assert!(result.is_err());
         assert!(result.unwrap_err().is_bulkhead());
@@ -196,15 +188,9 @@ mod tests {
 
         // All should succeed
         let results: Vec<_> = futures::future::join_all(handles).await;
-        let successes = results
-            .iter()
-            .filter(|r| r.as_ref().unwrap().is_ok())
-            .count();
+        let successes = results.iter().filter(|r| r.as_ref().unwrap().is_ok()).count();
 
-        assert_eq!(
-            successes, 100,
-            "All operations should succeed with unlimited bulkhead"
-        );
+        assert_eq!(successes, 100, "All operations should succeed with unlimited bulkhead");
     }
 
     #[tokio::test]
@@ -244,28 +230,15 @@ mod tests {
         // Wait for all to complete
         let results: Vec<_> = futures::future::join_all(handles).await;
 
-        let successes = results
-            .iter()
-            .filter(|r| r.as_ref().unwrap().is_ok())
-            .count();
+        let successes = results.iter().filter(|r| r.as_ref().unwrap().is_ok()).count();
         let rejections = results
             .iter()
-            .filter(|r| {
-                r.as_ref()
-                    .unwrap()
-                    .as_ref()
-                    .err()
-                    .map_or(false, |e| e.is_bulkhead())
-            })
+            .filter(|r| r.as_ref().unwrap().as_ref().err().map_or(false, |e| e.is_bulkhead()))
             .count();
 
         // Should have limited concurrency to 5
         let max_observed = max_concurrent.load(Ordering::SeqCst);
-        assert!(
-            max_observed <= 5,
-            "Should not exceed bulkhead limit of 5, got {}",
-            max_observed
-        );
+        assert!(max_observed <= 5, "Should not exceed bulkhead limit of 5, got {}", max_observed);
         assert_eq!(
             successes + rejections,
             10,
@@ -279,9 +252,7 @@ mod tests {
 
         let result = bulkhead
             .execute(|| async {
-                Err::<(), _>(ResilienceError::Inner(TestError(
-                    "operation failed".to_string(),
-                )))
+                Err::<(), _>(ResilienceError::Inner(TestError("operation failed".to_string())))
             })
             .await;
 

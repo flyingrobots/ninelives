@@ -35,11 +35,7 @@ pub struct DecorrelatedConfig {
 impl Clone for DecorrelatedConfig {
     fn clone(&self) -> Self {
         let prev = *self.previous.lock().unwrap();
-        Self {
-            base: self.base,
-            max: self.max,
-            previous: std::sync::Mutex::new(prev),
-        }
+        Self { base: self.base, max: self.max, previous: std::sync::Mutex::new(prev) }
     }
 }
 
@@ -220,14 +216,8 @@ mod tests {
 
     #[test]
     fn jitter_handles_zero_delay() {
-        assert_eq!(
-            Jitter::full().apply(Duration::from_millis(0)),
-            Duration::from_millis(0)
-        );
-        assert_eq!(
-            Jitter::equal().apply(Duration::from_millis(0)),
-            Duration::from_millis(0)
-        );
+        assert_eq!(Jitter::full().apply(Duration::from_millis(0)), Duration::from_millis(0));
+        assert_eq!(Jitter::equal().apply(Duration::from_millis(0)), Duration::from_millis(0));
     }
 
     #[test]
