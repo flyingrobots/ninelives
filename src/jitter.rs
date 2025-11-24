@@ -112,24 +112,18 @@ impl Jitter {
                 Duration::from_millis(jittered)
             }
             Jitter::Decorrelated(config) => {
-                // Decorrelated jitter: sleep = min(cap, random(base, prev_sleep * 3))
+                // Decorrelated jitter: sleep = min(max, random(base, prev_sleep * 3))
                 let base_millis = Self::as_millis_saturated(config.base);
                 let max_millis = Self::as_millis_saturated(config.max);
-                let incoming_delay = Self::as_millis_saturated(delay);
 
                 let mut prev = config.previous.lock().unwrap();
-
-                // If caller says delay=0, reset to base (edge-case clarity)
-                if incoming_delay == 0 {
-                    *prev = config.base;
-                    return config.base;
-                }
-
                 let prev_millis = Self::as_millis_saturated(*prev);
 
+                // upper bound grows from previous sleep, capped by max
                 let upper = prev_millis.saturating_mul(3).min(max_millis);
-
+                // lower bound keeps floor at base but never exceeds upper (handles tiny prev)
                 let lower = base_millis.min(upper);
+
                 let jittered = rng.gen_range(lower..=upper);
 
                 *prev = Duration::from_millis(jittered);
@@ -258,11 +252,12 @@ mod tests {
     }
 
     #[test]
-    fn decorrelated_handles_zero_delay_by_returning_base() {
+    fn decorrelated_handles_zero_delay_using_prev_logic() {
         let jitter =
             Jitter::decorrelated(Duration::from_millis(100), Duration::from_secs(10)).unwrap();
         let result = jitter.apply(Duration::from_millis(0));
-        assert_eq!(result, Duration::from_millis(100));
+        assert!(result >= Duration::from_millis(100));
+        assert!(result <= Duration::from_millis(300));
     }
 
     #[test]
