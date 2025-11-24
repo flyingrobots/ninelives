@@ -22,7 +22,7 @@ impl BulkheadPolicy {
     }
 
     pub fn unlimited() -> Self {
-        // Semaphore::MAX_PERMITS is approximately usize::MAX / 4
+        // Semaphore::MAX_PERMITS is defined as usize::MAX >> 3 (about usize::MAX / 8)
         // Use a large but safe value: UNLIMITED_PERMITS concurrent operations
         Self::new(UNLIMITED_PERMITS)
     }
