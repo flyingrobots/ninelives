@@ -666,12 +666,10 @@ impl<S, E> RetryService<S, E> {
 impl<S, E, Request> Service<Request> for RetryService<S, E>
 where
     Request: Clone + Send + 'static,
-    S: Service<Request> + Clone + Send + 'static,
+    S: Service<Request, Error = E> + Clone + Send + 'static,
     S::Response: Send + 'static,
-    S::Error: std::error::Error + Send + Sync + 'static,
     S::Future: Send + 'static,
     E: std::error::Error + Send + Sync + 'static,
-    S::Error: Into<E>,
 {
     type Response = S::Response;
     type Error = ResilienceError<E>;
