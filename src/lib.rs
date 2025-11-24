@@ -22,6 +22,20 @@
 //! use std::time::Duration;
 //! use ninelives::{Backoff, Jitter, ResilienceError, RetryPolicy};
 //!
+//! async fn flaky_operation(
+//!     attempts: Arc<AtomicUsize>,
+//! ) -> Result<(), ResilienceError<std::io::Error>> {
+//!     let n = attempts.fetch_add(1, Ordering::SeqCst);
+//!     if n < 2 {
+//!         Err(ResilienceError::Inner(std::io::Error::new(
+//!             std::io::ErrorKind::Other,
+//!             "transient failure",
+//!         )))
+//!     } else {
+//!         Ok(())
+//!     }
+//! }
+//!
 //! #[tokio::main]
 //! async fn main() -> Result<(), ResilienceError<std::io::Error>> {
 //!     let attempts = Arc::new(AtomicUsize::new(0));
@@ -33,37 +47,21 @@
 //!         .build()
 //!         .expect("valid retry policy");
 //!
-//!     policy
-//!         .execute(|| {
-//!             let attempts = attempts.clone();
-//!             async move {
-//!                 let n = attempts.fetch_add(1, Ordering::SeqCst);
-//!                 if n < 2 {
-//!                     Err(ResilienceError::Inner(std::io::Error::new(
-//!                         std::io::ErrorKind::Other,
-//!                         "transient failure",
-//!                     )))
-//!                 } else {
-//!                     Ok::<_, ResilienceError<std::io::Error>>(())
-//!                 }
-//!             }
-//!         })
-//!         .await?;
-//!
+//!     policy.execute(|| flaky_operation(attempts.clone())).await?;
 //!     Ok(())
 //! }
 //! ```
 
-pub mod backoff;
-pub mod bulkhead;
-pub mod circuit_breaker;
-pub mod clock;
-pub mod error;
-pub mod jitter;
-pub mod retry;
-pub mod sleeper;
-pub mod stack;
-pub mod timeout;
+mod backoff;
+mod bulkhead;
+mod circuit_breaker;
+mod clock;
+mod error;
+mod jitter;
+mod retry;
+mod sleeper;
+mod stack;
+mod timeout;
 
 // Re-exports
 pub use backoff::Backoff;
