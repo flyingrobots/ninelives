@@ -10,7 +10,7 @@
 //! - Requires a Tokio runtime.
 //!
 //! Example
-//! ```no_run
+//! ```
 //! use ninelives::{ResilienceError, TimeoutPolicy};
 //! use std::time::Duration;
 //!
@@ -27,7 +27,9 @@
 //!
 //!     match result {
 //!         Ok(_) => println!("done"),
-//!         Err(e) if e.is_timeout() => println!("timed out after {:?}", e.timeout_details().unwrap().1),
+//!         Err(e) if e.is_timeout() => {
+//!             println!("timed out after {:?}", e.timeout_details().unwrap().1)
+//!         }
 //!         Err(e) => return Err(e),
 //!     }
 //!     Ok(())
@@ -39,6 +41,8 @@ use std::future::Future;
 use std::time::{Duration, Instant};
 
 /// Maximum allowed timeout duration (30 days) to avoid runaway timers while permitting long jobs.
+/// Intended to guard accidental timeouts of `u64::MAX`; override via [`TimeoutPolicy::new_with_max`]
+/// when longer horizons are required.
 pub const MAX_TIMEOUT: Duration = Duration::from_secs(30 * 24 * 60 * 60);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -52,7 +56,11 @@ impl std::fmt::Display for TimeoutError {
         match self {
             TimeoutError::ZeroDuration => write!(f, "timeout duration must be > 0"),
             TimeoutError::ExceedsMaximum(d) => {
-                write!(f, "timeout duration {:?} exceeds maximum {:?}", d, MAX_TIMEOUT)
+                write!(
+                    f,
+                    "timeout duration {:?} exceeds maximum allowed {:?}; use new_with_max to override",
+                    d, MAX_TIMEOUT
+                )
             }
         }
     }
@@ -72,17 +80,25 @@ impl TimeoutPolicy {
     ///
     /// Returns [`TimeoutError::ZeroDuration`] if `duration` is zero.
     /// Returns [`TimeoutError::ExceedsMaximum`] if `duration` exceeds [`MAX_TIMEOUT`].
+    #[must_use = "the result must be checked for validation errors"]
     pub fn new(duration: Duration) -> Result<Self, TimeoutError> {
+        Self::new_with_max(duration, MAX_TIMEOUT)
+    }
+
+    /// Construct with a caller-specified maximum allowed timeout.
+    pub fn new_with_max(duration: Duration, max: Duration) -> Result<Self, TimeoutError> {
         if duration.is_zero() {
             return Err(TimeoutError::ZeroDuration);
         }
-        if duration > MAX_TIMEOUT {
+        if duration > max {
             return Err(TimeoutError::ExceedsMaximum(duration));
         }
         Ok(Self { duration })
     }
 
     /// Returns the configured timeout duration.
+    #[must_use]
+    #[inline]
     pub fn duration(&self) -> Duration {
         self.duration
     }
@@ -97,7 +113,7 @@ impl TimeoutPolicy {
     ///   slightly due to scheduling/timeout detection overhead.
     ///
     /// # Examples
-    /// ```no_run
+    /// ```
     /// use ninelives::{ResilienceError, TimeoutPolicy};
     /// use std::time::Duration;
     /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
@@ -129,6 +145,7 @@ impl TimeoutPolicy {
         }
     }
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -163,8 +180,8 @@ mod tests {
             })
             .await;
 
-        assert_eq!(result.unwrap(), 42);
         assert_eq!(counter.load(Ordering::SeqCst), 1);
+        assert_eq!(result.unwrap(), 42);
     }
 
     #[tokio::test]
@@ -184,7 +201,7 @@ mod tests {
         });
 
         tokio::pin!(fut);
-        tokio::time::advance(Duration::from_millis(500)).await;
+        tokio::time::advance(Duration::from_millis(51)).await;
         let result = fut.await;
 
         assert!(result.is_err());
@@ -240,6 +257,10 @@ mod tests {
             ResilienceError::Timeout { elapsed, timeout } => {
                 assert_eq!(timeout, timeout_duration);
                 assert!(elapsed >= timeout_duration, "Elapsed time should be at least the timeout");
+                assert!(
+                    elapsed < timeout_duration * 2,
+                    "Elapsed should not be excessively larger than timeout"
+                );
             }
             e => panic!("Expected Timeout error, got {:?}", e),
         }
@@ -265,5 +286,11 @@ mod tests {
         let too_big = MAX_TIMEOUT + Duration::from_secs(1);
         let err = TimeoutPolicy::new(too_big).unwrap_err();
         assert!(matches!(err, TimeoutError::ExceedsMaximum(_)));
+    }
+
+    #[test]
+    fn accepts_max_timeout() {
+        let policy = TimeoutPolicy::new(MAX_TIMEOUT).expect("should accept max boundary");
+        assert_eq!(policy.duration(), MAX_TIMEOUT);
     }
 }

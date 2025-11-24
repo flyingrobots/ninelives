@@ -11,6 +11,9 @@
 //! - RNG: uses `rand`'s thread-local RNG by default; deterministic RNGs can be injected via `apply_with_rng`.
 //! - Precision: millisecond conversions saturate to `u64::MAX` to avoid panics on very large durations.
 //! - Decorrelated jitter here is stateful; it tracks the previous sleep internally. Use\n//!   `apply_stateful` for the decorrelated variant so you don’t pass a meaningless delay. Configure\n//!   its starting magnitude with `Jitter::decorrelated(base, max)` and your backoff choice.
+//! - Thread-safety: `Decorrelated` stores its state in an `AtomicU64`; sharing the same handle
+//!   across threads is safe. Cloning a decorrelated jitter copies the state, creating an independent
+//!   handle.
 //!
 //! Example:
 //! ```rust
@@ -104,7 +107,7 @@ impl Jitter {
                 loop {
                     let prev_millis = config.previous.load(Ordering::Acquire);
                     let upper = prev_millis.saturating_mul(3).min(max_millis);
-                    let lower = base_millis.min(upper);
+                    let lower = prev_millis.max(base_millis).min(upper);
                     let jittered = rng.random_range(lower..=upper);
                     if config
                         .previous
@@ -156,8 +159,8 @@ impl Jitter {
 
                 // upper bound grows from previous sleep, capped by max
                 let upper = prev_millis.saturating_mul(3).min(max_millis);
-                // lower bound keeps floor at base but never exceeds upper (handles tiny prev)
-                let lower = base_millis.min(upper);
+                // lower bound keeps floor at base and does not regress from previous
+                let lower = prev_millis.max(base_millis).min(upper);
 
                 let jittered = rng.random_range(lower..=upper);
 
@@ -173,6 +176,7 @@ mod tests {
     use super::*;
     use rand::rngs::StdRng;
     use rand::SeedableRng;
+    use std::sync::Arc;
 
     #[test]
     fn none_jitter_returns_exact_delay() {
@@ -297,5 +301,37 @@ mod tests {
 
         let jittered = jitter.apply_with_rng(huge, &mut rng);
         assert!(jittered <= Duration::from_millis(u64::MAX));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn decorrelated_state_progresses_monotonically_under_contention() {
+        let jitter = Arc::new(
+            Jitter::decorrelated(Duration::from_millis(5), Duration::from_secs(1)).unwrap(),
+        );
+
+        let tasks: Vec<_> = (0..64)
+            .map(|_| {
+                let j = jitter.clone();
+                tokio::spawn(async move {
+                    let mut last = Duration::from_millis(0);
+                    for _ in 0..200 {
+                        let next = j.apply_stateful();
+                        assert!(
+                            next >= last,
+                            "decorrelated jitter regressed from {:?} to {:?}",
+                            last,
+                            next
+                        );
+                        assert!(next >= Duration::from_millis(5));
+                        assert!(next <= Duration::from_secs(1));
+                        last = next;
+                    }
+                })
+            })
+            .collect();
+
+        for task in tasks {
+            task.await.unwrap();
+        }
     }
 }

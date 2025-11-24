@@ -1,50 +1,105 @@
-# Contributing to Nine Lives
+# 🤝 Contributing to Nine Lives
 
-Thanks for wanting to improve Nine Lives!
+Thanks for wanting to improve Nine Lives! This document provides guidelines for contributing code, documentation, and dependencies.
 
-## Quick start
-1. Install the latest stable Rust (see <https://rustup.rs/>).
-2. Clone and create a branch: `git checkout -b feature/your-idea`.
-3. Run the checks locally:
-   - `cargo fmt -- --check`
-   - `cargo clippy --all-targets --all-features -- -D warnings`
-   - `cargo test --all-features --all-targets`
-4. Open a PR with a clear description and tests: required for bug fixes, refactors that could affect behavior, new features, and perf/security-sensitive changes. See “Testing notes” below for what to add and where.
+## 🚀 Quick Start
 
-## Testing notes
-- Add unit tests next to the code under `src/`; add integration tests under `tests/` when exercising multiple components together.
-- Required coverage: every bug fix needs a regression test; new behavior or configuration paths need happy-path + failure-path coverage; perf/security-sensitive changes need at least one guardrail test.
-- Determinism: avoid real sleeps and wall-clock reliance. Use the `Sleeper` test utilities (e.g., `InstantSleeper` to skip delays, `TrackingSleeper` to assert calculated waits) and the `Clock` abstraction (e.g., inject `MonotonicClock` or a manual clock) via constructor/builder injection.
-- Examples:
-  - Retry backoff without waiting: build a policy with `with_sleeper(InstantSleeper)` and assert the number of attempts (see retry policy tests in `src/retry.rs`).
-  - Assert computed delays: use `TrackingSleeper` to capture per-attempt waits and compare against expected backoff/jitter ranges.
-  - Time-driven logic: pass a manual clock implementing `Clock` into the circuit breaker to advance time without sleeping (see circuit breaker tests).
-- Commands to run locally: `cargo fmt -- --check`, `cargo clippy --all-targets --all-features -- -D warnings`, `cargo test --all-features --all-targets`.
-- CI expectation: GitHub Actions runs the same format/clippy/test set; PRs must be green.
-- Keep this section in sync with exported module docs rather than file paths to avoid stale references.
-- Line endings: the repo enforces LF via `.gitattributes`/`.editorconfig`; set `git config core.autocrlf false` and optionally `git config core.safecrlf warn` locally to avoid CRLF churn.
+1. Install the latest stable Rust (see https://rustup.rs/).
+2. Clone and Branch: git checkout -b feature/your-idea.
+3. Run Checks Locally:
+```bash
+cargo fmt -- --check
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test --all-features --all-targets
+```
+4. Open a PR with a clear description and necessary tests.
 
-## Coding guidelines
-- Keep public APIs minimal and well-documented.
-- Prefer dependency-free solutions; when adding a crate, follow the “Dependency policy” checklist below and include the summary in your PR.
-- Keep tests fast; use the provided testing sleepers/clocks for determinism (see module docs for `Sleeper` utilities and `Clock`). Example: inject a test sleeper into retry/bulkhead tests to avoid real delays.
+## 🧪 Testing Notes
 
-## Dependency policy
-- Before adding a crate, include in the PR description: purpose, why std/libcore is insufficient, maintenance health (recent releases/maintainer activity), security history (CVE/advisory check), license compatibility, and expected performance/size impact (numbers or rationale).
-- Approval: a maintainer or designated dependency reviewer must sign off; expect feedback within two business days. Flag the PR with `dependency` label to request review.
-- Exceptions (pre-approved, low-risk building blocks): `serde`, `tokio`, `tracing`, `once_cell`, `anyhow`. Still note their use, but the full justification is not required unless new optional features are enabled.
-- For deeper criteria and examples, follow this checklist and keep it current; if a dedicated DEPENDENCY_POLICY.md is added later, link to it here.
+**Placement**: Add unit tests next to the code under `src/`; add integration tests under `tests/` when exercising multiple components together.
 
-## Commit style
-- Conventional commits are appreciated (`feat:`, `fix:`, `chore:`, `docs:`...).
+**Required Coverage**: Every bug fix needs a regression test; new behavior or configuration paths need happy-path + failure-path coverage; perf/security-sensitive changes need at least one guardrail test.
 
-## Releases
-- Releases are automated via release-plz and trigger only when both `release` and `release-ready` labels are present on the release PR.
-- Release-ready label criteria: may be applied by a maintainer once CI is green, the PR has required approvals, the PR description includes a concise change summary, and any user-facing changes are noted for release notes.
-- Version bump notes: include a one-line summary in the PR description; release-plz compiles release notes from PR descriptions (or CHANGELOG entries if added). Example: "fix: prevent jitter overflow (closes #123)".
-- Incident response: if a Release workflow job fails, triage the logs, fix the root cause on `main`, and rerun the failed job in the Release workflow (see GitHub rerun docs: <https://docs.github.com/en/actions/managing-workflow-runs/re-running-workflows-and-jobs>); if a published crate is bad, yank it on crates.io and cut a follow-up patch release.
-- Common release/CI failure modes: auth/token issues (refresh GitHub/CARGO_REGISTRY_TOKEN), network/transient runner failures (rerun job), dependency or version conflicts (inspect dependency update PRs), permission errors publishing (verify registry permissions and tokens).
-- Rollback/manual publish: yanking on crates.io is the rollback path; maintainers may run `cargo publish` locally with `CARGO_REGISTRY_TOKEN` (see <https://doc.rust-lang.org/cargo/reference/registry-authentication.html>). Set the token as an env var before publishing (e.g., `export CARGO_REGISTRY_TOKEN=your_token`); never commit tokens—store them in your OS keychain locally or as GitHub Actions secrets with minimal scopes and rotate regularly.
+**Determinism**: Avoid real sleeps and wall-clock reliance. Use the provided testing utilities for time manipulation.
 
-### Suggested local setup
-- Enable Actions notifications in personal settings <https://github.com/settings/notifications> (System → Actions). Team-wide alerts may need shared accounts or external alerting.
+Use the Sleeper utilities (e.g., `InstantSleeper` to skip delays, `TrackingSleeper` to assert calculated waits) and the Clock abstraction (e.g., inject `MonotonicClock` or a manual clock) via constructor/builder injection.
+
+**Example Usage**: For details on available APIs and injection, see the module documentation for the testing utilities, specifically `ninelives::testing::Sleeper` and `ninelives::testing::Clock`. To avoid real delays in a retry test, you would build a policy with `with_sleeper(InstantSleeper)`.
+
+**Local Commands**
+
+```bash
+cargo fmt -- --check 
+cargo clippy --all-targets --all-features -- -D warnings 
+cargo test --all-features --all-targets
+```
+
+**CI Expectation**: GitHub Actions runs the same format/clippy/test set; PRs must be green.
+
+**Line Endings**: The repo enforces LF via `.gitattributes` / `.editorconfig`. You should not need to change your local settings. If you are a Windows contributor experiencing CRLF churn despite `.gitattributes`, you can optionally troubleshoot by setting `git config core.autocrlf false` (and optionally `git config core.safecrlf warn`). We recommend leaving defaults unless issues are observed.
+
+## 📝 Coding & Commit Guidelines
+
+**Public APIs**: Keep them minimal and well-documented.
+
+**Dependencies**: Prefer dependency-free solutions; when adding a crate, follow the "Dependency Policy" checklist below.
+
+**Keep Tests Fast**: Use the provided testing sleepers/clocks for determinism.
+
+**Commit Style (Required)**: We require the use of Conventional Commits (`feat:`, `fix:`, `chore:`, `docs:`...) to facilitate automatic release note generation. The format directly feeds into the release notes (see the Releases section for examples).
+
+## 📦 Dependency Policy
+
+Before adding a new crate, you must include the following summary in your PR description:
+
+**Purpose**: What does the crate do?
+
+**Justification**: Why is `std/libcore` insufficient?
+
+**Health**: Maintenance health (recent releases/maintainer activity).
+
+**Security**: Security history (CVE/advisory check).
+
+**Compliance**: License compatibility.
+
+**Impact**: Expected performance/size impact (numbers or rationale).
+
+### Approval
+
+**Sign-off**: The PR requires sign-off from at least one maintainer or designated dependency reviewer before merging.
+
+**SLA**: Expect feedback within two business days. This is a firm guideline; if the deadline is missed, flag the PR again for attention, there is no auto-merge policy.
+
+**Requesting Review**: Flag the PR with the dependency label to request this review.
+
+### Exceptions
+
+**Pre-Approved, Low-Risk Building Blocks**: `serde`, `tokio`, `tracing`, `once_cell`, `anyhow`. Still note their use, but the full justification is not required unless new optional features are enabled.
+
+For deeper criteria and examples, follow this checklist and keep it current; if a dedicated `DEPENDENCY_POLICY.md` is added later, we will link to it here.
+
+## 🚢 Releases
+
+**Automation**: Releases are automated via release-plz and trigger only when both release and release-ready labels are present on the release PR.
+
+**Release-Ready Criteria**: The label may be applied by a maintainer once CI is green and the PR has at least one maintainer approval plus one reviewer approval (or two maintainer approvals). Minor documentation or cosmetic fixes may be exempted by a maintainer.
+
+**Release Notes**: Include a one-line summary in the PR description. `release-plz` compiles release notes from these descriptions. Example: `fix: prevent jitter overflow (closes #123)`.
+
+**Incident Response**: If a Release workflow job fails, triage the logs, fix the root cause on main, and rerun the failed job. If a published crate is bad, yank it on crates.io and cut a follow-up patch release.
+
+### Common Release/CI Failure Modes:
+
+**Auth/Token Issues**: Refresh GitHub/`CARGO_REGISTRY_TOKEN`.
+
+**Network/Transient Runner Failures**: Rerun the job.
+
+**Dependency/Version Conflicts**: Inspect dependency update PRs.
+
+**Permission Errors Publishing**: Verify registry permissions and tokens.
+
+**Rollback/Manual Publish**: Yanking on crates.io is the standard rollback path. Maintainers may run cargo publish locally with `CARGO_REGISTRY_TOKEN`.
+
+## ⚙️ Suggested Local Setup (Optional)
+
+**Recommended**: Enable Actions notifications in personal settings https://github.com/settings/notifications (System → Actions) to track CI status.

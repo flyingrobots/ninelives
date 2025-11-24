@@ -158,7 +158,7 @@ where
     pub fn new() -> Self {
         Self {
             max_attempts: 3,
-            backoff: Backoff::exponential(Duration::from_secs(1)),
+            backoff: Backoff::exponential(Duration::from_secs(1)).into(),
             jitter: Jitter::full(),
             should_retry: Arc::new(|_| true),
             sleeper: Arc::new(TokioSleeper),
@@ -170,8 +170,11 @@ where
         self
     }
 
-    pub fn backoff(mut self, backoff: Backoff) -> Self {
-        self.backoff = backoff;
+    pub fn backoff<B>(mut self, backoff: B) -> Self
+    where
+        B: Into<Backoff>,
+    {
+        self.backoff = backoff.into();
         self
     }
 
@@ -546,5 +549,11 @@ mod tests {
         assert_eq!(sleeper.call_at(0).unwrap(), Duration::from_millis(100));
         assert_eq!(sleeper.call_at(1).unwrap(), Duration::from_millis(200));
         assert_eq!(sleeper.call_at(2).unwrap(), Duration::from_millis(400));
+    }
+
+    #[tokio::test]
+    async fn builder_rejects_zero_attempts() {
+        let err = RetryPolicy::<TestError>::builder().max_attempts(0).build();
+        assert!(matches!(err, Err(BuildError::InvalidMaxAttempts(0))));
     }
 }

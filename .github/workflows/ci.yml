@@ -7,8 +7,8 @@ on:
     branches: [main]
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.ref_name }}-${{ github.event.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   actionlint:
@@ -19,6 +19,7 @@ jobs:
         uses: rhysd/actionlint@v1.7.4
 
   fmt-clippy-test:
+    needs: actionlint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4.1.6
@@ -31,7 +32,3 @@ jobs:
         run: cargo clippy --all-targets --all-features -- -D warnings
       - name: Tests (all features)
         run: cargo test --all-features --all-targets
-      - name: Tests (benches)
-        run: cargo test --benches
-      - name: Tests (examples)
-        run: cargo test --examples

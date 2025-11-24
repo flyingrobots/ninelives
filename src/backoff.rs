@@ -1,7 +1,8 @@
 //! Backoff strategies for retry policies.
 //!
 //! Provides constant, linear, and exponential strategies with optional caps. Attempt semantics:
-//! attempt index `0` represents the initial call (no delay), and retries start at `attempt = 1`.
+//! attempt index `0` represents the initial call (no delay), and retries start at `attempt = 1`;
+//! all strategies must honor this 0-based contract consistently.
 //! Delays saturate at a documented maximum to avoid overflow.
 //!
 //! Example
@@ -22,6 +23,7 @@
 //! greater than `u32::MAX` are clamped when computing multipliers.
 
 use std::fmt;
+use std::sync::Arc;
 use std::time::Duration;
 
 /// Maximum delay used when calculations overflow (1 day).
@@ -30,7 +32,6 @@ pub const MAX_BACKOFF: Duration = Duration::from_secs(24 * 60 * 60);
 /// Errors returned by backoff configuration.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BackoffError {
-    ConstantDoesNotSupportMax,
     MaxMustBePositive,
     MaxLessThanBase { base: Duration, max: Duration },
 }
@@ -38,9 +39,6 @@ pub enum BackoffError {
 impl fmt::Display for BackoffError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            BackoffError::ConstantDoesNotSupportMax => {
-                write!(f, "with_max is only valid for Linear or Exponential backoff")
-            }
             BackoffError::MaxMustBePositive => write!(f, "max must be greater than zero"),
             BackoffError::MaxLessThanBase { base, max } => {
                 write!(f, "max ({:?}) must be >= base ({:?})", max, base)
@@ -51,14 +49,39 @@ impl fmt::Display for BackoffError {
 
 impl std::error::Error for BackoffError {}
 
+impl BackoffError {
+    /// Stable identifier for logging/metrics.
+    pub fn code(&self) -> &'static str {
+        match self {
+            BackoffError::MaxMustBePositive => "MaxMustBePositive",
+            BackoffError::MaxLessThanBase { .. } => "MaxLessThanBase",
+        }
+    }
+
+    /// Convenience accessor equivalent to `to_string()`.
+    pub fn message(&self) -> String {
+        self.to_string()
+    }
+}
+
 /// Trait implemented by all backoff strategies.
 pub trait BackoffStrategy: Send + Sync + fmt::Debug {
     fn delay(&self, attempt: usize) -> Duration;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct ConstantBackoff {
+pub struct ConstantBackoff {
     delay: Duration,
+}
+
+impl ConstantBackoff {
+    pub fn new(delay: Duration) -> Self {
+        Self { delay }
+    }
+
+    pub fn delay(&self, attempt: usize) -> Duration {
+        BackoffStrategy::delay(self, attempt)
+    }
 }
 
 impl BackoffStrategy for ConstantBackoff {
@@ -72,9 +95,30 @@ impl BackoffStrategy for ConstantBackoff {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct LinearBackoff {
+pub struct LinearBackoff {
     base: Duration,
     max: Option<Duration>,
+}
+
+impl LinearBackoff {
+    pub fn new(base: Duration) -> Self {
+        Self { base, max: None }
+    }
+
+    pub fn with_max(mut self, max: Duration) -> Result<Self, BackoffError> {
+        if max.is_zero() {
+            return Err(BackoffError::MaxMustBePositive);
+        }
+        if max < self.base {
+            return Err(BackoffError::MaxLessThanBase { base: self.base, max });
+        }
+        self.max = Some(max);
+        Ok(self)
+    }
+
+    pub fn delay(&self, attempt: usize) -> Duration {
+        BackoffStrategy::delay(self, attempt)
+    }
 }
 
 impl BackoffStrategy for LinearBackoff {
@@ -90,9 +134,30 @@ impl BackoffStrategy for LinearBackoff {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct ExponentialBackoff {
+pub struct ExponentialBackoff {
     base: Duration,
     max: Option<Duration>,
+}
+
+impl ExponentialBackoff {
+    pub fn new(base: Duration) -> Self {
+        Self { base, max: None }
+    }
+
+    pub fn with_max(mut self, max: Duration) -> Result<Self, BackoffError> {
+        if max.is_zero() {
+            return Err(BackoffError::MaxMustBePositive);
+        }
+        if max < self.base {
+            return Err(BackoffError::MaxLessThanBase { base: self.base, max });
+        }
+        self.max = Some(max);
+        Ok(self)
+    }
+
+    pub fn delay(&self, attempt: usize) -> Duration {
+        BackoffStrategy::delay(self, attempt)
+    }
 }
 
 impl BackoffStrategy for ExponentialBackoff {
@@ -109,85 +174,111 @@ impl BackoffStrategy for ExponentialBackoff {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum BackoffKind {
-    Constant(ConstantBackoff),
-    Linear(LinearBackoff),
-    Exponential(ExponentialBackoff),
+/// Backoff strategy wrapper preserving the existing API while delegating to concrete strategies.
+#[derive(Clone)]
+pub struct Backoff {
+    strategy: Arc<dyn BackoffStrategy>,
 }
 
-impl BackoffStrategy for BackoffKind {
-    fn delay(&self, attempt: usize) -> Duration {
-        match self {
-            BackoffKind::Constant(c) => c.delay(attempt),
-            BackoffKind::Linear(l) => l.delay(attempt),
-            BackoffKind::Exponential(e) => e.delay(attempt),
-        }
+impl PartialEq for Backoff {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.strategy, &other.strategy)
     }
 }
 
-/// Backoff strategy wrapper preserving the existing API while delegating to concrete strategies.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Backoff {
-    kind: BackoffKind,
+impl Eq for Backoff {}
+
+impl fmt::Debug for Backoff {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Backoff").finish_non_exhaustive()
+    }
 }
 
 impl Backoff {
-    /// Create a constant backoff strategy
-    pub fn constant(delay: Duration) -> Self {
-        Self { kind: BackoffKind::Constant(ConstantBackoff { delay }) }
+    /// Wrap any strategy that implements `BackoffStrategy`.
+    pub fn new<S>(strategy: S) -> Self
+    where
+        S: BackoffStrategy + 'static,
+    {
+        Self { strategy: Arc::new(strategy) }
     }
 
-    /// Create a linear backoff strategy
-    pub fn linear(base: Duration) -> Self {
-        Self { kind: BackoffKind::Linear(LinearBackoff { base, max: None }) }
+    /// Convenience constructor for a constant backoff strategy.
+    pub fn constant(delay: Duration) -> ConstantBackoff {
+        ConstantBackoff::new(delay)
     }
 
-    /// Create an exponential backoff strategy
-    pub fn exponential(base: Duration) -> Self {
-        Self { kind: BackoffKind::Exponential(ExponentialBackoff { base, max: None }) }
+    /// Convenience constructor for a linear backoff strategy.
+    pub fn linear(base: Duration) -> LinearBackoff {
+        LinearBackoff::new(base)
     }
 
-    /// Set a maximum delay for the backoff (linear or exponential).
-    /// Returns an error if called on `Constant`, if `max` is zero, or if `max < base`.
-    pub fn with_max(mut self, max: Duration) -> Result<Self, BackoffError> {
-        if max.is_zero() {
-            return Err(BackoffError::MaxMustBePositive);
-        }
-        match &mut self.kind {
-            BackoffKind::Exponential(ExponentialBackoff { max: existing, base }) => {
-                if max < *base {
-                    return Err(BackoffError::MaxLessThanBase { base: *base, max });
-                }
-                *existing = Some(max);
-                Ok(self)
-            }
-            BackoffKind::Linear(LinearBackoff { max: existing, base }) => {
-                if max < *base {
-                    return Err(BackoffError::MaxLessThanBase { base: *base, max });
-                }
-                *existing = Some(max);
-                Ok(self)
-            }
-            BackoffKind::Constant(_) => Err(BackoffError::ConstantDoesNotSupportMax),
-        }
+    /// Convenience constructor for an exponential backoff strategy.
+    pub fn exponential(base: Duration) -> ExponentialBackoff {
+        ExponentialBackoff::new(base)
     }
 
     /// Calculate the delay for a given attempt number (0-based; 0 = initial call, no delay).
     pub fn delay(&self, attempt: usize) -> Duration {
-        self.kind.delay(attempt)
+        self.strategy.delay(attempt)
     }
 }
 
 impl BackoffStrategy for Backoff {
     fn delay(&self, attempt: usize) -> Duration {
-        self.kind.delay(attempt)
+        self.strategy.delay(attempt)
+    }
+}
+
+impl From<ConstantBackoff> for Backoff {
+    fn from(strategy: ConstantBackoff) -> Self {
+        Backoff::new(strategy)
+    }
+}
+
+impl From<LinearBackoff> for Backoff {
+    fn from(strategy: LinearBackoff) -> Self {
+        Backoff::new(strategy)
+    }
+}
+
+impl From<ExponentialBackoff> for Backoff {
+    fn from(strategy: ExponentialBackoff) -> Self {
+        Backoff::new(strategy)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn with_max_zero_rejected() {
+        let err = Backoff::linear(Duration::from_millis(10)).with_max(Duration::ZERO).unwrap_err();
+        assert_eq!(err.to_string(), "max must be greater than zero");
+    }
+
+    #[test]
+    fn max_equal_base_is_allowed_and_caps() {
+        let backoff =
+            Backoff::linear(Duration::from_millis(10)).with_max(Duration::from_millis(10)).unwrap();
+        assert_eq!(backoff.delay(1), Duration::from_millis(10));
+        assert_eq!(backoff.delay(5), Duration::from_millis(10));
+    }
+
+    #[test]
+    fn backoff_error_display_is_human_readable() {
+        let err = BackoffError::MaxLessThanBase {
+            base: Duration::from_secs(2),
+            max: Duration::from_secs(1),
+        };
+        assert!(
+            err.to_string().contains("max") && err.to_string().contains("base"),
+            "display should include context"
+        );
+        assert_eq!(err.code(), "MaxLessThanBase");
+        assert!(err.message().contains("max"));
+    }
 
     #[test]
     fn constant_backoff_returns_same_delay() {
@@ -271,12 +362,6 @@ mod tests {
     }
 
     #[test]
-    fn with_max_on_constant_errors() {
-        let constant = Backoff::constant(Duration::from_secs(5)).with_max(Duration::from_secs(1));
-        assert!(matches!(constant, Err(BackoffError::ConstantDoesNotSupportMax)));
-    }
-
-    #[test]
     fn linear_with_cap_progression() {
         let backoff =
             Backoff::linear(Duration::from_secs(10)).with_max(Duration::from_secs(25)).unwrap();
@@ -307,5 +392,14 @@ mod tests {
         let backoff = Backoff::exponential(Duration::from_secs(2));
         let delay = backoff.delay((u32::MAX as usize) + 10_000);
         assert_eq!(delay, MAX_BACKOFF);
+    }
+
+    #[test]
+    fn strategies_convert_into_wrapper() {
+        let backoff: Backoff = Backoff::linear(Duration::from_millis(10))
+            .with_max(Duration::from_millis(15))
+            .unwrap()
+            .into();
+        assert_eq!(backoff.delay(2), Duration::from_millis(15));
     }
 }

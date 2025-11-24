@@ -6,5 +6,6 @@ max_width = 100
 newline_style = "Unix"
 # Use maximal heuristics to reduce formatting churn on multi-line constructs
 use_small_heuristics = "Max"
+# Note: "Max" may keep some long chains on one line; adjust to "Default" if this becomes noisy.
 # Enforce ordered imports for readability
 reorder_imports = true

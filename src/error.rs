@@ -261,14 +261,6 @@ mod tests {
         assert!(inner.failures().is_none());
         assert!(inner.retry_exhausted_info().is_none());
     }
-    fn source_returns_last_failure_for_retry_exhausted() {
-        let err: ResilienceError<DummyError> = ResilienceError::RetryExhausted {
-            attempts: 3,
-            failures: Arc::new(vec![DummyError("a"), DummyError("b")]),
-        };
-        let src = err.source().unwrap();
-        assert_eq!(src.to_string(), "b");
-    }
     #[test]
     fn source_is_none_for_timeout() {
         let err: ResilienceError<DummyError> = ResilienceError::Timeout {

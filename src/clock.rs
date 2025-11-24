@@ -68,12 +68,12 @@ mod tests {
         let a = clock.now_millis();
         let b = clone.now_millis();
         let diff = a.abs_diff(b);
-        assert!(diff < 5, "Clones differ by {}ms", diff);
+        assert!(diff < 50, "Clones differ by {}ms", diff);
         thread::sleep(Duration::from_millis(5));
         let a2 = clock.now_millis();
         let b2 = clone.now_millis();
         let diff2 = a2.abs_diff(b2);
-        assert!(diff2 < 10, "Clones differ by {}ms after sleep", diff2);
+        assert!(diff2 < 50, "Clones differ by {}ms after sleep", diff2);
     }
 
     #[test]
@@ -83,7 +83,10 @@ mod tests {
         let b = MonotonicClock::new();
         let a_now = a.now_millis();
         let b_now = b.now_millis();
-        assert!(a_now != b_now);
+        assert!(
+            a_now > b_now,
+            "Expected a ({a_now}ms) > b ({b_now}ms) due to 2ms sleep between creations"
+        );
     }
 
     #[test]

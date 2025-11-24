@@ -41,7 +41,7 @@
 //! }
 //! ```
 
-use crate::retry::BuildError as RetryBuildError;
+use crate::retry::BuildError;
 use crate::{
     BulkheadError, BulkheadPolicy, CircuitBreakerConfig, CircuitBreakerError, CircuitBreakerPolicy,
     ResilienceError, RetryPolicy, TimeoutError, TimeoutPolicy,
@@ -54,7 +54,7 @@ pub enum StackError {
     Timeout(TimeoutError),
     Bulkhead(BulkheadError),
     CircuitBreaker(CircuitBreakerError),
-    Retry(RetryBuildError),
+    Retry(BuildError),
 }
 
 impl std::fmt::Display for StackError {
