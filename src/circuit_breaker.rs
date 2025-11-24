@@ -1,37 +1,14 @@
 //! Circuit breaker implementation with lock-free atomics
 
-use crate::ResilienceError;
+use crate::{clock::Clock, clock::MonotonicClock, ResilienceError};
 use std::future::Future;
 use std::sync::atomic::{AtomicU64, AtomicU8, AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 const STATE_CLOSED: u8 = 0;
 const STATE_OPEN: u8 = 1;
 const STATE_HALF_OPEN: u8 = 2;
-
-/// Clock abstraction so circuit breaker timing can be faked in tests
-pub trait Clock: Send + Sync + std::fmt::Debug {
-    fn now_millis(&self) -> u64;
-}
-
-/// Monotonic clock backed by `Instant::now()`
-#[derive(Debug, Clone)]
-pub struct MonotonicClock {
-    start: Instant,
-}
-
-impl Default for MonotonicClock {
-    fn default() -> Self {
-        Self { start: Instant::now() }
-    }
-}
-
-impl Clock for MonotonicClock {
-    fn now_millis(&self) -> u64 {
-        self.start.elapsed().as_millis() as u64
-    }
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CircuitState {
