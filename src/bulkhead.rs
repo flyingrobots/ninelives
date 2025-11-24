@@ -74,7 +74,6 @@ pub const UNLIMITED_PERMITS: usize = Semaphore::MAX_PERMITS as usize;
 impl BulkheadPolicy {
     /// Create a bulkhead with the given maximum concurrent permits.
     /// Returns `Err` if `max_concurrent` is zero.
-    #[must_use]
     pub fn new(max_concurrent: usize) -> Result<Self, BulkheadError> {
         if max_concurrent == 0 {
             return Err(BulkheadError::InvalidMaxConcurrent { provided: max_concurrent });
@@ -102,7 +101,8 @@ impl BulkheadPolicy {
 
     /// Execute an operation with bulkhead protection. Non-blocking: if no permits are available
     /// the call is rejected immediately with `ResilienceError::Bulkhead`. Permits are released when
-    /// the operation future completes. The reported `in_flight` is best-effort due to races.
+    /// the operation future completes. The reported `in_flight` is a best-effort snapshot and may
+    /// be stale due to races.
     pub async fn execute<T, E, Fut, Op>(&self, operation: Op) -> Result<T, ResilienceError<E>>
     where
         T: Send,
@@ -155,7 +155,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_allows_operations_within_limit() {
+    async fn test_sequential_operations_all_succeed() {
         let bulkhead = BulkheadPolicy::new(3).expect("valid bulkhead");
         let counter = Arc::new(AtomicUsize::new(0));
 
