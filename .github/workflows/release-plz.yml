@@ -10,7 +10,6 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
-      packages: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions-rs/toolchain@v1
@@ -24,3 +23,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      - name: Validate required secrets
+        run: |
+          [ -n "${{ secrets.GITHUB_TOKEN }}" ] || { echo "GITHUB_TOKEN missing"; exit 1; }
+          [ -n "${{ secrets.CARGO_REGISTRY_TOKEN }}" ] || { echo "CARGO_REGISTRY_TOKEN missing"; exit 1; }
