@@ -2,23 +2,24 @@
 //!
 //! Enables fast, deterministic tests without real time delays
 
-use std::future::Future;
-use std::pin::Pin;
+use async_trait::async_trait;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 /// Abstraction for sleeping/waiting
+#[async_trait]
 pub trait Sleeper: Send + Sync + std::fmt::Debug {
-    fn sleep(&self, duration: Duration) -> Pin<Box<dyn Future<Output = ()> + Send>>;
+    async fn sleep(&self, duration: Duration);
 }
 
 /// Production sleeper using tokio runtime
 #[derive(Debug, Default, Clone, Copy)]
 pub struct TokioSleeper;
 
+#[async_trait]
 impl Sleeper for TokioSleeper {
-    fn sleep(&self, duration: Duration) -> Pin<Box<dyn Future<Output = ()> + Send>> {
-        Box::pin(tokio::time::sleep(duration))
+    async fn sleep(&self, duration: Duration) {
+        tokio::time::sleep(duration).await
     }
 }
 
@@ -26,9 +27,10 @@ impl Sleeper for TokioSleeper {
 #[derive(Debug, Default, Clone, Copy)]
 pub struct InstantSleeper;
 
+#[async_trait]
 impl Sleeper for InstantSleeper {
-    fn sleep(&self, _duration: Duration) -> Pin<Box<dyn Future<Output = ()> + Send>> {
-        Box::pin(async {})
+    async fn sleep(&self, _duration: Duration) {
+        // no-op
     }
 }
 
@@ -43,25 +45,19 @@ impl TrackingSleeper {
         Self { calls: Arc::new(Mutex::new(Vec::new())) }
     }
 
+    /// Returns a clone of all recorded sleep calls. O(n) clone per call.
     pub fn calls(&self) -> Vec<Duration> {
-        self.calls.lock().unwrap().clone()
+        self.calls.lock().expect("TrackingSleeper.calls: mutex poisoned").clone()
     }
 
     pub fn clear(&self) {
-        self.calls.lock().unwrap().clear();
+        self.calls.lock().expect("TrackingSleeper.clear: mutex poisoned").clear();
     }
 }
-
-impl Default for TrackingSleeper {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
+#[async_trait]
 impl Sleeper for TrackingSleeper {
-    fn sleep(&self, duration: Duration) -> Pin<Box<dyn Future<Output = ()> + Send>> {
-        self.calls.lock().unwrap().push(duration);
-        Box::pin(async {})
+    async fn sleep(&self, duration: Duration) {
+        self.calls.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).push(duration);
     }
 }
 
