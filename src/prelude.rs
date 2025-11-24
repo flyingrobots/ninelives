@@ -6,10 +6,10 @@ pub use crate::{
         MAX_BACKOFF,
     },
     bulkhead::BulkheadLayer,
+    circuit_breaker::{CircuitBreakerConfig, CircuitBreakerError, CircuitBreakerLayer},
     jitter::Jitter,
-    retry::{BuildError, RetryPolicy, RetryPolicyBuilder},
-    stack::{ResilienceStack, ResilienceStackBuilder},
+    retry::{BuildError, RetryLayer, RetryPolicy, RetryPolicyBuilder},
     timeout::TimeoutLayer,
     timeout::{TimeoutError, TimeoutPolicy, MAX_TIMEOUT},
-    BulkheadPolicy, CircuitBreakerPolicy, ResilienceError,
+    BulkheadPolicy, ResilienceError,
 };
