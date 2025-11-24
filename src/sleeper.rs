@@ -45,9 +45,14 @@ impl TrackingSleeper {
         Self { calls: Arc::new(Mutex::new(Vec::new())) }
     }
 
-    /// Returns a clone of all recorded sleep calls. O(n) clone per call.
-    pub fn calls(&self) -> Vec<Duration> {
-        self.calls.lock().expect("TrackingSleeper.calls: mutex poisoned").clone()
+    /// Number of recorded sleep calls.
+    pub fn calls(&self) -> usize {
+        self.calls.lock().expect("TrackingSleeper.calls: mutex poisoned").len()
+    }
+
+    /// Get a recorded call duration by index, if present.
+    pub fn call_at(&self, index: usize) -> Option<Duration> {
+        self.calls.lock().expect("TrackingSleeper.call_at: mutex poisoned").get(index).copied()
     }
 
     pub fn clear(&self) {
@@ -83,11 +88,10 @@ mod tests {
         sleeper.sleep(Duration::from_millis(200)).await;
         sleeper.sleep(Duration::from_millis(400)).await;
 
-        let calls = sleeper.calls();
-        assert_eq!(calls.len(), 3);
-        assert_eq!(calls[0], Duration::from_millis(100));
-        assert_eq!(calls[1], Duration::from_millis(200));
-        assert_eq!(calls[2], Duration::from_millis(400));
+        assert_eq!(sleeper.calls(), 3);
+        assert_eq!(sleeper.call_at(0).unwrap(), Duration::from_millis(100));
+        assert_eq!(sleeper.call_at(1).unwrap(), Duration::from_millis(200));
+        assert_eq!(sleeper.call_at(2).unwrap(), Duration::from_millis(400));
     }
 
     #[tokio::test]
@@ -95,14 +99,14 @@ mod tests {
         let sleeper = TrackingSleeper::new();
 
         sleeper.sleep(Duration::from_millis(100)).await;
-        assert_eq!(sleeper.calls().len(), 1);
+        assert_eq!(sleeper.calls(), 1);
 
         sleeper.clear();
-        assert_eq!(sleeper.calls().len(), 0);
+        assert_eq!(sleeper.calls(), 0);
 
         sleeper.sleep(Duration::from_millis(200)).await;
-        assert_eq!(sleeper.calls().len(), 1);
-        assert_eq!(sleeper.calls()[0], Duration::from_millis(200));
+        assert_eq!(sleeper.calls(), 1);
+        assert_eq!(sleeper.call_at(0).unwrap(), Duration::from_millis(200));
     }
 
     #[tokio::test]

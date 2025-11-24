@@ -338,13 +338,12 @@ mod tests {
             })
             .await;
 
-        let calls = sleeper.calls();
-        assert_eq!(calls.len(), 3, "Should sleep 3 times (between 4 attempts)");
+        assert_eq!(sleeper.calls(), 3, "Should sleep 3 times (between 4 attempts)");
 
         // Linear backoff: 100ms, 200ms, 300ms
-        assert_eq!(calls[0], Duration::from_millis(100));
-        assert_eq!(calls[1], Duration::from_millis(200));
-        assert_eq!(calls[2], Duration::from_millis(300));
+        assert_eq!(sleeper.call_at(0).unwrap(), Duration::from_millis(100));
+        assert_eq!(sleeper.call_at(1).unwrap(), Duration::from_millis(200));
+        assert_eq!(sleeper.call_at(2).unwrap(), Duration::from_millis(300));
     }
 
     #[tokio::test]
@@ -371,12 +370,11 @@ mod tests {
             })
             .await;
 
-        let calls = sleeper.calls();
-        assert_eq!(calls.len(), 2, "Should sleep 2 times (between 3 attempts)");
+        assert_eq!(sleeper.calls(), 2, "Should sleep 2 times (between 3 attempts)");
 
         // With full jitter, delays should be in range [0, 100ms]
-        // We can't predict exact values, but we can check they're in range
-        for call in calls {
+        for idx in 0..sleeper.calls() {
+            let call = sleeper.call_at(idx).unwrap();
             assert!(call <= Duration::from_millis(100), "Jitter should not exceed base delay");
         }
     }
@@ -503,12 +501,11 @@ mod tests {
             })
             .await;
 
-        let calls = sleeper.calls();
-        assert_eq!(calls.len(), 3);
+        assert_eq!(sleeper.calls(), 3);
 
         // Exponential: 100ms, 200ms, 400ms
-        assert_eq!(calls[0], Duration::from_millis(100));
-        assert_eq!(calls[1], Duration::from_millis(200));
-        assert_eq!(calls[2], Duration::from_millis(400));
+        assert_eq!(sleeper.call_at(0).unwrap(), Duration::from_millis(100));
+        assert_eq!(sleeper.call_at(1).unwrap(), Duration::from_millis(200));
+        assert_eq!(sleeper.call_at(2).unwrap(), Duration::from_millis(400));
     }
 }
