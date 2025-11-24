@@ -2,6 +2,7 @@ use std::ops::{Add, BitOr};
 use tower_layer::Layer;
 
 /// Opt-in wrapper enabling algebraic composition of layers.
+/// Opt-in wrapper enabling algebraic composition of layers.
 #[derive(Clone, Copy, Debug)]
 pub struct Policy<L>(pub L);
 
@@ -15,6 +16,7 @@ where
     }
 }
 
+/// Sequential composition: apply `inner`, then `outer`.
 /// Sequential composition: apply `inner`, then `outer`.
 #[derive(Clone, Copy, Debug)]
 pub struct CombinedLayer<A, B> {
@@ -44,6 +46,7 @@ where
     }
 }
 
+/// Fallback composition: try primary; on error, use secondary.
 /// Fallback composition: try primary; on error, use secondary.
 #[derive(Clone, Debug)]
 pub struct FallbackLayer<A, B> {
@@ -78,6 +81,7 @@ where
 }
 
 /// Service that tries primary, falls back to secondary on error.
+/// Service that tries primary first, then falls back to secondary on error.
 #[derive(Clone, Debug)]
 pub struct FallbackService<S1, S2> {
     primary: S1,

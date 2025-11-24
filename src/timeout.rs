@@ -170,6 +170,7 @@ impl TimeoutLayer {
     }
 }
 
+/// Service produced by [`TimeoutLayer`]; wraps an inner service with a timeout.
 #[derive(Debug, Clone)]
 pub struct TimeoutService<S> {
     inner: S,
