@@ -39,7 +39,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let b = Policy(TimeoutLayer::new(Duration::from_secs(10))?);
     let c = Policy(TimeoutLayer::new(Duration::from_secs(5))?);
 
-    let _precedence = a | b + c;
+    let _precedence = a | (b + c);
     println!("   Created: A | B + C");
     println!("   Parsed as: A | (B + C)");
     println!("   Structure: Timeout50ms | (Timeout10s(Timeout5s(Service)))\n");

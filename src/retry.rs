@@ -679,7 +679,7 @@ where
         &mut self,
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Result<(), Self::Error>> {
-        self.inner.poll_ready(cx).map_err(|e| ResilienceError::Inner(e.into()))
+        self.inner.poll_ready(cx).map_err(|e| ResilienceError::Inner(e))
     }
 
     fn call(&mut self, req: Request) -> Self::Future {
@@ -691,7 +691,7 @@ where
                 match inner.call(req.clone()).await {
                     Ok(resp) => return Ok(resp),
                     Err(err) => {
-                        let e: E = err.into();
+                        let e: E = err;
                         if !(layer.should_retry)(&e) {
                             return Err(ResilienceError::Inner(e));
                         }

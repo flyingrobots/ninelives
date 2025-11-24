@@ -13,5 +13,5 @@ async fn prelude_reexports_core_types() {
     let composed = Policy(timeout_layer);
 
     let mut svc = composed.layer(service_fn(|_req: ()| async { Ok::<_, std::io::Error>(()) }));
-    let _ = svc.call(()).await.unwrap();
+    svc.call(()).await.unwrap();
 }
