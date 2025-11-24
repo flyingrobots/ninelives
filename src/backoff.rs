@@ -19,8 +19,9 @@
 //! ```
 //!
 //! Overflow behavior: computations that would overflow saturate to `MAX_BACKOFF` (1 day). Attempts
-//! greater than `u32::MAX` are clamped to `u32::MAX` when computing multipliers.
+//! greater than `u32::MAX` are clamped when computing multipliers.
 
+use std::fmt;
 use std::time::Duration;
 
 /// Maximum delay used when calculations overflow (1 day).
@@ -34,8 +35,8 @@ pub enum BackoffError {
     MaxLessThanBase { base: Duration, max: Duration },
 }
 
-impl std::fmt::Display for BackoffError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for BackoffError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             BackoffError::ConstantDoesNotSupportMax => {
                 write!(f, "with_max is only valid for Linear or Exponential backoff")
@@ -50,31 +51,101 @@ impl std::fmt::Display for BackoffError {
 
 impl std::error::Error for BackoffError {}
 
-/// Backoff strategy for retries
+/// Trait implemented by all backoff strategies.
+pub trait BackoffStrategy: Send + Sync + fmt::Debug {
+    fn delay(&self, attempt: usize) -> Duration;
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Backoff {
-    /// Fixed delay between retries
-    Constant { delay: Duration },
-    /// Linearly increasing delay with optional cap
-    Linear { base: Duration, max: Option<Duration> },
-    /// Exponentially increasing delay with optional cap
-    Exponential { base: Duration, max: Option<Duration> },
+struct ConstantBackoff {
+    delay: Duration,
+}
+
+impl BackoffStrategy for ConstantBackoff {
+    fn delay(&self, attempt: usize) -> Duration {
+        if attempt == 0 {
+            Duration::from_millis(0)
+        } else {
+            self.delay
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LinearBackoff {
+    base: Duration,
+    max: Option<Duration>,
+}
+
+impl BackoffStrategy for LinearBackoff {
+    fn delay(&self, attempt: usize) -> Duration {
+        if attempt == 0 {
+            return Duration::from_millis(0);
+        }
+        let attempt_u32 = attempt.min(u32::MAX as usize) as u32; // clamp to prevent truncation/overflow
+        let linear = self.base.checked_mul(attempt_u32).unwrap_or(MAX_BACKOFF);
+        let capped = self.max.map(|m| linear.min(m)).unwrap_or(linear);
+        capped.min(MAX_BACKOFF)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ExponentialBackoff {
+    base: Duration,
+    max: Option<Duration>,
+}
+
+impl BackoffStrategy for ExponentialBackoff {
+    fn delay(&self, attempt: usize) -> Duration {
+        if attempt == 0 {
+            return Duration::from_millis(0);
+        }
+        let exponent = attempt.saturating_sub(1).min(u32::MAX as usize) as u32;
+        let multiplier = 2u128.saturating_pow(exponent);
+        let base_nanos = self.base.as_nanos().saturating_mul(multiplier);
+        let exp_delay = Duration::from_nanos(base_nanos.min(MAX_BACKOFF.as_nanos()) as u64);
+        let capped = self.max.map(|m| exp_delay.min(m)).unwrap_or(exp_delay);
+        capped.min(MAX_BACKOFF)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum BackoffKind {
+    Constant(ConstantBackoff),
+    Linear(LinearBackoff),
+    Exponential(ExponentialBackoff),
+}
+
+impl BackoffStrategy for BackoffKind {
+    fn delay(&self, attempt: usize) -> Duration {
+        match self {
+            BackoffKind::Constant(c) => c.delay(attempt),
+            BackoffKind::Linear(l) => l.delay(attempt),
+            BackoffKind::Exponential(e) => e.delay(attempt),
+        }
+    }
+}
+
+/// Backoff strategy wrapper preserving the existing API while delegating to concrete strategies.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Backoff {
+    kind: BackoffKind,
 }
 
 impl Backoff {
     /// Create a constant backoff strategy
     pub fn constant(delay: Duration) -> Self {
-        Backoff::Constant { delay }
+        Self { kind: BackoffKind::Constant(ConstantBackoff { delay }) }
     }
 
     /// Create a linear backoff strategy
     pub fn linear(base: Duration) -> Self {
-        Backoff::Linear { base, max: None }
+        Self { kind: BackoffKind::Linear(LinearBackoff { base, max: None }) }
     }
 
     /// Create an exponential backoff strategy
     pub fn exponential(base: Duration) -> Self {
-        Backoff::Exponential { base, max: None }
+        Self { kind: BackoffKind::Exponential(ExponentialBackoff { base, max: None }) }
     }
 
     /// Set a maximum delay for the backoff (linear or exponential).
@@ -83,50 +154,34 @@ impl Backoff {
         if max.is_zero() {
             return Err(BackoffError::MaxMustBePositive);
         }
-        match &mut self {
-            Backoff::Exponential { max: existing, base } => {
+        match &mut self.kind {
+            BackoffKind::Exponential(ExponentialBackoff { max: existing, base }) => {
                 if max < *base {
                     return Err(BackoffError::MaxLessThanBase { base: *base, max });
                 }
                 *existing = Some(max);
                 Ok(self)
             }
-            Backoff::Linear { max: existing, base } => {
+            BackoffKind::Linear(LinearBackoff { max: existing, base }) => {
                 if max < *base {
                     return Err(BackoffError::MaxLessThanBase { base: *base, max });
                 }
                 *existing = Some(max);
                 Ok(self)
             }
-            Backoff::Constant { .. } => Err(BackoffError::ConstantDoesNotSupportMax),
+            BackoffKind::Constant(_) => Err(BackoffError::ConstantDoesNotSupportMax),
         }
     }
 
     /// Calculate the delay for a given attempt number (0-based; 0 = initial call, no delay).
     pub fn delay(&self, attempt: usize) -> Duration {
-        if attempt == 0 {
-            return Duration::from_millis(0);
-        }
+        self.kind.delay(attempt)
+    }
+}
 
-        let clamp_overflow = |d: Option<Duration>| d.unwrap_or(MAX_BACKOFF);
-
-        match self {
-            Backoff::Constant { delay } => *delay,
-            Backoff::Linear { base, max } => {
-                // Duration::checked_mul takes u32; clamp attempt to u32::MAX to prevent truncation/overflow.
-                let attempt_u32 = attempt.min(u32::MAX as usize) as u32;
-                let linear = clamp_overflow(base.checked_mul(attempt_u32));
-                max.map(|m| linear.min(m)).unwrap_or(linear)
-            }
-            Backoff::Exponential { base, max } => {
-                // Calculate 2^(attempt-1) with overflow protection; attempt >=1 here.
-                let exponent = attempt.saturating_sub(1).min(u32::MAX as usize) as u32;
-                let multiplier = 2u128.saturating_pow(exponent as u32);
-                let base_nanos = base.as_nanos().saturating_mul(multiplier);
-                let exp_delay = Duration::from_nanos(base_nanos.min(MAX_BACKOFF.as_nanos()) as u64);
-                max.map(|m| exp_delay.min(m)).unwrap_or(exp_delay)
-            }
-        }
+impl BackoffStrategy for Backoff {
+    fn delay(&self, attempt: usize) -> Duration {
+        self.kind.delay(attempt)
     }
 }
 
@@ -137,6 +192,7 @@ mod tests {
     #[test]
     fn constant_backoff_returns_same_delay() {
         let backoff = Backoff::constant(Duration::from_secs(1));
+        assert_eq!(backoff.delay(0), Duration::from_millis(0));
         assert_eq!(backoff.delay(1), Duration::from_secs(1));
         assert_eq!(backoff.delay(2), Duration::from_secs(1));
         assert_eq!(backoff.delay(100), Duration::from_secs(1));
@@ -145,6 +201,7 @@ mod tests {
     #[test]
     fn linear_backoff_increases_linearly() {
         let backoff = Backoff::linear(Duration::from_millis(100));
+        assert_eq!(backoff.delay(0), Duration::from_millis(0));
         assert_eq!(backoff.delay(1), Duration::from_millis(100));
         assert_eq!(backoff.delay(2), Duration::from_millis(200));
         assert_eq!(backoff.delay(3), Duration::from_millis(300));
