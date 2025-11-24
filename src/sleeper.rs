@@ -62,7 +62,7 @@ impl TrackingSleeper {
 #[async_trait]
 impl Sleeper for TrackingSleeper {
     async fn sleep(&self, duration: Duration) {
-        self.calls.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).push(duration);
+        self.calls.lock().expect("TrackingSleeper.sleep: mutex poisoned").push(duration);
     }
 }
 
