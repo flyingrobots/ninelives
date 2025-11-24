@@ -1,8 +1,142 @@
+//! Algebraic composition operators for tower layers.
+//!
+//! This module provides the `Policy` wrapper and operators for composing
+//! tower layers using intuitive algebraic syntax:
+//!
+//! - `Policy(A) + Policy(B)` - Sequential composition (A wraps B)
+//! - `Policy(A) | Policy(B)` - Fallback on error (try A, then B)
+//!
+//! # Operator Precedence
+//!
+//! When combining operators, Rust's standard operator precedence applies:
+//! - `+` (Add) has higher precedence than `|` (BitOr)
+//!
+//! This means: `A | B + C` is parsed as `A | (B + C)`.
+//!
+//! **Example precedence:**
+//! ```text
+//! Policy(A) | Policy(B) + Policy(C)
+//! // Parses as: Policy(A) | (Policy(B) + Policy(C))
+//! // Meaning: Try A, fallback to the combined stack B(C(Service))
+//! ```
+//!
+//! For explicit control, use parentheses:
+//! ```text
+//! (Policy(A) | Policy(B)) + Policy(C)
+//! // Meaning: C wraps a fallback between A and B
+//! ```
+//!
+//! # Examples
+//!
+//! ## Simple Sequential Composition
+//!
+//! ```
+//! use ninelives::prelude::*;
+//! use std::time::Duration;
+//! use tower_layer::Layer;
+//!
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! // Compose two timeout layers (outer has longer timeout)
+//! let policy = Policy(TimeoutLayer::new(Duration::from_secs(5))?)
+//!            + Policy(TimeoutLayer::new(Duration::from_secs(1))?);
+//! // Stack: Timeout5s(Timeout1s(Service))
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ## Fallback Strategy
+//!
+//! ```
+//! use ninelives::prelude::*;
+//! use std::time::Duration;
+//! use tower_layer::Layer;
+//!
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! let fast = Policy(TimeoutLayer::new(Duration::from_millis(100))?);
+//! let slow = Policy(TimeoutLayer::new(Duration::from_secs(5))?);
+//! let _policy = fast | slow;
+//! // Try 100ms timeout, fallback to 5s timeout on failure
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ## Complex Nested Composition
+//!
+//! ```
+//! use ninelives::prelude::*;
+//! use std::time::Duration;
+//! use tower_layer::Layer;
+//!
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! // Aggressive: just a fast timeout
+//! let aggressive = Policy(TimeoutLayer::new(Duration::from_millis(50))?);
+//!
+//! // Defensive: nested timeouts for multiple attempts
+//! let defensive = Policy(TimeoutLayer::new(Duration::from_secs(10))?)
+//!               + Policy(TimeoutLayer::new(Duration::from_secs(5))?);
+//!
+//! // Try aggressive first, fallback to defensive
+//! let _policy = aggressive | defensive;
+//! // Due to precedence: Policy(Timeout50ms) | (Policy(Timeout10s) + Policy(Timeout5s))
+//! # Ok(())
+//! # }
+//! ```
+
 use std::ops::{Add, BitOr};
 use tower_layer::Layer;
 
-/// Opt-in wrapper enabling algebraic composition of layers.
-/// Opt-in wrapper enabling algebraic composition of layers.
+/// Opt-in wrapper enabling algebraic composition of tower layers.
+///
+/// The `Policy` wrapper allows layers to be combined using intuitive operators:
+/// - `Policy(A) + Policy(B)` - Sequential composition (A wraps B)
+/// - `Policy(A) | Policy(B)` - Fallback on error (try A, then B)
+///
+/// # Examples
+///
+/// Sequential composition with `+`:
+/// ```
+/// use ninelives::prelude::*;
+/// use std::time::Duration;
+/// use tower_layer::Layer;
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// // Wrap a service with two timeouts
+/// let _policy = Policy(TimeoutLayer::new(Duration::from_secs(5))?)
+///            + Policy(TimeoutLayer::new(Duration::from_secs(1))?);
+/// # Ok(())
+/// # }
+/// ```
+///
+/// Fallback composition with `|`:
+/// ```
+/// use ninelives::prelude::*;
+/// use std::time::Duration;
+/// use tower_layer::Layer;
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// // Try with aggressive timeout, fallback to longer timeout
+/// let fast = Policy(TimeoutLayer::new(Duration::from_millis(100))?);
+/// let slow = Policy(TimeoutLayer::new(Duration::from_secs(5))?);
+/// let _policy = fast | slow;
+/// # Ok(())
+/// # }
+/// ```
+///
+/// Nested composition:
+/// ```
+/// use ninelives::prelude::*;
+/// use std::time::Duration;
+/// use tower_layer::Layer;
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// // Try fast path, fallback to defensive path with longer timeouts
+/// let fast = Policy(TimeoutLayer::new(Duration::from_millis(100))?);
+/// let defensive = Policy(TimeoutLayer::new(Duration::from_secs(10))?)
+///               + Policy(TimeoutLayer::new(Duration::from_secs(5))?);
+/// let _policy = fast | defensive;
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Clone, Copy, Debug)]
 pub struct Policy<L>(pub L);
 
@@ -16,8 +150,29 @@ where
     }
 }
 
-/// Sequential composition: apply `inner`, then `outer`.
-/// Sequential composition: apply `inner`, then `outer`.
+/// Sequential composition layer that applies `inner` first, then `outer`.
+///
+/// Created by the `+` operator on `Policy<L>` types:
+/// `Policy(A) + Policy(B)` produces `Policy<CombinedLayer<A, B>>`.
+///
+/// The resulting service stack has `A` as the outermost layer wrapping `B`,
+/// which wraps the underlying service: `A(B(Service))`.
+///
+/// # Example
+///
+/// ```
+/// use ninelives::prelude::*;
+/// use std::time::Duration;
+/// use tower_layer::Layer;
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// // Outer timeout wraps inner timeout
+/// let _combined = Policy(TimeoutLayer::new(Duration::from_secs(5))?)
+///              + Policy(TimeoutLayer::new(Duration::from_secs(1))?);
+/// // Stack: Timeout5s(Timeout1s(Service))
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Clone, Copy, Debug)]
 pub struct CombinedLayer<A, B> {
     pub outer: A,
@@ -42,8 +197,48 @@ where
     }
 }
 
-/// Fallback composition: try primary; on error, use secondary.
-/// Fallback composition: try primary; on error, use secondary.
+/// Fallback composition layer that tries `primary`, falling back to `secondary` on error.
+///
+/// Created by the `|` operator on `Policy<L>` types:
+/// `Policy(A) | Policy(B)` produces `Policy<FallbackLayer<A, B>>`.
+///
+/// When a request fails through the primary stack, the original request is
+/// retried through the secondary stack. This enables graceful degradation
+/// and multi-tier resilience strategies.
+///
+/// # Example
+///
+/// ```
+/// use ninelives::prelude::*;
+/// use std::time::Duration;
+/// use tower_layer::Layer;
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// // Try fast timeout first, fall back to longer timeout on failure
+/// let fast = Policy(TimeoutLayer::new(Duration::from_millis(100))?);
+/// let slow = Policy(TimeoutLayer::new(Duration::from_secs(5))?);
+/// let _fallback = fast | slow;
+/// # Ok(())
+/// # }
+/// ```
+///
+/// # Complex Example
+///
+/// ```
+/// use ninelives::prelude::*;
+/// use std::time::Duration;
+/// use tower_layer::Layer;
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// // Try aggressive strategy, fallback to defensive strategy
+/// let aggressive = Policy(TimeoutLayer::new(Duration::from_millis(50))?);
+/// let defensive = Policy(TimeoutLayer::new(Duration::from_secs(10))?)
+///               + Policy(TimeoutLayer::new(Duration::from_secs(5))?);
+/// let _policy = aggressive | defensive;
+/// // First tries 50ms timeout, on failure tries nested 10s+5s timeouts
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Clone, Debug)]
 pub struct FallbackLayer<A, B> {
     pub primary: A,
@@ -74,8 +269,13 @@ where
     }
 }
 
-/// Service that tries primary, falls back to secondary on error.
-/// Service that tries primary first, then falls back to secondary on error.
+/// Tower service that executes primary, falling back to secondary on error.
+///
+/// This service is created by [`FallbackLayer`] and implements the actual
+/// fallback logic at the service level. On any error from the primary service,
+/// the original request is retried through the secondary service.
+///
+/// Both services must have the same `Response` and `Error` types.
 #[derive(Clone, Debug)]
 pub struct FallbackService<S1, S2> {
     primary: S1,
