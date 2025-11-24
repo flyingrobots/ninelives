@@ -19,8 +19,8 @@
 - [x] Policy wrapper
 - [x] `+` operator (CombinedLayer for sequential composition)
 - [x] `|` operator (FallbackLayer for failover)
-- [ ] Doc comments and examples for algebra API
-- [ ] Operator precedence documentation
+- [x] Doc comments and examples for algebra API
+- [x] Operator precedence documentation
 
 ### Cleanup Legacy Code
 - [x] Delete src/stack.rs
