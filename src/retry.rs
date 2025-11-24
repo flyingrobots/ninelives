@@ -11,6 +11,10 @@
 //!   herds.
 //! - Sleeper controls how delays are applied (production uses `TokioSleeper`; tests can inject
 //!   `InstantSleeper`/`TrackingSleeper`).
+//! Invariants:
+//! - Attempts never exceed `max_attempts`.
+//! - Non-`Inner` errors are propagated without retry.
+//! - Backoff/Jitter are invoked exactly retries-1 times.
 //!
 //! Example
 //! ```rust

@@ -4,6 +4,11 @@
 //! attempt index `0` represents the initial call (no delay), and retries start at `attempt = 1`;
 //! all strategies must honor this 0-based contract consistently.
 //! Delays saturate at a documented maximum to avoid overflow.
+//! Invariants:
+//! - attempt `0` always returns `0` delay.
+//! - delays are non-decreasing as attempts increase.
+//! - `with_max` caps delays without exceeding either the provided cap or `MAX_BACKOFF`.
+//! - strategies never panic on large attempts; they saturate instead.
 //!
 //! Example
 //! ```rust
@@ -342,6 +347,20 @@ mod tests {
         let huge_attempt: usize = 1_000_000_000;
         let delay = backoff.delay(huge_attempt);
         assert_eq!(delay, MAX_BACKOFF); // Saturated
+    }
+
+    #[test]
+    fn delays_monotonic_and_capped() {
+        let backoff = Backoff::linear(Duration::from_millis(30))
+            .with_max(Duration::from_millis(100))
+            .unwrap();
+        let mut last = Duration::from_millis(0);
+        for attempt in 0..20 {
+            let d = backoff.delay(attempt);
+            assert!(d >= last, "delay regressed at attempt {}", attempt);
+            assert!(d <= Duration::from_millis(100));
+            last = d;
+        }
     }
 
     #[test]

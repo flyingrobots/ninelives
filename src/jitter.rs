@@ -14,6 +14,11 @@
 //! - Thread-safety: `Decorrelated` stores its state in an `AtomicU64`; sharing the same handle
 //!   across threads is safe. Cloning a decorrelated jitter copies the state, creating an independent
 //!   handle.
+//! Invariants:
+//! - None leaves delay unchanged.
+//! - Full/Equal always return values inside their documented ranges.
+//! - Decorrelated outputs are within `[max(prev, base), min(max, 3*prev)]`, never negative, and do
+//!   not regress below the previous value.
 //!
 //! Example:
 //! ```rust
@@ -291,6 +296,19 @@ mod tests {
         let second = jitter.apply_with_rng(Duration::from_secs(1), &mut rng);
         assert!(second.as_millis() as u64 >= 100);
         assert!(second.as_millis() as u64 <= expected_upper);
+    }
+
+    #[test]
+    fn decorrelated_never_regresses() {
+        let jitter =
+            Jitter::decorrelated(Duration::from_millis(10), Duration::from_millis(200)).unwrap();
+        let mut prev = Duration::from_millis(0);
+        for _ in 0..200 {
+            let next = jitter.apply_stateful();
+            assert!(next >= prev, "decorrelated jitter regressed");
+            assert!(next <= Duration::from_millis(200));
+            prev = next;
+        }
     }
 
     #[test]

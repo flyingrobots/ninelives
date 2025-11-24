@@ -8,6 +8,10 @@
 //! - Elapsed is measured from just before invoking the closure to timeout firing and can be
 //!   slightly greater than the configured duration due to scheduling/timeout detection overhead.
 //! - Requires a Tokio runtime.
+//! Invariants:
+//! - Duration must be > 0 and ≤ configured maximum.
+//! - Successful operations pass through untouched.
+//! - Timeouts return `ResilienceError::Timeout` with elapsed ≥ configured timeout.
 //!
 //! Example
 //! ```
