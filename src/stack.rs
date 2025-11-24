@@ -193,13 +193,14 @@ where
 
     /// Set a timeout policy with the provided duration.
     pub fn timeout(mut self, duration: Duration) -> Self {
-        self.timeout = Some(TimeoutPolicy::new(duration));
+        self.timeout = Some(TimeoutPolicy::new(duration).expect("valid timeout"));
         self
     }
 
     /// Disable timeouts by setting an effectively infinite duration (u64::MAX seconds).
     pub fn no_timeout(mut self) -> Self {
-        self.timeout = Some(TimeoutPolicy::new(Duration::from_secs(u64::MAX)));
+        self.timeout =
+            Some(TimeoutPolicy::new(crate::timeout::MAX_TIMEOUT).expect("valid timeout"));
         self
     }
 
@@ -249,9 +250,10 @@ where
     /// Build the stack, filling unspecified layers with crate defaults.
     pub fn build(self) -> ResilienceStack<E> {
         ResilienceStack {
-            timeout: self
-                .timeout
-                .unwrap_or_else(|| TimeoutPolicy::new(Duration::from_secs(DEFAULT_TIMEOUT_SECS))),
+            timeout: self.timeout.unwrap_or_else(|| {
+                TimeoutPolicy::new(Duration::from_secs(DEFAULT_TIMEOUT_SECS))
+                    .expect("default timeout")
+            }),
             bulkhead: self
                 .bulkhead
                 .unwrap_or_else(|| BulkheadPolicy::new(DEFAULT_BULKHEAD_MAX_CONCURRENT)),

@@ -4,19 +4,43 @@ use crate::ResilienceError;
 use std::future::Future;
 use std::time::{Duration, Instant};
 
+/// Maximum allowed timeout duration (30 days) to avoid pathological values.
+pub const MAX_TIMEOUT: Duration = Duration::from_secs(30 * 24 * 60 * 60);
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TimeoutError {
+    ZeroDuration,
+    ExceedsMaximum(Duration),
+}
+
+impl std::fmt::Display for TimeoutError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TimeoutError::ZeroDuration => write!(f, "timeout duration must be > 0"),
+            TimeoutError::ExceedsMaximum(d) => {
+                write!(f, "timeout duration {:?} exceeds maximum {:?}", d, MAX_TIMEOUT)
+            }
+        }
+    }
+}
+
+impl std::error::Error for TimeoutError {}
+
 #[derive(Debug, Clone)]
 pub struct TimeoutPolicy {
     duration: Duration,
 }
 
 impl TimeoutPolicy {
-    /// Create a timeout policy. Panics if duration is zero or `Duration::MAX`.
-    pub fn new(duration: Duration) -> Self {
-        assert!(
-            duration > Duration::ZERO && duration < Duration::MAX,
-            "timeout duration must be non-zero and finite",
-        );
-        Self { duration }
+    /// Create a timeout policy, validating duration.
+    pub fn new(duration: Duration) -> Result<Self, TimeoutError> {
+        if duration.is_zero() {
+            return Err(TimeoutError::ZeroDuration);
+        }
+        if duration > MAX_TIMEOUT {
+            return Err(TimeoutError::ExceedsMaximum(duration));
+        }
+        Ok(Self { duration })
     }
 
     /// Inspect the configured timeout duration.
@@ -62,7 +86,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_completes_before_timeout() {
-        let timeout = TimeoutPolicy::new(Duration::from_millis(100));
+        let timeout = TimeoutPolicy::new(Duration::from_millis(100)).unwrap();
         let counter = Arc::new(AtomicUsize::new(0));
         let counter_clone = counter.clone();
 
@@ -83,7 +107,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_times_out_long_operation() {
-        let timeout = TimeoutPolicy::new(Duration::from_millis(50));
+        let timeout = TimeoutPolicy::new(Duration::from_millis(50)).unwrap();
         let counter = Arc::new(AtomicUsize::new(0));
         let counter_clone = counter.clone();
 
@@ -105,7 +129,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_propagates_operation_errors() {
-        let timeout = TimeoutPolicy::new(Duration::from_secs(1));
+        let timeout = TimeoutPolicy::new(Duration::from_secs(1)).unwrap();
 
         let result = timeout
             .execute(|| async {
@@ -122,7 +146,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_very_long_timeout_doesnt_interfere() {
-        let timeout = TimeoutPolicy::new(Duration::from_secs(3600)); // 1 hour
+        let timeout = TimeoutPolicy::new(Duration::from_secs(3600)).unwrap(); // 1 hour
 
         let result = timeout
             .execute(|| async {
@@ -137,7 +161,7 @@ mod tests {
     #[tokio::test]
     async fn test_timeout_error_includes_durations() {
         let timeout_duration = Duration::from_millis(50);
-        let timeout = TimeoutPolicy::new(timeout_duration);
+        let timeout = TimeoutPolicy::new(timeout_duration).unwrap();
 
         let result = timeout
             .execute(|| async {
@@ -158,10 +182,23 @@ mod tests {
 
     #[tokio::test]
     async fn test_instant_operation() {
-        let timeout = TimeoutPolicy::new(Duration::from_millis(100));
+        let timeout = TimeoutPolicy::new(Duration::from_millis(100)).unwrap();
 
         let result = timeout.execute(|| async { Ok::<_, ResilienceError<TestError>>(42) }).await;
 
         assert_eq!(result.unwrap(), 42);
+    }
+
+    #[test]
+    fn rejects_zero_duration() {
+        let err = TimeoutPolicy::new(Duration::ZERO).unwrap_err();
+        assert!(matches!(err, TimeoutError::ZeroDuration));
+    }
+
+    #[test]
+    fn rejects_excessive_duration() {
+        let too_big = MAX_TIMEOUT + Duration::from_secs(1);
+        let err = TimeoutPolicy::new(too_big).unwrap_err();
+        assert!(matches!(err, TimeoutError::ExceedsMaximum(_)));
     }
 }

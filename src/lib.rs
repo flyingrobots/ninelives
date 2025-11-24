@@ -75,4 +75,4 @@ pub use jitter::Jitter;
 pub use retry::{RetryPolicy, RetryPolicyBuilder};
 pub use sleeper::{InstantSleeper, Sleeper, TokioSleeper, TrackingSleeper};
 pub use stack::{ResilienceStack, ResilienceStackBuilder};
-pub use timeout::TimeoutPolicy;
+pub use timeout::{TimeoutError, TimeoutPolicy, MAX_TIMEOUT};
