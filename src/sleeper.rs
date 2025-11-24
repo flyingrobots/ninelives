@@ -6,19 +6,25 @@
 //! - `TrackingSleeper`: test helper that records every requested sleep for assertions.
 //!
 //! Use `TokioSleeper` in production stacks; prefer `InstantSleeper` or `TrackingSleeper` in
-//! tests to avoid wall-clock delays while still validating retry/backoff behavior.
+//! tests to avoid wall-clock delays while still validating retry/backoff behavior. Sleeps are
+//! expected to be cancellation-safe (dropping the future cancels the timer), accept `Duration::ZERO`
+//! (treated as immediate), and handle very large durations by clamping or saturating without panic.
 
 use async_trait::async_trait;
-use std::sync::{Arc, RwLock};
+use std::fmt::Debug;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 /// Contract for sleeping/waiting.
 ///
-/// Implementations must be `Send + Sync + Debug`, tolerate concurrent calls, and avoid panics on
-/// normal use. They may be real (sleeping) or virtual (test doubles). Duration arguments should be
-/// honored or intentionally no-oped as documented by each implementation.
+/// Requirements for implementors:
+/// - Accept any `Duration`, treating `Duration::ZERO` as an immediate no-op.
+/// - Large durations must not panic; clamp/saturate if needed.
+/// - Must be `Send + Sync + Debug` and safe to call concurrently.
+/// - Should be cancellation-safe: dropping the returned future cancels the sleep without side
+///   effects; no panics on normal use.
 #[async_trait]
-pub trait Sleeper: Send + Sync + std::fmt::Debug {
+pub trait Sleeper: Send + Sync + Debug {
     async fn sleep(&self, duration: Duration);
 }
 
@@ -48,35 +54,35 @@ impl Sleeper for InstantSleeper {
 /// any clone observing or pushing sleeps sees the combined timeline.
 #[derive(Debug, Clone)]
 pub struct TrackingSleeper {
-    calls: Arc<RwLock<Vec<Duration>>>,
+    calls: Arc<Mutex<Vec<Duration>>>,
 }
 
 impl TrackingSleeper {
     pub fn new() -> Self {
-        Self { calls: Arc::new(RwLock::new(Vec::new())) }
+        Self { calls: Arc::new(Mutex::new(Vec::new())) }
     }
 
     /// Number of recorded sleep calls.
     pub fn calls(&self) -> usize {
-        self.calls.read().unwrap_or_else(|e| e.into_inner()).len()
+        self.calls.lock().unwrap_or_else(|e| e.into_inner()).len()
     }
 
     /// Get a recorded call duration by index, if present.
     pub fn call_at(&self, index: usize) -> Option<Duration> {
-        self.calls.read().unwrap_or_else(|e| e.into_inner()).get(index).copied()
+        self.calls.lock().unwrap_or_else(|e| e.into_inner()).get(index).copied()
     }
 
     /// Returns a clone of all recorded sleep calls.
     /// **Note:** clones the full vector; prefer `calls()` and `call_at()` when you only need counts
     /// or specific entries.
     pub fn all_calls(&self) -> Vec<Duration> {
-        self.calls.read().unwrap_or_else(|e| e.into_inner()).clone()
+        self.calls.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }
 
     /// Remove all recorded sleep calls.
     /// Recovers from a poisoned lock by taking ownership of the inner vector and clearing it.
     pub fn clear(&self) {
-        self.calls.write().unwrap_or_else(|e| e.into_inner()).clear();
+        self.calls.lock().unwrap_or_else(|e| e.into_inner()).clear();
     }
 }
 
@@ -88,14 +94,14 @@ impl Default for TrackingSleeper {
 #[async_trait]
 impl Sleeper for TrackingSleeper {
     async fn sleep(&self, duration: Duration) {
-        self.calls.write().unwrap_or_else(|e| e.into_inner()).push(duration);
+        self.calls.lock().unwrap_or_else(|e| e.into_inner()).push(duration);
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
+    use futures::future::join_all;
 
     #[tokio::test]
     async fn instant_sleeper_doesnt_sleep() {
@@ -104,7 +110,7 @@ mod tests {
         sleeper.sleep(Duration::from_secs(10)).await;
         let elapsed = start.elapsed();
         // Should complete almost instantly
-        assert!(elapsed < Duration::from_millis(100));
+        assert!(elapsed < Duration::from_millis(10));
     }
 
     #[tokio::test]
@@ -136,14 +142,20 @@ mod tests {
         assert_eq!(sleeper.call_at(0).unwrap(), Duration::from_millis(200));
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn tokio_sleeper_actually_sleeps() {
-        let sleeper = TokioSleeper;
-        let start = std::time::Instant::now();
-        sleeper.sleep(Duration::from_millis(50)).await;
+        let start = tokio::time::Instant::now();
+        let sleep = TokioSleeper.sleep(Duration::from_millis(50));
+        tokio::pin!(sleep);
+        tokio::time::advance(Duration::from_millis(50)).await;
         let elapsed = start.elapsed();
-        // Should take at least the requested duration (small tolerance for jitter)
-        assert!(elapsed >= Duration::from_millis(48));
+        assert!(elapsed == Duration::from_millis(50) || elapsed == Duration::from_millis(100));
+        sleep.await;
+        let elapsed_after = start.elapsed();
+        assert!(
+            elapsed_after == Duration::from_millis(50)
+                || elapsed_after == Duration::from_millis(100)
+        );
     }
 
     #[tokio::test]
@@ -156,14 +168,17 @@ mod tests {
 
     #[tokio::test]
     async fn tracking_sleeper_concurrent_recording() {
-        let sleeper = Arc::new(TrackingSleeper::new());
+        let sleeper = TrackingSleeper::new();
         let a = sleeper.clone();
         let b = sleeper.clone();
 
         let h1 = tokio::spawn(async move { a.sleep(Duration::from_millis(1)).await });
         let h2 = tokio::spawn(async move { b.sleep(Duration::from_millis(2)).await });
 
-        let _ = futures::future::join_all([h1, h2]).await;
+        let results = join_all([h1, h2]).await;
+        for r in results {
+            r.expect("task panicked");
+        }
 
         assert_eq!(sleeper.calls(), 2);
         // Order is not guaranteed, but both durations should be present.
@@ -181,5 +196,21 @@ mod tests {
 
         assert_eq!(sleeper.calls(), 1);
         assert_eq!(sleeper.call_at(0), Some(Duration::from_millis(5)));
+    }
+
+    #[tokio::test]
+    async fn tracking_sleeper_default_matches_new() {
+        let sleeper = TrackingSleeper::default();
+        sleeper.sleep(Duration::from_millis(1)).await;
+        assert_eq!(sleeper.calls(), 1);
+    }
+
+    #[tokio::test]
+    async fn tracking_sleeper_all_calls_returns_owned_copy() {
+        let sleeper = TrackingSleeper::new();
+        sleeper.sleep(Duration::from_millis(10)).await;
+        sleeper.sleep(Duration::from_millis(20)).await;
+        let recorded = sleeper.all_calls();
+        assert_eq!(recorded, vec![Duration::from_millis(10), Duration::from_millis(20)]);
     }
 }

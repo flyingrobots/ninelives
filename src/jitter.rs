@@ -290,7 +290,6 @@ mod tests {
     }
 
     #[test]
-    #[test]
     fn saturates_large_durations_without_panicking() {
         let huge = Duration::from_secs(u64::MAX);
         let jitter = Jitter::full();
