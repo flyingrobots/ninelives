@@ -67,12 +67,14 @@ pub mod timeout;
 
 // Re-exports
 pub use backoff::Backoff;
-pub use bulkhead::BulkheadPolicy;
-pub use circuit_breaker::{CircuitBreakerConfig, CircuitBreakerPolicy, CircuitState};
+pub use bulkhead::{BulkheadError, BulkheadPolicy};
+pub use circuit_breaker::{
+    CircuitBreakerConfig, CircuitBreakerError, CircuitBreakerPolicy, CircuitState,
+};
 pub use clock::{Clock, MonotonicClock};
 pub use error::ResilienceError;
 pub use jitter::Jitter;
-pub use retry::{RetryPolicy, RetryPolicyBuilder};
+pub use retry::{BuildError as RetryBuildError, RetryPolicy, RetryPolicyBuilder};
 pub use sleeper::{InstantSleeper, Sleeper, TokioSleeper, TrackingSleeper};
-pub use stack::{ResilienceStack, ResilienceStackBuilder};
+pub use stack::{ResilienceStack, ResilienceStackBuilder, StackError};
 pub use timeout::{TimeoutError, TimeoutPolicy, MAX_TIMEOUT};

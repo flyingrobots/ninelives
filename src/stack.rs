@@ -25,10 +25,11 @@
 //!
 //!     let stack = ResilienceStack::<std::io::Error>::new()
 //!         .bulkhead(32).expect("valid bulkhead")
-//!         .timeout(Duration::from_secs(2))
-//!         .circuit_breaker(5, Duration::from_secs(30))
+//!         .timeout(Duration::from_secs(2)).expect("valid timeout")
+//!         .circuit_breaker(5, Duration::from_secs(30)).expect("valid breaker")
 //!         .retry(retry)
-//!         .build();
+//!         .build()
+//!         .expect("valid stack");
 //!
 //!     stack
 //!         .execute(|| async {
@@ -40,9 +41,10 @@
 //! }
 //! ```
 
+use crate::retry::BuildError as RetryBuildError;
 use crate::{
-    BulkheadPolicy, CircuitBreakerConfig, CircuitBreakerPolicy, ResilienceError, RetryPolicy,
-    TimeoutPolicy,
+    BulkheadError, BulkheadPolicy, CircuitBreakerConfig, CircuitBreakerError, CircuitBreakerPolicy,
+    ResilienceError, RetryPolicy, TimeoutError, TimeoutPolicy,
 };
 use std::future::Future;
 use std::sync::Arc;
@@ -51,15 +53,21 @@ use tokio::sync::Mutex;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StackError {
-    InvalidBulkhead(usize),
+    Timeout(TimeoutError),
+    Bulkhead(BulkheadError),
+    CircuitBreaker(CircuitBreakerError),
+    Retry(RetryBuildError),
 }
 
 impl std::fmt::Display for StackError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            StackError::InvalidBulkhead(v) => {
-                write!(f, "bulkhead max_concurrent must be > 0 (got {})", v)
+            StackError::Timeout(err) => write!(f, "invalid timeout configuration: {}", err),
+            StackError::Bulkhead(err) => write!(f, "invalid bulkhead configuration: {}", err),
+            StackError::CircuitBreaker(err) => {
+                write!(f, "invalid circuit breaker configuration: {}", err)
             }
+            StackError::Retry(err) => write!(f, "invalid retry configuration: {}", err),
         }
     }
 }
@@ -98,8 +106,9 @@ where
     /// use ninelives as your_crate;
     /// use your_crate::ResilienceStack;
     /// let stack = ResilienceStack::<std::io::Error>::new()
-    ///     .timeout(Duration::from_secs(1))
-    ///     .build();
+    ///     .timeout(Duration::from_secs(1)).expect("valid timeout")
+    ///     .build()
+    ///     .expect("valid stack");
     /// ```
     pub fn new() -> ResilienceStackBuilder<E> {
         ResilienceStackBuilder::new()
@@ -169,11 +178,15 @@ where
 {
     /// Defaults: timeout 30s, bulkhead 100, circuit breaker (5 failures, 60s open), retry builder defaults.
     fn default() -> Self {
-        ResilienceStackBuilder::new().build()
+        ResilienceStackBuilder::new()
+            .build()
+            .expect("default resilience stack configuration should be valid")
     }
 }
 
 /// Builder for composing resilience policies in a fixed order.
+/// Configuration methods that can fail return `Result<Self, StackError>` to surface
+/// invalid inputs eagerly rather than panicking at runtime.
 #[derive(Debug, Clone)]
 pub struct ResilienceStackBuilder<E> {
     timeout: Option<TimeoutPolicy>,
@@ -192,24 +205,24 @@ where
     }
 
     /// Set a timeout policy with the provided duration.
-    pub fn timeout(mut self, duration: Duration) -> Self {
-        self.timeout = Some(TimeoutPolicy::new(duration).expect("valid timeout"));
-        self
+    pub fn timeout(mut self, duration: Duration) -> Result<Self, StackError> {
+        let timeout = TimeoutPolicy::new(duration).map_err(StackError::Timeout)?;
+        self.timeout = Some(timeout);
+        Ok(self)
     }
 
     /// Disable timeouts by setting an effectively infinite duration (u64::MAX seconds).
-    pub fn no_timeout(mut self) -> Self {
-        self.timeout =
-            Some(TimeoutPolicy::new(crate::timeout::MAX_TIMEOUT).expect("valid timeout"));
-        self
+    pub fn no_timeout(mut self) -> Result<Self, StackError> {
+        let timeout =
+            TimeoutPolicy::new(crate::timeout::MAX_TIMEOUT).map_err(StackError::Timeout)?;
+        self.timeout = Some(timeout);
+        Ok(self)
     }
 
     /// Configure a bulkhead with a maximum number of concurrent permits.
     pub fn bulkhead(mut self, max_concurrent: usize) -> Result<Self, StackError> {
-        if max_concurrent == 0 {
-            return Err(StackError::InvalidBulkhead(max_concurrent));
-        }
-        self.bulkhead = Some(BulkheadPolicy::new(max_concurrent));
+        let bulkhead = BulkheadPolicy::new(max_concurrent).map_err(StackError::Bulkhead)?;
+        self.bulkhead = Some(bulkhead);
         Ok(self)
     }
 
@@ -221,24 +234,34 @@ where
 
     /// Configure a circuit breaker with failure threshold and open timeout.
     /// Panics if parameters are invalid.
-    pub fn circuit_breaker(mut self, failures: usize, timeout: Duration) -> Self {
-        assert!(failures > 0, "failures must be > 0");
-        assert!(timeout > Duration::ZERO, "timeout must be > 0");
-        self.circuit_breaker = Some(CircuitBreakerPolicy::new(failures, timeout));
-        self
+    pub fn circuit_breaker(
+        mut self,
+        failures: usize,
+        timeout: Duration,
+    ) -> Result<Self, StackError> {
+        let breaker =
+            CircuitBreakerPolicy::new(failures, timeout).map_err(StackError::CircuitBreaker)?;
+        self.circuit_breaker = Some(breaker);
+        Ok(self)
     }
 
     /// Configure a circuit breaker using an explicit config.
-    pub fn circuit_breaker_with_config(mut self, config: CircuitBreakerConfig) -> Self {
-        self.circuit_breaker = Some(CircuitBreakerPolicy::with_config(config));
-        self
+    pub fn circuit_breaker_with_config(
+        mut self,
+        config: CircuitBreakerConfig,
+    ) -> Result<Self, StackError> {
+        let breaker =
+            CircuitBreakerPolicy::with_config(config).map_err(StackError::CircuitBreaker)?;
+        self.circuit_breaker = Some(breaker);
+        Ok(self)
     }
 
     /// Disable the circuit breaker layer.
-    pub fn no_circuit_breaker(mut self) -> Self {
-        self.circuit_breaker =
-            Some(CircuitBreakerPolicy::with_config(CircuitBreakerConfig::disabled()));
-        self
+    pub fn no_circuit_breaker(mut self) -> Result<Self, StackError> {
+        let breaker = CircuitBreakerPolicy::with_config(CircuitBreakerConfig::disabled())
+            .map_err(StackError::CircuitBreaker)?;
+        self.circuit_breaker = Some(breaker);
+        Ok(self)
     }
 
     /// Set the retry policy to use for the outermost layer.
@@ -248,25 +271,34 @@ where
     }
 
     /// Build the stack, filling unspecified layers with crate defaults.
-    pub fn build(self) -> ResilienceStack<E> {
-        ResilienceStack {
-            timeout: self.timeout.unwrap_or_else(|| {
-                TimeoutPolicy::new(Duration::from_secs(DEFAULT_TIMEOUT_SECS))
-                    .expect("default timeout")
-            }),
-            bulkhead: self
-                .bulkhead
-                .unwrap_or_else(|| BulkheadPolicy::new(DEFAULT_BULKHEAD_MAX_CONCURRENT)),
-            circuit_breaker: self.circuit_breaker.unwrap_or_else(|| {
-                CircuitBreakerPolicy::new(
-                    DEFAULT_CIRCUIT_BREAKER_FAILURES,
-                    Duration::from_secs(DEFAULT_CIRCUIT_BREAKER_TIMEOUT_SECS),
-                )
-            }),
-            retry: self
-                .retry
-                .unwrap_or_else(|| RetryPolicy::builder().build().expect("default retry policy")),
-        }
+    pub fn build(self) -> Result<ResilienceStack<E>, StackError> {
+        let timeout = match self.timeout {
+            Some(t) => t,
+            None => TimeoutPolicy::new(Duration::from_secs(DEFAULT_TIMEOUT_SECS))
+                .map_err(StackError::Timeout)?,
+        };
+
+        let bulkhead = match self.bulkhead {
+            Some(b) => b,
+            None => BulkheadPolicy::new(DEFAULT_BULKHEAD_MAX_CONCURRENT)
+                .map_err(StackError::Bulkhead)?,
+        };
+
+        let circuit_breaker = match self.circuit_breaker {
+            Some(cb) => cb,
+            None => CircuitBreakerPolicy::new(
+                DEFAULT_CIRCUIT_BREAKER_FAILURES,
+                Duration::from_secs(DEFAULT_CIRCUIT_BREAKER_TIMEOUT_SECS),
+            )
+            .map_err(StackError::CircuitBreaker)?,
+        };
+
+        let retry = match self.retry {
+            Some(r) => r,
+            None => RetryPolicy::builder().build().map_err(StackError::Retry)?,
+        };
+
+        Ok(ResilienceStack { timeout, bulkhead, circuit_breaker, retry })
     }
 }
 
@@ -277,5 +309,50 @@ where
     /// Equivalent to `ResilienceStackBuilder::new()`.
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct TestError;
+
+    impl std::fmt::Display for TestError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "test error")
+        }
+    }
+
+    impl std::error::Error for TestError {}
+
+    #[test]
+    fn default_stack_builds() {
+        let stack = ResilienceStack::<TestError>::new().build();
+        assert!(stack.is_ok());
+    }
+
+    #[test]
+    fn bulkhead_validation_surfaces_error() {
+        let err =
+            ResilienceStack::<TestError>::new().bulkhead(0).expect_err("bulkhead(0) should fail");
+        assert!(matches!(err, StackError::Bulkhead(_)));
+    }
+
+    #[test]
+    fn timeout_validation_surfaces_error() {
+        let err = ResilienceStack::<TestError>::new()
+            .timeout(Duration::ZERO)
+            .expect_err("zero timeout should fail");
+        assert!(matches!(err, StackError::Timeout(TimeoutError::ZeroDuration)));
+    }
+
+    #[test]
+    fn circuit_breaker_validation_surfaces_error() {
+        let err = ResilienceStack::<TestError>::new()
+            .circuit_breaker(0, Duration::from_secs(1))
+            .expect_err("invalid circuit breaker should fail");
+        assert!(matches!(err, StackError::CircuitBreaker(_)));
     }
 }

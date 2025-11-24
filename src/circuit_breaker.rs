@@ -24,6 +24,33 @@ pub struct CircuitBreakerConfig {
     pub half_open_max_calls: usize,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CircuitBreakerError {
+    InvalidFailureThreshold { provided: usize },
+    InvalidRecoveryTimeout(Duration),
+    InvalidHalfOpenLimit { provided: usize },
+}
+
+impl std::fmt::Display for CircuitBreakerError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CircuitBreakerError::InvalidFailureThreshold { provided } => {
+                write!(f, "failure_threshold must be > 0 (got {})", provided)
+            }
+            CircuitBreakerError::InvalidRecoveryTimeout(timeout) => write!(
+                f,
+                "recovery_timeout must be > 0 unless breaker is disabled (got {:?})",
+                timeout
+            ),
+            CircuitBreakerError::InvalidHalfOpenLimit { provided } => {
+                write!(f, "half_open_max_calls must be > 0 (got {})", provided)
+            }
+        }
+    }
+}
+
+impl std::error::Error for CircuitBreakerError {}
+
 impl CircuitBreakerConfig {
     pub fn disabled() -> Self {
         Self {
@@ -50,24 +77,41 @@ pub struct CircuitBreakerPolicy {
 }
 
 impl CircuitBreakerPolicy {
-    pub fn new(failure_threshold: usize, recovery_timeout: Duration) -> Self {
-        Self {
-            state: Arc::new(CircuitBreakerState {
-                state: AtomicU8::new(STATE_CLOSED),
-                failure_count: AtomicUsize::new(0),
-                opened_at_millis: AtomicU64::new(0),
-                half_open_calls: AtomicUsize::new(0),
-            }),
-            config: CircuitBreakerConfig {
-                failure_threshold,
-                recovery_timeout,
-                half_open_max_calls: 1,
-            },
-            clock: Arc::new(MonotonicClock::default()),
-        }
+    /// Create a circuit breaker policy, validating thresholds and timeouts.
+    /// Returns `Err` if the failure threshold is zero or the timeout is zero for an enabled breaker.
+    pub fn new(
+        failure_threshold: usize,
+        recovery_timeout: Duration,
+    ) -> Result<Self, CircuitBreakerError> {
+        let config =
+            CircuitBreakerConfig { failure_threshold, recovery_timeout, half_open_max_calls: 1 };
+
+        Self::validate_config(&config)?;
+        Ok(Self::from_config(config))
     }
 
-    pub fn with_config(config: CircuitBreakerConfig) -> Self {
+    /// Create a breaker from an explicit config, validating the values.
+    pub fn with_config(config: CircuitBreakerConfig) -> Result<Self, CircuitBreakerError> {
+        Self::validate_config(&config)?;
+        Ok(Self::from_config(config))
+    }
+
+    /// Override the clock (useful for deterministic tests)
+    pub fn with_clock<C: Clock + 'static>(mut self, clock: C) -> Self {
+        self.clock = Arc::new(clock);
+        self
+    }
+
+    /// Override the maximum number of half-open probe calls; must be > 0.
+    pub fn with_half_open_limit(mut self, limit: usize) -> Result<Self, CircuitBreakerError> {
+        if limit == 0 {
+            return Err(CircuitBreakerError::InvalidHalfOpenLimit { provided: limit });
+        }
+        self.config.half_open_max_calls = limit;
+        Ok(self)
+    }
+
+    fn from_config(config: CircuitBreakerConfig) -> Self {
         Self {
             state: Arc::new(CircuitBreakerState {
                 state: AtomicU8::new(STATE_CLOSED),
@@ -80,15 +124,21 @@ impl CircuitBreakerPolicy {
         }
     }
 
-    /// Override the clock (useful for deterministic tests)
-    pub fn with_clock<C: Clock + 'static>(mut self, clock: C) -> Self {
-        self.clock = Arc::new(clock);
-        self
-    }
+    fn validate_config(config: &CircuitBreakerConfig) -> Result<(), CircuitBreakerError> {
+        if config.failure_threshold == 0 {
+            return Err(CircuitBreakerError::InvalidFailureThreshold { provided: 0 });
+        }
 
-    pub fn with_half_open_limit(mut self, limit: usize) -> Self {
-        self.config.half_open_max_calls = limit;
-        self
+        if config.half_open_max_calls == 0 {
+            return Err(CircuitBreakerError::InvalidHalfOpenLimit { provided: 0 });
+        }
+
+        let disabled = config.failure_threshold == usize::MAX;
+        if config.recovery_timeout == Duration::ZERO && !disabled {
+            return Err(CircuitBreakerError::InvalidRecoveryTimeout(config.recovery_timeout));
+        }
+
+        Ok(())
     }
 
     pub async fn execute<T, E, Fut, Op>(&self, mut operation: Op) -> Result<T, ResilienceError<E>>
@@ -301,9 +351,33 @@ mod tests {
         }
     }
 
+    #[test]
+    fn rejects_zero_failure_threshold() {
+        let err = CircuitBreakerPolicy::new(0, Duration::from_secs(1))
+            .expect_err("zero failures should be invalid");
+        assert!(matches!(err, CircuitBreakerError::InvalidFailureThreshold { provided: 0 }));
+    }
+
+    #[test]
+    fn rejects_zero_timeout_when_enabled() {
+        let err = CircuitBreakerPolicy::new(1, Duration::ZERO)
+            .expect_err("zero timeout should be invalid for enabled breaker");
+        assert!(matches!(err, CircuitBreakerError::InvalidRecoveryTimeout(Duration::ZERO)));
+    }
+
+    #[test]
+    fn rejects_zero_half_open_limit() {
+        let err = CircuitBreakerPolicy::new(1, Duration::from_secs(1))
+            .and_then(|breaker| breaker.with_half_open_limit(0))
+            .expect_err("zero half-open limit should be invalid");
+
+        assert!(matches!(err, CircuitBreakerError::InvalidHalfOpenLimit { provided: 0 }));
+    }
+
     #[tokio::test]
     async fn test_circuit_starts_closed() {
-        let breaker = CircuitBreakerPolicy::new(3, Duration::from_secs(1));
+        let breaker =
+            CircuitBreakerPolicy::new(3, Duration::from_secs(1)).expect("valid circuit breaker");
         let counter = Arc::new(AtomicUsize::new(0));
         let counter_clone = counter.clone();
 
@@ -323,7 +397,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_circuit_opens_after_threshold_failures() {
-        let breaker = CircuitBreakerPolicy::new(3, Duration::from_secs(10));
+        let breaker =
+            CircuitBreakerPolicy::new(3, Duration::from_secs(10)).expect("valid circuit breaker");
         let counter = Arc::new(AtomicUsize::new(0));
 
         // Trigger 3 failures to open the circuit
@@ -362,7 +437,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_circuit_transitions_to_half_open_after_timeout() {
-        let breaker = CircuitBreakerPolicy::new(2, Duration::from_millis(100));
+        let breaker = CircuitBreakerPolicy::new(2, Duration::from_millis(100))
+            .expect("valid circuit breaker");
         let counter = Arc::new(AtomicUsize::new(0));
 
         // Open the circuit with 2 failures
@@ -416,7 +492,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_circuit_closes_after_successful_half_open_test() {
-        let breaker = CircuitBreakerPolicy::new(2, Duration::from_millis(100));
+        let breaker = CircuitBreakerPolicy::new(2, Duration::from_millis(100))
+            .expect("valid circuit breaker");
         let counter = Arc::new(AtomicUsize::new(0));
 
         // Open the circuit
@@ -466,7 +543,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_circuit_reopens_if_half_open_test_fails() {
-        let breaker = CircuitBreakerPolicy::new(2, Duration::from_millis(100));
+        let breaker = CircuitBreakerPolicy::new(2, Duration::from_millis(100))
+            .expect("valid circuit breaker");
 
         // Open the circuit
         for _ in 0..2 {
@@ -494,8 +572,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_half_open_limits_concurrent_calls() {
-        let breaker =
-            CircuitBreakerPolicy::new(2, Duration::from_millis(100)).with_half_open_limit(1);
+        let breaker = CircuitBreakerPolicy::new(2, Duration::from_millis(100))
+            .expect("valid circuit breaker")
+            .with_half_open_limit(1)
+            .expect("valid half-open limit");
         let counter = Arc::new(AtomicUsize::new(0));
 
         // Open the circuit
@@ -550,7 +630,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_disabled_circuit_breaker_never_opens() {
-        let breaker = CircuitBreakerPolicy::with_config(CircuitBreakerConfig::disabled());
+        let breaker = CircuitBreakerPolicy::with_config(CircuitBreakerConfig::disabled())
+            .expect("disabled config should be valid");
         let counter = Arc::new(AtomicUsize::new(0));
 
         // Trigger many failures
@@ -592,7 +673,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_successes_in_closed_state_reset_failure_count() {
-        let breaker = CircuitBreakerPolicy::new(3, Duration::from_secs(1));
+        let breaker =
+            CircuitBreakerPolicy::new(3, Duration::from_secs(1)).expect("valid circuit breaker");
 
         // 2 failures (not enough to open)
         for _ in 0..2 {
@@ -626,8 +708,9 @@ mod tests {
     #[tokio::test]
     async fn test_custom_clock_allows_instant_recovery() {
         let clock = ManualClock::new();
-        let breaker =
-            CircuitBreakerPolicy::new(1, Duration::from_millis(100)).with_clock(clock.clone());
+        let breaker = CircuitBreakerPolicy::new(1, Duration::from_millis(100))
+            .expect("valid circuit breaker")
+            .with_clock(clock.clone());
 
         // First call fails → opens circuit
         let _ = breaker

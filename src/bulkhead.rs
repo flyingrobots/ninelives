@@ -12,19 +12,41 @@ pub struct BulkheadPolicy {
     max_concurrent: usize,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BulkheadError {
+    InvalidMaxConcurrent { provided: usize },
+}
+
+impl std::fmt::Display for BulkheadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BulkheadError::InvalidMaxConcurrent { provided } => {
+                write!(f, "bulkhead max_concurrent must be > 0 (got {})", provided)
+            }
+        }
+    }
+}
+
+impl std::error::Error for BulkheadError {}
+
 /// Large but finite permit count used to approximate "unlimited".
 pub const UNLIMITED_PERMITS: usize = 1_000_000_000;
 
 impl BulkheadPolicy {
-    pub fn new(max_concurrent: usize) -> Self {
-        assert!(max_concurrent > 0, "bulkhead max_concurrent must be > 0");
-        Self { semaphore: Arc::new(Semaphore::new(max_concurrent)), max_concurrent }
+    /// Create a bulkhead with the given maximum concurrent permits.
+    /// Returns `Err` if `max_concurrent` is zero.
+    pub fn new(max_concurrent: usize) -> Result<Self, BulkheadError> {
+        if max_concurrent == 0 {
+            return Err(BulkheadError::InvalidMaxConcurrent { provided: max_concurrent });
+        }
+
+        Ok(Self { semaphore: Arc::new(Semaphore::new(max_concurrent)), max_concurrent })
     }
 
     pub fn unlimited() -> Self {
         // Semaphore::MAX_PERMITS is defined as usize::MAX >> 3 (about usize::MAX / 8)
         // Use a large but safe value: UNLIMITED_PERMITS concurrent operations
-        Self::new(UNLIMITED_PERMITS)
+        Self::new(UNLIMITED_PERMITS).expect("UNLIMITED_PERMITS is always > 0")
     }
 
     pub async fn execute<T, E, Fut, Op>(&self, operation: Op) -> Result<T, ResilienceError<E>>
@@ -66,9 +88,15 @@ mod tests {
 
     impl std::error::Error for TestError {}
 
+    #[test]
+    fn rejects_zero_max_concurrent() {
+        let err = BulkheadPolicy::new(0).expect_err("zero permits should be invalid");
+        assert!(matches!(err, BulkheadError::InvalidMaxConcurrent { provided: 0 }));
+    }
+
     #[tokio::test]
     async fn test_allows_operations_within_limit() {
-        let bulkhead = BulkheadPolicy::new(3);
+        let bulkhead = BulkheadPolicy::new(3).expect("valid bulkhead");
         let counter = Arc::new(AtomicUsize::new(0));
 
         // Execute 3 operations sequentially - all should succeed
@@ -91,7 +119,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_rejects_when_at_capacity() {
-        let bulkhead = BulkheadPolicy::new(2);
+        let bulkhead = BulkheadPolicy::new(2).expect("valid bulkhead");
         let notify = Arc::new(tokio::sync::Notify::new());
         let started = Arc::new(AtomicUsize::new(0));
 
@@ -137,7 +165,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_releases_permits_after_completion() {
-        let bulkhead = BulkheadPolicy::new(2);
+        let bulkhead = BulkheadPolicy::new(2).expect("valid bulkhead");
         let counter = Arc::new(AtomicUsize::new(0));
 
         // Execute 2 operations
@@ -203,7 +231,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_concurrent_operations_up_to_limit() {
-        let bulkhead = BulkheadPolicy::new(5);
+        let bulkhead = BulkheadPolicy::new(5).expect("valid bulkhead");
         let concurrent_count = Arc::new(AtomicUsize::new(0));
         let max_concurrent = Arc::new(AtomicUsize::new(0));
         let mut handles = vec![];
@@ -256,7 +284,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_bulkhead_propagates_operation_errors() {
-        let bulkhead = BulkheadPolicy::new(2);
+        let bulkhead = BulkheadPolicy::new(2).expect("valid bulkhead");
 
         let result = bulkhead
             .execute(|| async {

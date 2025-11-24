@@ -95,7 +95,7 @@ pub struct RetryPolicyBuilder<E> {
     sleeper: Arc<dyn Sleeper>,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BuildError {
     InvalidMaxAttempts(usize),
 }

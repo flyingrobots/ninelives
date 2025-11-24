@@ -21,7 +21,7 @@
 //! // pass to retry policy, which will call `apply` to randomize each delay
 //! ```
 
-use rand::Rng;
+use rand::{rng, Rng};
 use std::time::Duration;
 
 #[derive(Debug)]
@@ -78,7 +78,7 @@ impl Jitter {
 
     /// Apply jitter to a delay duration
     pub fn apply(&self, delay: Duration) -> Duration {
-        let mut rng = rand::thread_rng();
+        let mut rng = rng();
         self.apply_internal(delay, &mut rng)
     }
 
@@ -99,7 +99,7 @@ impl Jitter {
                 if millis == 0 {
                     return Duration::from_millis(0);
                 }
-                let jittered = rng.gen_range(0..=millis);
+                let jittered = rng.random_range(0..=millis);
                 Duration::from_millis(jittered)
             }
             Jitter::Equal => {
@@ -108,7 +108,7 @@ impl Jitter {
                     return Duration::from_millis(0);
                 }
                 let half = millis / 2;
-                let jittered = rng.gen_range(half..=millis);
+                let jittered = rng.random_range(half..=millis);
                 Duration::from_millis(jittered)
             }
             Jitter::Decorrelated(config) => {
@@ -124,7 +124,7 @@ impl Jitter {
                 // lower bound keeps floor at base but never exceeds upper (handles tiny prev)
                 let lower = base_millis.min(upper);
 
-                let jittered = rng.gen_range(lower..=upper);
+                let jittered = rng.random_range(lower..=upper);
 
                 *prev = Duration::from_millis(jittered);
                 *prev

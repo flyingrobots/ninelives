@@ -6,6 +6,13 @@ on:
     branches: [main]
 
 jobs:
+  actionlint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint workflows
+        uses: rhysd/actionlint@v1
+
   fmt-clippy-test:
     runs-on: ubuntu-latest
     steps:
