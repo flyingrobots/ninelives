@@ -11,17 +11,41 @@ const STATE_OPEN: u8 = 1;
 const STATE_HALF_OPEN: u8 = 2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CircuitStateConversionError {
+    InvalidValue(u8),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CircuitState {
     Closed,
     Open,
     HalfOpen,
 }
 
+impl CircuitState {
+    fn to_u8(self) -> u8 {
+        match self {
+            CircuitState::Closed => STATE_CLOSED,
+            CircuitState::Open => STATE_OPEN,
+            CircuitState::HalfOpen => STATE_HALF_OPEN,
+        }
+    }
+}
+
+fn u8_to_state(v: u8) -> Result<CircuitState, CircuitStateConversionError> {
+    match v {
+        STATE_CLOSED => Ok(CircuitState::Closed),
+        STATE_OPEN => Ok(CircuitState::Open),
+        STATE_HALF_OPEN => Ok(CircuitState::HalfOpen),
+        other => Err(CircuitStateConversionError::InvalidValue(other)),
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct CircuitBreakerConfig {
-    pub failure_threshold: usize,
-    pub recovery_timeout: Duration,
-    pub half_open_max_calls: usize,
+    failure_threshold: usize,
+    recovery_timeout: Duration,
+    half_open_max_calls: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -52,12 +76,35 @@ impl std::fmt::Display for CircuitBreakerError {
 impl std::error::Error for CircuitBreakerError {}
 
 impl CircuitBreakerConfig {
+    /// Create a config with validation.
+    pub fn new(
+        failure_threshold: usize,
+        recovery_timeout: Duration,
+        half_open_max_calls: usize,
+    ) -> Result<Self, CircuitBreakerError> {
+        let cfg = Self { failure_threshold, recovery_timeout, half_open_max_calls };
+        CircuitBreakerPolicy::validate_config(&cfg)?;
+        Ok(cfg)
+    }
+
     pub fn disabled() -> Self {
         Self {
             failure_threshold: usize::MAX,
-            recovery_timeout: Duration::from_secs(0),
+            recovery_timeout: Duration::MAX,
             half_open_max_calls: usize::MAX,
         }
+    }
+
+    pub fn failure_threshold(&self) -> usize {
+        self.failure_threshold
+    }
+
+    pub fn recovery_timeout(&self) -> Duration {
+        self.recovery_timeout
+    }
+
+    pub fn half_open_max_calls(&self) -> usize {
+        self.half_open_max_calls
     }
 }
 
@@ -70,6 +117,9 @@ struct CircuitBreakerState {
 }
 
 #[derive(Debug, Clone)]
+/// Circuit breaker policy guarding an async operation.
+/// Clones share the same underlying state via `Arc`, so all handles observe and affect the same
+/// circuit lifecycle (failure counts, open/half-open/closed transitions).
 pub struct CircuitBreakerPolicy {
     state: Arc<CircuitBreakerState>,
     config: CircuitBreakerConfig,
@@ -78,7 +128,15 @@ pub struct CircuitBreakerPolicy {
 
 impl CircuitBreakerPolicy {
     /// Create a circuit breaker policy, validating thresholds and timeouts.
-    /// Returns `Err` if the failure threshold is zero or the timeout is zero for an enabled breaker.
+    /// Errors if `failure_threshold` == 0, `recovery_timeout` == 0 for enabled breakers, or
+    /// `half_open_max_calls` == 0. Defaults `half_open_max_calls` to 1.
+    ///
+    /// # Examples
+    /// ```
+    /// use ninelives::CircuitBreakerPolicy;
+    /// use std::time::Duration;
+    /// let breaker = CircuitBreakerPolicy::new(5, Duration::from_secs(30)).unwrap();
+    /// ```
     pub fn new(
         failure_threshold: usize,
         recovery_timeout: Duration,
@@ -91,12 +149,25 @@ impl CircuitBreakerPolicy {
     }
 
     /// Create a breaker from an explicit config, validating the values.
+    /// Use [`CircuitBreakerConfig::new`] to build a validated config.
     pub fn with_config(config: CircuitBreakerConfig) -> Result<Self, CircuitBreakerError> {
         Self::validate_config(&config)?;
         Ok(Self::from_config(config))
     }
 
-    /// Override the clock (useful for deterministic tests)
+    /// Override the clock (useful for deterministic tests).
+    ///
+    /// # Example
+    /// ```
+    /// # use ninelives::CircuitBreakerPolicy;
+    /// # use std::time::Duration;
+    /// #[derive(Debug)]
+    /// struct NoopClock;
+    /// impl ninelives::Clock for NoopClock { fn now_millis(&self) -> u64 { 0 } }
+    /// let breaker = CircuitBreakerPolicy::new(1, Duration::from_secs(1))
+    ///     .unwrap()
+    ///     .with_clock(NoopClock);
+    /// ```
     pub fn with_clock<C: Clock + 'static>(mut self, clock: C) -> Self {
         self.clock = Arc::new(clock);
         self
@@ -112,16 +183,16 @@ impl CircuitBreakerPolicy {
     }
 
     fn from_config(config: CircuitBreakerConfig) -> Self {
-        Self {
-            state: Arc::new(CircuitBreakerState {
-                state: AtomicU8::new(STATE_CLOSED),
-                failure_count: AtomicUsize::new(0),
-                opened_at_millis: AtomicU64::new(0),
-                half_open_calls: AtomicUsize::new(0),
-            }),
-            config,
-            clock: Arc::new(MonotonicClock::default()),
-        }
+        Self { state: Self::new_state(), config, clock: Arc::new(MonotonicClock::default()) }
+    }
+
+    fn new_state() -> Arc<CircuitBreakerState> {
+        Arc::new(CircuitBreakerState {
+            state: AtomicU8::new(CircuitState::Closed.to_u8()),
+            failure_count: AtomicUsize::new(0),
+            opened_at_millis: AtomicU64::new(0),
+            half_open_calls: AtomicUsize::new(0),
+        })
     }
 
     fn validate_config(config: &CircuitBreakerConfig) -> Result<(), CircuitBreakerError> {
@@ -149,11 +220,22 @@ impl CircuitBreakerPolicy {
         Op: FnMut() -> Fut + Send,
     {
         // Check state and enforce policy
+        let mut did_increment_half_open = false;
+
         loop {
-            let current_state = self.state.state.load(Ordering::Acquire);
+            let current_state_raw = self.state.state.load(Ordering::Acquire);
+            let current_state = match u8_to_state(current_state_raw) {
+                Ok(s) => s,
+                Err(_) => {
+                    return Err(ResilienceError::CircuitOpen {
+                        failure_count: self.state.failure_count.load(Ordering::Acquire),
+                        open_duration: Duration::from_millis(0),
+                    })
+                }
+            };
 
             match current_state {
-                STATE_OPEN => {
+                CircuitState::Open => {
                     let opened_at = self.state.opened_at_millis.load(Ordering::Acquire);
                     let now = self.now_millis();
                     let elapsed = now.saturating_sub(opened_at);
@@ -161,8 +243,8 @@ impl CircuitBreakerPolicy {
                     if elapsed >= self.config.recovery_timeout.as_millis() as u64 {
                         // Try transition to half-open
                         match self.state.state.compare_exchange(
-                            STATE_OPEN,
-                            STATE_HALF_OPEN,
+                            CircuitState::Open.to_u8(),
+                            CircuitState::HalfOpen.to_u8(),
                             Ordering::AcqRel,
                             Ordering::Acquire,
                         ) {
@@ -181,7 +263,10 @@ impl CircuitBreakerPolicy {
                                 // Someone else closed it - we're good
                                 break;
                             }
-                            Err(_) => unreachable!("Invalid state transition"),
+                            Err(other) => unreachable!(
+                                "compare_exchange returned unexpected state: {}",
+                                other
+                            ),
                         }
                     } else {
                         // Still in timeout period
@@ -191,16 +276,19 @@ impl CircuitBreakerPolicy {
                         });
                     }
                 }
-                STATE_HALF_OPEN => {
+                CircuitState::HalfOpen => {
                     // Limit concurrent test requests
                     let current = self.state.half_open_calls.fetch_add(1, Ordering::AcqRel);
                     if current >= self.config.half_open_max_calls {
                         self.state.half_open_calls.fetch_sub(1, Ordering::Release);
+                        let opened_at = self.state.opened_at_millis.load(Ordering::Acquire);
+                        let elapsed = self.now_millis().saturating_sub(opened_at);
                         return Err(ResilienceError::CircuitOpen {
                             failure_count: self.state.failure_count.load(Ordering::Acquire),
-                            open_duration: Duration::from_millis(0),
+                            open_duration: Duration::from_millis(elapsed),
                         });
                     }
+                    did_increment_half_open = true;
                     tracing::debug!(
                         in_flight = current + 1,
                         max = self.config.half_open_max_calls,
@@ -208,19 +296,17 @@ impl CircuitBreakerPolicy {
                     );
                     break; // Proceed to execute
                 }
-                STATE_CLOSED => {
+                CircuitState::Closed => {
                     break; // Normal operation
                 }
-                _ => unreachable!("Invalid circuit breaker state"),
             }
         }
 
         // Execute the operation
-        let was_half_open = self.state.state.load(Ordering::Acquire) == STATE_HALF_OPEN;
         let result = operation().await;
 
         // Decrement half-open counter if needed
-        if was_half_open {
+        if did_increment_half_open {
             self.state.half_open_calls.fetch_sub(1, Ordering::Release);
         }
 
@@ -233,17 +319,21 @@ impl CircuitBreakerPolicy {
         result
     }
 
+    /// Resets consecutive failure count; any success in the closed state resets the counter to 0,
+    /// meaning only consecutive failures trip the breaker (patterns like F-F-S-F-F will not open it
+    /// unless the final streak meets `failure_threshold`).
     fn on_success(&self) {
-        let current = self.state.state.load(Ordering::Acquire);
+        let current_raw = self.state.state.load(Ordering::Acquire);
+        let current = u8_to_state(current_raw).unwrap_or(CircuitState::Closed);
 
         match current {
-            STATE_HALF_OPEN => {
+            CircuitState::HalfOpen => {
                 if self
                     .state
                     .state
                     .compare_exchange(
-                        STATE_HALF_OPEN,
-                        STATE_CLOSED,
+                        CircuitState::HalfOpen.to_u8(),
+                        CircuitState::Closed.to_u8(),
                         Ordering::AcqRel,
                         Ordering::Acquire,
                     )
@@ -254,7 +344,7 @@ impl CircuitBreakerPolicy {
                     tracing::info!("Circuit breaker → closed");
                 }
             }
-            STATE_CLOSED => {
+            CircuitState::Closed => {
                 self.state.failure_count.store(0, Ordering::Release);
             }
             _ => {}
@@ -262,17 +352,18 @@ impl CircuitBreakerPolicy {
     }
 
     fn on_failure(&self) {
-        let current = self.state.state.load(Ordering::Acquire);
+        let current_raw = self.state.state.load(Ordering::Acquire);
+        let current = u8_to_state(current_raw).unwrap_or(CircuitState::Closed);
         let failures = self.state.failure_count.fetch_add(1, Ordering::AcqRel) + 1;
 
         match current {
-            STATE_HALF_OPEN => {
+            CircuitState::HalfOpen => {
                 if self
                     .state
                     .state
                     .compare_exchange(
-                        STATE_HALF_OPEN,
-                        STATE_OPEN,
+                        CircuitState::HalfOpen.to_u8(),
+                        CircuitState::Open.to_u8(),
                         Ordering::AcqRel,
                         Ordering::Acquire,
                     )
@@ -282,14 +373,14 @@ impl CircuitBreakerPolicy {
                     tracing::warn!(failures, "Circuit breaker: test failed → open");
                 }
             }
-            STATE_CLOSED => {
+            CircuitState::Closed => {
                 if failures >= self.config.failure_threshold {
                     if self
                         .state
                         .state
                         .compare_exchange(
-                            STATE_CLOSED,
-                            STATE_OPEN,
+                            CircuitState::Closed.to_u8(),
+                            CircuitState::Open.to_u8(),
                             Ordering::AcqRel,
                             Ordering::Acquire,
                         )
