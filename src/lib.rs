@@ -69,6 +69,7 @@
 //! }
 //! ```
 
+mod algebra;
 mod backoff;
 mod bulkhead;
 mod circuit_breaker;
@@ -81,6 +82,7 @@ mod stack;
 mod timeout;
 
 // Re-exports
+pub use algebra::{CombinedLayer, FallbackLayer, Policy};
 pub use backoff::{
     Backoff, BackoffError, BackoffStrategy, ConstantBackoff, ExponentialBackoff, LinearBackoff,
     MAX_BACKOFF,
