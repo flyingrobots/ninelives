@@ -12,10 +12,14 @@ const STATE_CLOSED: u8 = 0;
 const STATE_OPEN: u8 = 1;
 const STATE_HALF_OPEN: u8 = 2;
 
+/// Circuit breaker state machine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CircuitState {
+    /// Circuit is closed - requests flow normally
     Closed,
+    /// Circuit is open - requests are rejected immediately
     Open,
+    /// Circuit is half-open - limited test requests allowed
     HalfOpen,
 }
 
@@ -49,9 +53,18 @@ pub struct CircuitBreakerConfig {
 /// Errors produced when validating breaker configuration.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CircuitBreakerError {
-    InvalidFailureThreshold { provided: usize },
+    /// Failure threshold must be greater than zero
+    InvalidFailureThreshold {
+        /// The invalid threshold value provided
+        provided: usize
+    },
+    /// Recovery timeout duration must be greater than zero
     InvalidRecoveryTimeout(Duration),
-    InvalidHalfOpenLimit { provided: usize },
+    /// Half-open call limit must be greater than zero
+    InvalidHalfOpenLimit {
+        /// The invalid limit value provided
+        provided: usize
+    },
 }
 
 impl std::fmt::Display for CircuitBreakerError {
@@ -73,6 +86,11 @@ impl std::fmt::Display for CircuitBreakerError {
 impl std::error::Error for CircuitBreakerError {}
 
 impl CircuitBreakerConfig {
+    /// Create a new circuit breaker configuration with validation.
+    ///
+    /// # Errors
+    ///
+    /// Returns error if any parameter is zero or invalid.
     pub fn new(
         failure_threshold: usize,
         recovery_timeout: Duration,
@@ -83,6 +101,7 @@ impl CircuitBreakerConfig {
         Ok(cfg)
     }
 
+    /// Create a disabled circuit breaker (never opens).
     pub fn disabled() -> Self {
         Self {
             failure_threshold: usize::MAX,
@@ -132,11 +151,25 @@ pub struct CircuitBreakerLayer {
 }
 
 impl CircuitBreakerLayer {
+    /// Create a new circuit breaker layer with the given configuration.
+    ///
+    /// Uses the default monotonic clock for timing.
+    ///
+    /// # Errors
+    ///
+    /// Returns error if the configuration is invalid.
     pub fn new(config: CircuitBreakerConfig) -> Result<Self, CircuitBreakerError> {
         config.validate()?;
         Ok(Self { config, clock: Arc::new(MonotonicClock::default()) })
     }
 
+    /// Create a circuit breaker layer with a custom clock implementation.
+    ///
+    /// Useful for testing with controllable time.
+    ///
+    /// # Errors
+    ///
+    /// Returns error if the configuration is invalid.
     pub fn with_clock<C: Clock + 'static>(
         config: CircuitBreakerConfig,
         clock: C,

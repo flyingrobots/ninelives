@@ -624,6 +624,13 @@ impl<E> RetryLayer<E>
 where
     E: std::error::Error + Send + Sync + 'static,
 {
+    /// Create a new retry layer with explicit configuration.
+    ///
+    /// Most users should use [`RetryPolicy::builder()`](crate::RetryPolicy::builder) instead.
+    ///
+    /// # Errors
+    ///
+    /// Returns error if `max_attempts` is zero.
     pub fn new(
         max_attempts: usize,
         backoff: Backoff,

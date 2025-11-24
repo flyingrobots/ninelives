@@ -175,7 +175,9 @@ where
 /// ```
 #[derive(Clone, Copy, Debug)]
 pub struct CombinedLayer<A, B> {
+    /// The outer layer (applied second, wraps `inner`)
     pub outer: A,
+    /// The inner layer (applied first, wraps the service)
     pub inner: B,
 }
 
@@ -241,7 +243,9 @@ where
 /// ```
 #[derive(Clone, Debug)]
 pub struct FallbackLayer<A, B> {
+    /// The primary layer strategy (tried first)
     pub primary: A,
+    /// The secondary layer strategy (fallback on primary failure)
     pub secondary: B,
 }
 
