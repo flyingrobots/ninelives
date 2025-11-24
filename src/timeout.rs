@@ -1,13 +1,47 @@
-//! Timeout policy implementation
+//! Timeout policy for bounding async operation duration.
+//!
+//! Semantics
+//! - Wraps an async operation and returns `ResilienceError::Timeout` when the deadline elapses.
+//! - Uses `tokio::time::timeout`; on timeout the inner future is dropped (not forcibly aborted),
+//!   so cancellation-unsafe work may leave partial state. Prefer cancellation-safe primitives or
+//!   cooperative cancellation if that matters.
+//! - Elapsed is measured from just before invoking the closure to timeout firing and can be
+//!   slightly greater than the configured duration due to scheduling/timeout detection overhead.
+//! - Requires a Tokio runtime.
+//!
+//! Example
+//! ```no_run
+//! use ninelives::{ResilienceError, TimeoutPolicy};
+//! use std::time::Duration;
+//!
+//! #[tokio::main]
+//! async fn main() -> Result<(), ResilienceError<std::io::Error>> {
+//!     let timeout = TimeoutPolicy::new(Duration::from_millis(50)).unwrap();
+//!
+//!     let result: Result<_, ResilienceError<std::io::Error>> = timeout
+//!         .execute(|| async {
+//!             tokio::time::sleep(Duration::from_millis(200)).await;
+//!             Ok::<_, ResilienceError<std::io::Error>>(())
+//!         })
+//!         .await;
+//!
+//!     match result {
+//!         Ok(_) => println!("done"),
+//!         Err(e) if e.is_timeout() => println!("timed out after {:?}", e.timeout_details().unwrap().1),
+//!         Err(e) => return Err(e),
+//!     }
+//!     Ok(())
+//! }
+//! ```
 
 use crate::ResilienceError;
 use std::future::Future;
 use std::time::{Duration, Instant};
 
-/// Maximum allowed timeout duration (30 days) to avoid pathological values.
+/// Maximum allowed timeout duration (30 days) to avoid runaway timers while permitting long jobs.
 pub const MAX_TIMEOUT: Duration = Duration::from_secs(30 * 24 * 60 * 60);
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TimeoutError {
     ZeroDuration,
     ExceedsMaximum(Duration),
@@ -26,13 +60,18 @@ impl std::fmt::Display for TimeoutError {
 
 impl std::error::Error for TimeoutError {}
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct TimeoutPolicy {
     duration: Duration,
 }
 
 impl TimeoutPolicy {
-    /// Create a timeout policy, validating duration.
+    /// Creates a timeout policy with the specified duration.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TimeoutError::ZeroDuration`] if `duration` is zero.
+    /// Returns [`TimeoutError::ExceedsMaximum`] if `duration` exceeds [`MAX_TIMEOUT`].
     pub fn new(duration: Duration) -> Result<Self, TimeoutError> {
         if duration.is_zero() {
             return Err(TimeoutError::ZeroDuration);
@@ -43,11 +82,35 @@ impl TimeoutPolicy {
         Ok(Self { duration })
     }
 
-    /// Inspect the configured timeout duration.
+    /// Returns the configured timeout duration.
     pub fn duration(&self) -> Duration {
         self.duration
     }
 
+    /// Execute an operation with a timeout.
+    ///
+    /// - Returns `Ok(T)` when the operation finishes before the deadline.
+    /// - Returns `Err(ResilienceError::Timeout { elapsed, timeout })` when the deadline elapses.
+    /// - On timeout, the inner future is dropped (Tokio does not forcibly abort); ensure the
+    ///   operation is cancellation-safe if partial work matters.
+    /// - `elapsed` is measured from before the operation is invoked and can exceed `timeout`
+    ///   slightly due to scheduling/timeout detection overhead.
+    ///
+    /// # Examples
+    /// ```no_run
+    /// use ninelives::{ResilienceError, TimeoutPolicy};
+    /// use std::time::Duration;
+    /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
+    /// let timeout = TimeoutPolicy::new(Duration::from_millis(20)).unwrap();
+    /// let ok = timeout.execute(|| async { Ok::<_, ResilienceError<std::io::Error>>(42) }).await;
+    /// assert_eq!(ok.unwrap(), 42);
+    /// let timed_out = timeout.execute(|| async {
+    ///     tokio::time::sleep(Duration::from_millis(100)).await;
+    ///     Ok::<_, ResilienceError<std::io::Error>>(())
+    /// }).await;
+    /// assert!(timed_out.unwrap_err().is_timeout());
+    /// # });
+    /// ```
     pub async fn execute<T, E, Fut, Op>(&self, operation: Op) -> Result<T, ResilienceError<E>>
     where
         T: Send,
@@ -66,7 +129,6 @@ impl TimeoutPolicy {
         }
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;

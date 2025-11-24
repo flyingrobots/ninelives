@@ -1,6 +1,40 @@
 //! Retry policy implementation
 //!
-//! Provides configurable retry with backoff and jitter, plus retry predicate and pluggable sleeper.
+//! Retry policy for fallible async operations.
+//!
+//! Semantics:
+//! - `max_attempts` counts total attempts (initial try + retries).
+//! - Only `ResilienceError::Inner(E)` values are eligible for retry; other variants return
+//!   immediately.
+//! - `should_retry` predicate decides whether an `Inner` error is retryable.
+//! - Backoff calculates delay per retry attempt; jitter randomizes the delay to avoid thundering
+//!   herds.
+//! - Sleeper controls how delays are applied (production uses `TokioSleeper`; tests can inject
+//!   `InstantSleeper`/`TrackingSleeper`).
+//!
+//! Example
+//! ```rust
+//! use std::time::Duration;
+//! use ninelives::{Backoff, Jitter, RetryPolicy, ResilienceError};
+//!
+//! #[derive(Debug)]
+//! struct MyErr;
+//! impl std::fmt::Display for MyErr { fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { write!(f, "oops") } }
+//! impl std::error::Error for MyErr {}
+//!
+//! # tokio::runtime::Runtime::new().unwrap().block_on(async {
+//! let policy = RetryPolicy::<MyErr>::builder()
+//!     .max_attempts(3) // total attempts
+//!     .backoff(Backoff::exponential(Duration::from_millis(100)))
+//!     .with_jitter(Jitter::full())
+//!     .should_retry(|_e| true)
+//!     .build()
+//!     .unwrap();
+//! let result: Result<(), ResilienceError<MyErr>> =
+//!     policy.execute(|| async { Err(ResilienceError::Inner(MyErr)) }).await;
+//! assert!(result.is_err());
+//! # });
+//! ```
 
 use crate::error::MAX_RETRY_FAILURES;
 use crate::{Backoff, Jitter, ResilienceError, Sleeper, TokioSleeper};
