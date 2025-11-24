@@ -7,7 +7,7 @@ use std::time::Duration;
 pub const MAX_RETRY_FAILURES: usize = 10;
 
 /// Unified error type for all resilience policies
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ResilienceError<E> {
     /// The operation exceeded the timeout duration
     Timeout { elapsed: Duration, timeout: Duration },
@@ -20,52 +20,6 @@ pub enum ResilienceError<E> {
     /// The underlying operation failed
     Inner(E),
 }
-
-impl<E: Clone> Clone for ResilienceError<E> {
-    fn clone(&self) -> Self {
-        match self {
-            Self::Timeout { elapsed, timeout } => {
-                Self::Timeout { elapsed: *elapsed, timeout: *timeout }
-            }
-            Self::Bulkhead { in_flight, max } => {
-                Self::Bulkhead { in_flight: *in_flight, max: *max }
-            }
-            Self::CircuitOpen { failure_count, open_duration } => {
-                Self::CircuitOpen { failure_count: *failure_count, open_duration: *open_duration }
-            }
-            Self::RetryExhausted { attempts, failures } => {
-                Self::RetryExhausted { attempts: *attempts, failures: failures.clone() }
-            }
-            Self::Inner(e) => Self::Inner(e.clone()),
-        }
-    }
-}
-
-impl<E: PartialEq> PartialEq for ResilienceError<E> {
-    fn eq(&self, other: &Self) -> bool {
-        use ResilienceError::*;
-        match (self, other) {
-            (Timeout { elapsed: a1, timeout: b1 }, Timeout { elapsed: a2, timeout: b2 }) => {
-                a1 == a2 && b1 == b2
-            }
-            (Bulkhead { in_flight: a1, max: b1 }, Bulkhead { in_flight: a2, max: b2 }) => {
-                a1 == a2 && b1 == b2
-            }
-            (
-                CircuitOpen { failure_count: f1, open_duration: d1 },
-                CircuitOpen { failure_count: f2, open_duration: d2 },
-            ) => f1 == f2 && d1 == d2,
-            (
-                RetryExhausted { attempts: a1, failures: f1 },
-                RetryExhausted { attempts: a2, failures: f2 },
-            ) => a1 == a2 && f1 == f2,
-            (Inner(e1), Inner(e2)) => e1 == e2,
-            _ => false,
-        }
-    }
-}
-
-impl<E: Eq> Eq for ResilienceError<E> {}
 
 impl<E: fmt::Display> fmt::Display for ResilienceError<E> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -84,14 +38,22 @@ impl<E: fmt::Display> fmt::Display for ResilienceError<E> {
                 )
             }
             Self::RetryExhausted { attempts, failures } => {
-                let last = failures.last().map(|e| e.to_string()).unwrap_or_default();
-                write!(
-                    f,
-                    "retry exhausted after {} attempts ({} failures), last error: {}",
-                    attempts,
-                    failures.len(),
-                    last
-                )
+                if let Some(last) = failures.last() {
+                    write!(
+                        f,
+                        "retry exhausted after {} attempts ({} failures), last error: {}",
+                        attempts,
+                        failures.len(),
+                        last
+                    )
+                } else {
+                    write!(
+                        f,
+                        "retry exhausted after {} attempts ({} failures)",
+                        attempts,
+                        failures.len()
+                    )
+                }
             }
             Self::Inner(e) => write!(f, "{}", e),
         }
@@ -227,6 +189,16 @@ mod tests {
         assert!(msg.contains("3"));
         assert!(msg.contains("last error"));
         assert!(msg.contains("last"));
+    }
+
+    #[test]
+    fn retry_exhausted_display_handles_empty_failures() {
+        let err: ResilienceError<DummyError> =
+            ResilienceError::RetryExhausted { attempts: 3, failures: vec![] };
+        let msg = format!("{}", err);
+        assert!(msg.contains("3"));
+        assert!(msg.contains("0 failures"));
+        assert!(!msg.ends_with(": "));
     }
 
     #[test]

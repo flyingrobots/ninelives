@@ -54,6 +54,10 @@ where
                     }
 
                     failures.push(e);
+                    if failures.len() > MAX_RETRY_FAILURES {
+                        let excess = failures.len() - MAX_RETRY_FAILURES;
+                        failures.drain(0..excess);
+                    }
 
                     if failures.len() > MAX_RETRY_FAILURES {
                         let excess = failures.len() - MAX_RETRY_FAILURES;
