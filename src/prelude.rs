@@ -1,4 +1,4 @@
-//! Convenient re-exports for common Ninelines types.
+//! Convenient re-exports for common Nine Lives types.
 pub use crate::{
     backoff::{
         Backoff, BackoffError, BackoffStrategy, ConstantBackoff, ExponentialBackoff, LinearBackoff,
