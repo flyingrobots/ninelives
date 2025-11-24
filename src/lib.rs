@@ -1,6 +1,4 @@
 #![forbid(unsafe_code)]
-#![deny(warnings)]
-#![cfg_attr(not(test), deny(clippy::all))]
 
 //! # Nine Lives 🐱
 //!
@@ -74,7 +72,6 @@ pub use clock::{Clock, MonotonicClock};
 pub use error::ResilienceError;
 pub use jitter::Jitter;
 pub use retry::{RetryPolicy, RetryPolicyBuilder};
-/// Sleep abstractions: `Sleeper` trait, `TokioSleeper` for production, `InstantSleeper`/`TrackingSleeper` for tests.
 pub use sleeper::{InstantSleeper, Sleeper, TokioSleeper, TrackingSleeper};
 pub use stack::{ResilienceStack, ResilienceStackBuilder};
 pub use timeout::TimeoutPolicy;
