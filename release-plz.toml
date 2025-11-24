@@ -1,0 +1,9 @@
+release = true
+pr_labels = ["release"]
+
+[workspace]
+semver_check = true
+
+[[packages]]
+name = "ninelives"
+release = true
