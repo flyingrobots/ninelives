@@ -1,12 +1,9 @@
-release = false
+release = false # workspace releases disabled; package-level opts control publishing
 pr_labels = ["release", "release-ready"]
 
 [workspace]
-backend = "github"
 semver_check = true
 
 [[packages]]
 name = "ninelives"
 release = true
-changelog_update = true
-publish = true
