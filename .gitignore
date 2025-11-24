@@ -1,1 +1,21 @@
+# Build artifacts
 /target
+
+# macOS noise
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE/editor settings
+.idea/
+.vscode/
+*.iml
+.fleet/
+
+# Misc project-local
+obsidian
