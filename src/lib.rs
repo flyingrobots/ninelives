@@ -16,22 +16,98 @@
 //!
 //! ## Quick Start
 //!
+//! ### Basic Usage - Single Layer
+//!
 //! ```rust
 //! use ninelives::prelude::*;
 //! use std::time::Duration;
-//! use tower_layer::Layer;
-//! use tower_service::Service;
+//! use tower::{Service, ServiceBuilder};
 //!
-//! #[tokio::main]
-//! async fn main() -> Result<(), ResilienceError<std::io::Error>> {
-//!     let timeout = TimeoutLayer::new(Duration::from_secs(1)).expect("timeout layer");
-//!     let mut svc = timeout.layer(tower::service_fn(|req: &'static str| async move {
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! // Create a simple service
+//! let mut svc = ServiceBuilder::new()
+//!     .layer(TimeoutLayer::new(Duration::from_secs(1))?)
+//!     .service_fn(|req: &'static str| async move {
 //!         Ok::<_, std::io::Error>(req)
-//!     }));
-//!     let _ = svc.call("hello").await.unwrap();
-//!     Ok(())
-//! }
+//!     });
+//!
+//! let response = svc.call("hello").await?;
+//! assert_eq!(response, "hello");
+//! # Ok(())
+//! # }
 //! ```
+//!
+//! ### Algebraic Composition - The Power of `Policy`
+//!
+//! Compose layers using intuitive operators:
+//!
+//! ```rust
+//! use ninelives::prelude::*;
+//! use std::time::Duration;
+//! use tower::{Service, ServiceBuilder};
+//!
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! // Define resilience strategy using algebra
+//! // Try fast timeout, fallback to longer timeout
+//! let fast = Policy(TimeoutLayer::new(Duration::from_millis(100))?);
+//! let slow = Policy(TimeoutLayer::new(Duration::from_secs(5))?);
+//! let policy = fast | slow;  // Fallback operator
+//!
+//! // Apply to any service
+//! let mut svc = ServiceBuilder::new()
+//!     .layer(policy)
+//!     .service_fn(|req: &'static str| async move {
+//!         Ok::<_, std::io::Error>(req)
+//!     });
+//!
+//! let response = svc.call("hello").await?;
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ### Complex Composition
+//!
+//! Combine multiple strategies with precedence:
+//!
+//! ```rust
+//! use ninelives::prelude::*;
+//! use std::time::Duration;
+//!
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! // Aggressive: fast timeout only
+//! let aggressive = Policy(TimeoutLayer::new(Duration::from_millis(50))?);
+//!
+//! // Defensive: nested timeouts for resilience
+//! let defensive = Policy(TimeoutLayer::new(Duration::from_secs(10))?)
+//!               + Policy(TimeoutLayer::new(Duration::from_secs(5))?);
+//!
+//! // Try aggressive first, fall back to defensive
+//! // Operator precedence: + binds tighter than |
+//! let _policy = aggressive | defensive;
+//! // This creates: Policy(Timeout50ms) | (Policy(Timeout10s) + Policy(Timeout5s))
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ## Algebraic Operators
+//!
+//! - **`Policy(A) + Policy(B)`** - Sequential composition: `A` wraps `B`
+//! - **`Policy(A) | Policy(B)`** - Fallback: try `A`, fall back to `B` on error
+//!
+//! **Precedence:** `+` binds tighter than `|`
+//!
+//! Example: `A | B + C` is parsed as `A | (B + C)`
+//!
+//! ## Available Layers
+//!
+//! - **[`TimeoutLayer`]** - Enforce time limits on operations
+//! - **[`RetryLayer`]** - Retry failed operations with backoff
+//! - **[`CircuitBreakerLayer`]** - Prevent cascading failures
+//! - **[`BulkheadLayer`]** - Limit concurrent requests
+//!
+//! For more examples, see the [`algebra`](crate::algebra) module documentation.
 
 mod algebra;
 mod backoff;
