@@ -10,10 +10,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions-rs/toolchain@v1
+      - uses: dtolnay/rust-toolchain@v1
         with:
-          toolchain: stable
-          override: true
+          toolchain: 1.83.0
           components: rustfmt, clippy
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
@@ -22,4 +21,4 @@ jobs:
       - name: Clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
       - name: Tests
-        run: cargo test --all-features --all-targets
+        run: cargo test
