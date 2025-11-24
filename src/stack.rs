@@ -17,10 +17,11 @@
 //! #[tokio::main]
 //! async fn main() -> Result<(), ResilienceError<std::io::Error>> {
 //!     let retry = RetryPolicy::builder()
-//!         .max_attempts(3).expect("max_attempts > 0")
+//!         .max_attempts(3)
 //!         .backoff(Backoff::exponential(Duration::from_millis(100)))
 //!         .with_jitter(Jitter::full())
-//!         .build();
+//!         .build()
+//!         .expect("valid retry policy");
 //!
 //!     let stack = ResilienceStack::<std::io::Error>::new()
 //!         .bulkhead(32).expect("valid bulkhead")
@@ -260,7 +261,9 @@ where
                     Duration::from_secs(DEFAULT_CIRCUIT_BREAKER_TIMEOUT_SECS),
                 )
             }),
-            retry: self.retry.unwrap_or_else(|| RetryPolicy::builder().build()),
+            retry: self
+                .retry
+                .unwrap_or_else(|| RetryPolicy::builder().build().expect("default retry policy")),
         }
     }
 }

@@ -4,6 +4,7 @@
 
 use crate::error::MAX_RETRY_FAILURES;
 use crate::{Backoff, Jitter, ResilienceError, Sleeper, TokioSleeper};
+use std::collections::VecDeque;
 use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
@@ -24,6 +25,7 @@ impl<E> std::fmt::Debug for RetryPolicy<E> {
             .field("backoff", &self.backoff)
             .field("jitter", &self.jitter)
             .field("sleeper", &"<sleeper>")
+            .field("should_retry", &"<predicate>")
             .finish()
     }
 }
@@ -42,7 +44,7 @@ where
         Fut: Future<Output = Result<T, ResilienceError<E>>> + Send,
         Op: FnMut() -> Fut + Send,
     {
-        let mut failures = Vec::new();
+        let mut failures: VecDeque<E> = VecDeque::new();
 
         for attempt in 0..self.max_attempts {
             match operation().await {
@@ -53,22 +55,16 @@ where
                         return Err(ResilienceError::Inner(e));
                     }
 
-                    failures.push(e);
-                    if failures.len() > MAX_RETRY_FAILURES {
-                        let excess = failures.len() - MAX_RETRY_FAILURES;
-                        failures.drain(0..excess);
-                    }
-
-                    if failures.len() > MAX_RETRY_FAILURES {
-                        let excess = failures.len() - MAX_RETRY_FAILURES;
-                        failures.drain(0..excess);
+                    failures.push_back(e);
+                    while failures.len() > MAX_RETRY_FAILURES {
+                        failures.pop_front();
                     }
 
                     // If this was the last attempt, return RetryExhausted
                     if attempt + 1 >= self.max_attempts {
                         return Err(ResilienceError::RetryExhausted {
                             attempts: self.max_attempts,
-                            failures,
+                            failures: failures.into_iter().collect(),
                         });
                     }
 
@@ -130,12 +126,9 @@ where
         }
     }
 
-    pub fn max_attempts(mut self, attempts: usize) -> Result<Self, BuildError> {
-        if attempts == 0 {
-            return Err(BuildError::InvalidMaxAttempts(attempts));
-        }
+    pub fn max_attempts(mut self, attempts: usize) -> Self {
         self.max_attempts = attempts;
-        Ok(self)
+        self
     }
 
     pub fn backoff(mut self, backoff: Backoff) -> Self {
@@ -164,14 +157,17 @@ where
         self
     }
 
-    pub fn build(self) -> RetryPolicy<E> {
-        RetryPolicy {
+    pub fn build(self) -> Result<RetryPolicy<E>, BuildError> {
+        if self.max_attempts == 0 {
+            return Err(BuildError::InvalidMaxAttempts(0));
+        }
+        Ok(RetryPolicy {
             max_attempts: self.max_attempts,
             backoff: self.backoff,
             jitter: self.jitter,
             should_retry: self.should_retry,
             sleeper: self.sleeper,
-        }
+        })
     }
 }
 
@@ -206,10 +202,10 @@ mod tests {
     async fn test_success_first_attempt() {
         let policy = RetryPolicy::builder()
             .max_attempts(3)
-            .expect("max_attempts > 0")
             .backoff(Backoff::constant(Duration::from_millis(100)))
             .with_sleeper(InstantSleeper)
-            .build();
+            .build()
+            .expect("builder");
 
         let counter = Arc::new(AtomicUsize::new(0));
         let counter_clone = counter.clone();
@@ -232,10 +228,10 @@ mod tests {
     async fn test_success_after_retries() {
         let policy = RetryPolicy::builder()
             .max_attempts(5)
-            .expect("max_attempts > 0")
             .backoff(Backoff::constant(Duration::from_millis(10)))
             .with_sleeper(InstantSleeper)
-            .build();
+            .build()
+            .expect("builder");
 
         let counter = Arc::new(AtomicUsize::new(0));
         let counter_clone = counter.clone();
@@ -262,10 +258,10 @@ mod tests {
     async fn test_retry_exhaustion() {
         let policy = RetryPolicy::builder()
             .max_attempts(3)
-            .expect("max_attempts > 0")
             .backoff(Backoff::constant(Duration::from_millis(10)))
             .with_sleeper(InstantSleeper)
-            .build();
+            .build()
+            .expect("builder");
 
         let counter = Arc::new(AtomicUsize::new(0));
         let counter_clone = counter.clone();
@@ -299,10 +295,10 @@ mod tests {
     async fn retry_exhausted_caps_stored_failures() {
         let policy = RetryPolicy::builder()
             .max_attempts(20)
-            .expect("max_attempts > 0")
             .backoff(Backoff::constant(Duration::from_millis(1)))
             .with_sleeper(InstantSleeper)
-            .build();
+            .build()
+            .expect("builder");
 
         let result = policy
             .execute(|| async {
@@ -323,11 +319,11 @@ mod tests {
         let sleeper = TrackingSleeper::new();
         let policy = RetryPolicy::builder()
             .max_attempts(4)
-            .expect("max_attempts > 0")
             .backoff(Backoff::linear(Duration::from_millis(100)))
             .with_jitter(Jitter::None)
             .with_sleeper(sleeper.clone())
-            .build();
+            .build()
+            .expect("builder");
 
         let counter = Arc::new(AtomicUsize::new(0));
         let counter_clone = counter.clone();
@@ -356,11 +352,11 @@ mod tests {
         let sleeper = TrackingSleeper::new();
         let policy = RetryPolicy::builder()
             .max_attempts(3)
-            .expect("max_attempts > 0")
             .backoff(Backoff::constant(Duration::from_millis(100)))
             .with_jitter(Jitter::full())
             .with_sleeper(sleeper.clone())
-            .build();
+            .build()
+            .expect("builder");
 
         let counter = Arc::new(AtomicUsize::new(0));
         let counter_clone = counter.clone();
@@ -389,11 +385,11 @@ mod tests {
     async fn test_should_retry_predicate() {
         let policy = RetryPolicy::builder()
             .max_attempts(5)
-            .expect("max_attempts > 0")
             .backoff(Backoff::constant(Duration::from_millis(10)))
             .with_sleeper(InstantSleeper)
             .should_retry(|e: &TestError| e.0.contains("retryable"))
-            .build();
+            .build()
+            .expect("builder");
 
         let counter = Arc::new(AtomicUsize::new(0));
         let counter_clone = counter.clone();
@@ -438,9 +434,9 @@ mod tests {
     async fn test_max_attempts_config() {
         let policy = RetryPolicy::builder()
             .max_attempts(1)
-            .expect("max_attempts > 0")
             .with_sleeper(InstantSleeper)
-            .build();
+            .build()
+            .expect("builder");
 
         let counter = Arc::new(AtomicUsize::new(0));
         let counter_clone = counter.clone();
@@ -463,10 +459,10 @@ mod tests {
     async fn test_resilience_error_not_retried() {
         let policy = RetryPolicy::builder()
             .max_attempts(5)
-            .expect("max_attempts > 0")
             .backoff(Backoff::constant(Duration::from_millis(10)))
             .with_sleeper(InstantSleeper)
-            .build();
+            .build()
+            .expect("builder");
 
         let counter = Arc::new(AtomicUsize::new(0));
         let counter_clone = counter.clone();
@@ -495,11 +491,11 @@ mod tests {
         let sleeper = TrackingSleeper::new();
         let policy = RetryPolicy::builder()
             .max_attempts(4)
-            .expect("max_attempts > 0")
             .backoff(Backoff::exponential(Duration::from_millis(100)))
             .with_jitter(Jitter::None)
             .with_sleeper(sleeper.clone())
-            .build();
+            .build()
+            .expect("builder");
 
         let _ = policy
             .execute(|| async {

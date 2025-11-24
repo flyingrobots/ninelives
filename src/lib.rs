@@ -27,10 +27,11 @@
 //!     let attempts = Arc::new(AtomicUsize::new(0));
 //!
 //!     let policy = RetryPolicy::builder()
-//!         .max_attempts(3).expect("max_attempts > 0")
+//!         .max_attempts(3)
 //!         .backoff(Backoff::exponential(Duration::from_millis(200)))
 //!         .with_jitter(Jitter::full())
-//!         .build();
+//!         .build()
+//!         .expect("valid retry policy");
 //!
 //!     policy
 //!         .execute(|| {
