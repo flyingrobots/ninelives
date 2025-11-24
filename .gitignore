@@ -8,6 +8,8 @@
 ._*
 .Spotlight-V100
 .Trashes
+
+# Windows noise
 ehthumbs.db
 Thumbs.db
 
@@ -18,4 +20,4 @@ Thumbs.db
 .fleet/
 
 # Misc project-local
-obsidian
+.obsidian/
