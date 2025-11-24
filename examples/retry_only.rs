@@ -44,9 +44,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let slow = Policy(TimeoutLayer::new(Duration::from_secs(2))?);
     let policy = fast | slow; // Try fast first, fallback to slow
 
-    let mut fallback_svc = ServiceBuilder::new()
-        .layer(policy)
-        .service_fn(|req: &'static str| async move {
+    let mut fallback_svc =
+        ServiceBuilder::new().layer(policy).service_fn(|req: &'static str| async move {
             tokio::time::sleep(Duration::from_millis(100)).await;
             Ok::<_, std::io::Error>(format!("Processed: {}", req))
         });

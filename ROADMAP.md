@@ -42,13 +42,13 @@
 - [x] Add doc tests for algebra operators
 
 ### Testing & CI
-- [ ] Adapt integration tests to Layer/Service architecture
-- [ ] Add test coverage for:
-  - [ ] Combined composition (`A + B`)
-  - [ ] Fallback composition (`A | B`)
-  - [ ] Nested composition (`A | B + C`)
-- [ ] Ensure clippy passes
-- [ ] Ensure all doc tests pass
+- [x] Adapt integration tests to Layer/Service architecture
+- [x] Add test coverage for:
+  - [x] Combined composition (`A + B`)
+  - [x] Fallback composition (`A | B`)
+  - [x] Nested composition (`A | B + C`)
+- [x] Ensure clippy passes
+- [x] Ensure all doc tests pass
 - [ ] Add CI workflow if missing
 
 **Milestone:** Publish `ninelives` v1.0.0 - The tower-native algebraic resilience library

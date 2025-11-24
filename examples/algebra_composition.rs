@@ -81,11 +81,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let policy = Policy(TimeoutLayer::new(Duration::from_secs(5))?)
         + Policy(TimeoutLayer::new(Duration::from_secs(1))?);
 
-    let _svc = ServiceBuilder::new()
-        .layer(policy)
-        .service_fn(|req: &'static str| async move {
-            Ok::<_, std::io::Error>(format!("Response: {}", req))
-        });
+    let _svc = ServiceBuilder::new().layer(policy).service_fn(|req: &'static str| async move {
+        Ok::<_, std::io::Error>(format!("Response: {}", req))
+    });
 
     println!("   ✓ ServiceBuilder::new().layer(policy).service_fn(...)");
     println!("   Ready to handle requests with composed resilience!\n");
