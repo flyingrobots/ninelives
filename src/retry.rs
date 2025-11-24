@@ -105,8 +105,10 @@ where
                     // Calculate backoff delay for this retry (1-indexed: first retry uses delay(1))
                     let mut delay = self.backoff.delay(attempt + 1);
 
-                    // Apply jitter
-                    delay = self.jitter.apply(delay);
+                    delay = match &self.jitter {
+                        Jitter::Decorrelated(_) => self.jitter.apply_stateful(),
+                        _ => self.jitter.apply(delay),
+                    };
 
                     // Sleep before next attempt
                     self.sleeper.sleep(delay).await;

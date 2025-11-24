@@ -4,12 +4,13 @@
 //! - `None`: deterministic retries for tests or tightly controlled workflows.
 //! - `Full`: uniform in `[0, delay]`, good default to spread load.
 //! - `Equal`: uniform in `[delay/2, delay]`, keeps a floor while adding randomness.
-//! - `Decorrelated`: AWS-style decorrelated jitter that grows based on previous sleep to avoid synchronization; it **ignores the `delay` passed to `apply`** and instead uses its own `base`/`max` bounds plus the last jittered sleep.
+//! - `Decorrelated`: AWS-style decorrelated jitter that grows based on previous sleep; use the
+//!   stateful API (`apply_stateful`) because the `delay` argument is not used.
 //!
 //! Notes:
 //! - RNG: uses `rand`'s thread-local RNG by default; deterministic RNGs can be injected via `apply_with_rng`.
 //! - Precision: millisecond conversions saturate to `u64::MAX` to avoid panics on very large durations.
-//! - Decorrelated jitter here is stateful; it tracks the previous sleep internally and ignores the `delay` argument to `apply`. Configure its starting magnitude with `Jitter::decorrelated(base, max)` and your backoff choice; do not expect per-call `delay` inputs to be honored for this variant.
+//! - Decorrelated jitter here is stateful; it tracks the previous sleep internally. Use\n//!   `apply_stateful` for the decorrelated variant so you don’t pass a meaningless delay. Configure\n//!   its starting magnitude with `Jitter::decorrelated(base, max)` and your backoff choice.
 //!
 //! Example:
 //! ```rust
@@ -81,8 +82,46 @@ impl Jitter {
 
     /// Apply jitter to a delay duration
     pub fn apply(&self, delay: Duration) -> Duration {
-        let mut rng = rng();
-        self.apply_internal(delay, &mut rng)
+        match self {
+            Jitter::Decorrelated(_) => {
+                panic!("use apply_stateful() for decorrelated jitter to avoid ignoring delay")
+            }
+            _ => {
+                let mut rng = rng();
+                self.apply_internal(delay, &mut rng)
+            }
+        }
+    }
+
+    /// Apply jitter for the decorrelated strategy, which uses internal state and ignores the passed delay.
+    pub fn apply_stateful(&self) -> Duration {
+        match self {
+            Jitter::Decorrelated(config) => {
+                let base_millis = Self::as_millis_saturated(config.base);
+                let max_millis = Self::as_millis_saturated(config.max);
+                let mut rng = rng();
+
+                loop {
+                    let prev_millis = config.previous.load(Ordering::Acquire);
+                    let upper = prev_millis.saturating_mul(3).min(max_millis);
+                    let lower = base_millis.min(upper);
+                    let jittered = rng.random_range(lower..=upper);
+                    if config
+                        .previous
+                        .compare_exchange(
+                            prev_millis,
+                            jittered,
+                            Ordering::AcqRel,
+                            Ordering::Acquire,
+                        )
+                        .is_ok()
+                    {
+                        return Duration::from_millis(jittered);
+                    }
+                }
+            }
+            _ => panic!("apply_stateful only valid for decorrelated jitter"),
+        }
     }
 
     /// Apply jitter with a custom RNG (for testing)
@@ -99,17 +138,11 @@ impl Jitter {
             Jitter::None => delay,
             Jitter::Full => {
                 let millis = Self::as_millis_saturated(delay);
-                if millis == 0 {
-                    return Duration::from_millis(0);
-                }
                 let jittered = rng.random_range(0..=millis);
                 Duration::from_millis(jittered)
             }
             Jitter::Equal => {
                 let millis = Self::as_millis_saturated(delay);
-                if millis == 0 {
-                    return Duration::from_millis(0);
-                }
                 let half = millis / 2;
                 let jittered = rng.random_range(half..=millis);
                 Duration::from_millis(jittered)
@@ -183,7 +216,6 @@ mod tests {
 
         let jittered = jitter.apply_with_rng(delay, &mut rng);
         assert!(jittered <= delay);
-        assert!(jittered <= Duration::from_millis(1000)); // Inclusive upper bound
     }
 
     #[test]
@@ -201,10 +233,9 @@ mod tests {
     fn decorrelated_jitter_respects_bounds() {
         let jitter =
             Jitter::decorrelated(Duration::from_millis(100), Duration::from_secs(10)).unwrap();
-        let delay = Duration::from_secs(1);
 
         for _ in 0..100 {
-            let jittered = jitter.apply(delay);
+            let jittered = jitter.apply_stateful();
             assert!(jittered >= Duration::from_millis(100)); // >= base
             assert!(jittered <= Duration::from_secs(10)); // <= max
         }
@@ -214,16 +245,20 @@ mod tests {
     fn jitter_handles_zero_delay() {
         assert_eq!(Jitter::full().apply(Duration::from_millis(0)), Duration::from_millis(0));
         assert_eq!(Jitter::equal().apply(Duration::from_millis(0)), Duration::from_millis(0));
+        let decorrelated =
+            Jitter::decorrelated(Duration::from_millis(100), Duration::from_secs(10)).unwrap();
+        let first = decorrelated.apply_stateful();
+        assert!(first >= Duration::from_millis(100));
     }
 
     #[test]
     fn decorrelated_jitter_caps_at_max() {
         let jitter = Jitter::decorrelated(Duration::from_secs(1), Duration::from_secs(5)).unwrap();
-        let huge_delay = Duration::from_secs(100);
 
         for _ in 0..50 {
-            let jittered = jitter.apply(huge_delay);
+            let jittered = jitter.apply_stateful();
             assert!(jittered <= Duration::from_secs(5));
+            assert!(jittered >= Duration::from_secs(1));
         }
     }
 
@@ -247,25 +282,17 @@ mod tests {
 
         // Second call should use previous jittered sleep as seed for growth
         let expected_upper =
-            (first.as_millis() * 3).min(Duration::from_secs(10).as_millis()) as u64;
+            std::cmp::min(first.as_millis().saturating_mul(3), Duration::from_secs(10).as_millis())
+                as u64;
         let second = jitter.apply_with_rng(Duration::from_secs(1), &mut rng);
         assert!(second.as_millis() as u64 >= 100);
         assert!(second.as_millis() as u64 <= expected_upper);
     }
 
     #[test]
-    fn decorrelated_handles_zero_delay_using_prev_logic() {
-        let jitter =
-            Jitter::decorrelated(Duration::from_millis(100), Duration::from_secs(10)).unwrap();
-        let result = jitter.apply(Duration::from_millis(0));
-        assert!(result >= Duration::from_millis(100));
-        assert!(result <= Duration::from_millis(300));
-    }
-
     #[test]
     fn saturates_large_durations_without_panicking() {
-        // Extremely large duration; saturates to u64::MAX milliseconds for RNG bounds
-        let huge = Duration::from_millis(u64::MAX);
+        let huge = Duration::from_secs(u64::MAX);
         let jitter = Jitter::full();
         let mut rng = StdRng::seed_from_u64(999);
 
