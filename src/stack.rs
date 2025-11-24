@@ -184,8 +184,6 @@ where
     }
 }
 
-/// Builder for composing resilience policies in a fixed order.
-/// Configuration methods that can fail return `Result<Self, StackError>` to surface
 /// invalid inputs eagerly rather than panicking at runtime.
 #[derive(Debug, Clone)]
 pub struct ResilienceStackBuilder<E> {

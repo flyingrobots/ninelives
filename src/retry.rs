@@ -64,11 +64,11 @@ where
                     if attempt + 1 >= self.max_attempts {
                         return Err(ResilienceError::RetryExhausted {
                             attempts: self.max_attempts,
-                            failures: failures.into_iter().collect(),
+                            failures: std::sync::Arc::new(failures.into_iter().collect()),
                         });
                     }
 
-                    // Calculate backoff delay (backoff.delay is 1-indexed)
+                    // Calculate backoff delay for this retry (1-indexed: first retry uses delay(1))
                     let mut delay = self.backoff.delay(attempt + 1);
 
                     // Apply jitter
@@ -82,8 +82,11 @@ where
             }
         }
 
-        // Should be unreachable due to loop logic, but satisfy compiler
-        unreachable!("Retry loop should have returned or errored")
+        // Safety: unreachable because loop executes max_attempts times and each iteration
+        // either returns or continues. On last iteration (attempt == max_attempts - 1),
+        // we always return RetryExhausted for retryable errors.
+        debug_assert!(false, "Retry loop should have returned; this indicates a logic bug");
+        unreachable!()
     }
 }
 

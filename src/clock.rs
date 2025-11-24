@@ -67,17 +67,19 @@ mod tests {
         let clone = clock.clone();
         let a = clock.now_millis();
         let b = clone.now_millis();
-        assert!((a as i64 - b as i64).abs() < 5);
-        std::thread::sleep(Duration::from_millis(5));
+        let diff = a.abs_diff(b);
+        assert!(diff < 5, "Clones differ by {}ms", diff);
+        thread::sleep(Duration::from_millis(5));
         let a2 = clock.now_millis();
         let b2 = clone.now_millis();
-        assert!((a2 as i64 - b2 as i64).abs() < 10);
+        let diff2 = a2.abs_diff(b2);
+        assert!(diff2 < 10, "Clones differ by {}ms after sleep", diff2);
     }
 
     #[test]
     fn independent_epochs_differ() {
         let a = MonotonicClock::new();
-        std::thread::sleep(Duration::from_millis(2));
+        thread::sleep(Duration::from_millis(2));
         let b = MonotonicClock::new();
         let a_now = a.now_millis();
         let b_now = b.now_millis();

@@ -1,13 +1,14 @@
 //! Error types for resilience policies
 
 use std::fmt;
+use std::sync::Arc;
 use std::time::Duration;
 
 /// Cap the number of stored failures inside RetryExhausted to avoid unbounded growth.
 pub const MAX_RETRY_FAILURES: usize = 10;
 
 /// Unified error type for all resilience policies
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub enum ResilienceError<E> {
     /// The operation exceeded the timeout duration
     Timeout { elapsed: Duration, timeout: Duration },
@@ -16,7 +17,7 @@ pub enum ResilienceError<E> {
     /// The circuit breaker is open
     CircuitOpen { failure_count: usize, open_duration: Duration },
     /// All retry attempts were exhausted
-    RetryExhausted { attempts: usize, failures: Vec<E> },
+    RetryExhausted { attempts: usize, failures: Arc<Vec<E>> },
     /// The underlying operation failed
     Inner(E),
 }
@@ -38,20 +39,23 @@ impl<E: fmt::Display> fmt::Display for ResilienceError<E> {
                 )
             }
             Self::RetryExhausted { attempts, failures } => {
+                let recorded = failures.len();
+                let truncated_note = if recorded < *attempts {
+                    format!(" (recorded last {} failures)", recorded)
+                } else {
+                    String::new()
+                };
                 if let Some(last) = failures.last() {
                     write!(
                         f,
-                        "retry exhausted after {} attempts ({} failures), last error: {}",
-                        attempts,
-                        failures.len(),
-                        last
+                        "retry exhausted after {} attempts{}; last error: {}",
+                        attempts, truncated_note, last
                     )
                 } else {
                     write!(
                         f,
-                        "retry exhausted after {} attempts ({} failures)",
-                        attempts,
-                        failures.len()
+                        "retry exhausted after {} attempts{}; no recorded failures",
+                        attempts, truncated_note
                     )
                 }
             }
@@ -129,6 +133,38 @@ impl<E> ResilienceError<E> {
             _ => None,
         }
     }
+
+    /// Access timeout details if this is a timeout error.
+    pub fn timeout_details(&self) -> Option<(Duration, Duration)> {
+        match self {
+            Self::Timeout { elapsed, timeout } => Some((*elapsed, *timeout)),
+            _ => None,
+        }
+    }
+
+    /// Access circuit-open remaining duration if present.
+    pub fn circuit_open_duration(&self) -> Option<Duration> {
+        match self {
+            Self::CircuitOpen { open_duration, .. } => Some(*open_duration),
+            _ => None,
+        }
+    }
+
+    /// Access bulkhead capacity info as (in_flight, max).
+    pub fn bulkhead_capacity(&self) -> Option<(usize, usize)> {
+        match self {
+            Self::Bulkhead { in_flight, max } => Some((*in_flight, *max)),
+            _ => None,
+        }
+    }
+
+    /// Access retry exhaustion info as (attempts, recorded_failures).
+    pub fn retry_exhausted_info(&self) -> Option<(usize, usize)> {
+        match self {
+            Self::RetryExhausted { attempts, failures } => Some((*attempts, failures.len())),
+            _ => None,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -183,7 +219,7 @@ mod tests {
     fn retry_exhausted_display_includes_last_error() {
         let err: ResilienceError<DummyError> = ResilienceError::RetryExhausted {
             attempts: 3,
-            failures: vec![DummyError("first"), DummyError("last")],
+            failures: Arc::new(vec![DummyError("first"), DummyError("last")]),
         };
         let msg = format!("{}", err);
         assert!(msg.contains("3"));
@@ -194,7 +230,7 @@ mod tests {
     #[test]
     fn retry_exhausted_display_handles_empty_failures() {
         let err: ResilienceError<DummyError> =
-            ResilienceError::RetryExhausted { attempts: 3, failures: vec![] };
+            ResilienceError::RetryExhausted { attempts: 3, failures: Arc::new(vec![]) };
         let msg = format!("{}", err);
         assert!(msg.contains("3"));
         assert!(msg.contains("0 failures"));
@@ -224,7 +260,7 @@ mod tests {
     fn source_returns_last_failure_for_retry_exhausted() {
         let err: ResilienceError<DummyError> = ResilienceError::RetryExhausted {
             attempts: 3,
-            failures: vec![DummyError("a"), DummyError("b")],
+            failures: Arc::new(vec![DummyError("a"), DummyError("b")]),
         };
         let src = err.source().unwrap();
         assert_eq!(src.to_string(), "b");
@@ -259,7 +295,7 @@ mod tests {
         assert!(circuit.is_circuit_open());
 
         let retry: ResilienceError<DummyError> =
-            ResilienceError::RetryExhausted { attempts: 2, failures: vec![] };
+            ResilienceError::RetryExhausted { attempts: 2, failures: Arc::new(vec![]) };
         assert!(retry.is_retry_exhausted());
     }
 
