@@ -49,7 +49,7 @@
   - [x] Nested composition (`A | B + C`)
 - [x] Ensure clippy passes
 - [x] Ensure all doc tests pass
-- [ ] Add CI workflow if missing
+- [x] Add CI workflow if missing
 
 **Milestone:** Publish `ninelives` v1.0.0 - The tower-native algebraic resilience library
 
