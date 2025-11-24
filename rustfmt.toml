@@ -1,4 +1,10 @@
+# Use Rust 2021 edition formatting (matches Cargo.toml)
+edition = "2021"
+# Keep lines readable but not too short
 max_width = 100
+# Normalize line endings for cross-platform consistency
 newline_style = "Unix"
+# Use maximal heuristics to reduce formatting churn on multi-line constructs
 use_small_heuristics = "Max"
+# Enforce ordered imports for readability
 reorder_imports = true
