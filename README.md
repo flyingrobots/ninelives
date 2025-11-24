@@ -12,11 +12,6 @@ Practical retries, circuit breakers, bulkheads, and timeouts that compose in a s
 ninelives = { path = ".", features = ["tokio"] }
 ```
 
-### Features
-| Feature | Default | Description |
-|---------|---------|-------------|
-| `tokio` | ✅      | Enables integration with Tokio timers and primitives (required). |
-
 ### MSRV
 - `rust-version = "1.70"` (per Cargo.toml). CI uses the latest stable toolchain; we aim to keep MSRV at or above 1.70 and will bump it in the changelog when required.
 
