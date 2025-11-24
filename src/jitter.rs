@@ -34,7 +34,7 @@ pub struct DecorrelatedConfig {
 
 impl Clone for DecorrelatedConfig {
     fn clone(&self) -> Self {
-        let prev = *self.previous.lock().unwrap();
+        let prev = self.previous.lock().map(|g| *g).unwrap_or(self.base);
         Self { base: self.base, max: self.max, previous: std::sync::Mutex::new(prev) }
     }
 }
