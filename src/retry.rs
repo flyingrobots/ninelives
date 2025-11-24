@@ -2,6 +2,7 @@
 //!
 //! Provides configurable retry with backoff and jitter, plus retry predicate and pluggable sleeper.
 
+use crate::error::MAX_RETRY_FAILURES;
 use crate::{Backoff, Jitter, ResilienceError, Sleeper, TokioSleeper};
 use std::future::Future;
 use std::sync::Arc;
@@ -53,6 +54,11 @@ where
                     }
 
                     failures.push(e);
+
+                    if failures.len() > MAX_RETRY_FAILURES {
+                        let excess = failures.len() - MAX_RETRY_FAILURES;
+                        failures.drain(0..excess);
+                    }
 
                     // If this was the last attempt, return RetryExhausted
                     if attempt + 1 >= self.max_attempts {
