@@ -47,9 +47,7 @@ use crate::{
     ResilienceError, RetryPolicy, TimeoutError, TimeoutPolicy,
 };
 use std::future::Future;
-use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::Mutex;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StackError {
@@ -103,8 +101,7 @@ where
     ///
     /// ```no_run
     /// use std::time::Duration;
-    /// use ninelives as your_crate;
-    /// use your_crate::ResilienceStack;
+    /// use ninelives::ResilienceStack;
     /// let stack = ResilienceStack::<std::io::Error>::new()
     ///     .timeout(Duration::from_secs(1)).expect("valid timeout")
     ///     .build()
@@ -127,40 +124,32 @@ where
     where
         T: Send,
         Fut: Future<Output = Result<T, ResilienceError<E>>> + Send,
-        Op: FnMut() -> Fut + Send,
+        Op: Fn() -> Fut + Clone + Send + Sync,
     {
-        let op_cell = Arc::new(Mutex::new(operation));
+        let circuit_breaker = self.circuit_breaker.clone();
+        let bulkhead = self.bulkhead.clone();
+        let timeout = self.timeout.clone();
+        let retry = &self.retry;
 
-        // Use references to avoid cloning policies on each attempt.
-        let circuit_breaker = &self.circuit_breaker;
-        let bulkhead = &self.bulkhead;
-        let timeout = &self.timeout;
-
-        self.retry
+        retry
             .execute(|| {
-                let op = op_cell.clone();
+                let op_outer = operation.clone();
+                let circuit_breaker = circuit_breaker.clone();
+                let bulkhead = bulkhead.clone();
+                let timeout = timeout.clone();
 
                 async move {
                     circuit_breaker
                         .execute(|| {
-                            let op = op.clone();
-
+                            let op_cb = op_outer.clone();
+                            let bulkhead = bulkhead.clone();
+                            let timeout = timeout.clone();
                             async move {
                                 bulkhead
                                     .execute(|| {
-                                        let op = op.clone();
-
-                                        async move {
-                                            timeout
-                                                .execute(|| async {
-                                                    let fut = {
-                                                        let mut guard = op.lock().await;
-                                                        (&mut *guard)()
-                                                    };
-                                                    fut.await
-                                                })
-                                                .await
-                                        }
+                                        let op_bh = op_cb.clone();
+                                        let timeout = timeout.clone();
+                                        async move { timeout.execute(op_bh).await }
                                     })
                                     .await
                             }
@@ -178,13 +167,23 @@ where
 {
     /// Defaults: timeout 30s, bulkhead 100, circuit breaker (5 failures, 60s open), retry builder defaults.
     fn default() -> Self {
-        ResilienceStackBuilder::new()
-            .build()
-            .expect("default resilience stack configuration should be valid")
+        ResilienceStack {
+            timeout: TimeoutPolicy::new(Duration::from_secs(DEFAULT_TIMEOUT_SECS))
+                .expect("constant timeout should be valid"),
+            bulkhead: BulkheadPolicy::new(DEFAULT_BULKHEAD_MAX_CONCURRENT)
+                .expect("constant bulkhead should be valid"),
+            circuit_breaker: CircuitBreakerPolicy::new(
+                DEFAULT_CIRCUIT_BREAKER_FAILURES,
+                Duration::from_secs(DEFAULT_CIRCUIT_BREAKER_TIMEOUT_SECS),
+            )
+            .expect("constant circuit breaker should be valid"),
+            retry: RetryPolicy::builder().build().expect("default retry policy should be valid"),
+        }
     }
 }
 
-/// invalid inputs eagerly rather than panicking at runtime.
+/// A builder for composing timeout, bulkhead, circuit breaker, and retry policies; it validates
+/// configuration early to produce clear errors.
 #[derive(Debug, Clone)]
 pub struct ResilienceStackBuilder<E> {
     timeout: Option<TimeoutPolicy>,
@@ -231,7 +230,6 @@ where
     }
 
     /// Configure a circuit breaker with failure threshold and open timeout.
-    /// Panics if parameters are invalid.
     pub fn circuit_breaker(
         mut self,
         failures: usize,
