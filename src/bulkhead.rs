@@ -1,4 +1,38 @@
-//! Bulkhead implementation for concurrency limiting
+//! Bulkhead implementation for concurrency limiting.
+//!
+//! A bulkhead caps concurrent operations to protect downstream services and bound resource usage.
+//! This implementation is non-blocking: when no permits are available it rejects immediately
+//! (`ResilienceError::Bulkhead`) rather than queuing. Permits are released when the wrapped
+//! operation finishes.
+//!
+//! Example
+//! ```rust
+//! use ninelives::{BulkheadPolicy, ResilienceError};
+//! use std::sync::atomic::{AtomicUsize, Ordering};
+//!
+//! # tokio::runtime::Runtime::new().unwrap().block_on(async {
+//! let bulkhead = BulkheadPolicy::new(1).expect("valid bulkhead");
+//! let counter = AtomicUsize::new(0);
+//! let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+//! let (release_tx, release_rx) = tokio::sync::oneshot::channel();
+//! let holder = tokio::spawn({
+//!     let bh = bulkhead.clone();
+//!     async move {
+//!         let _ = bh.execute(|| async {
+//!             counter.fetch_add(1, Ordering::SeqCst);
+//!             let _ = started_tx.send(());
+//!             let _ = release_rx.await;
+//!             Ok::<_, ResilienceError<std::io::Error>>(())
+//!         }).await;
+//!     }
+//! });
+//! started_rx.await.unwrap();
+//! let rejected = bulkhead.execute(|| async { Ok::<_, ResilienceError<std::io::Error>>(()) }).await;
+//! assert!(rejected.unwrap_err().is_bulkhead());
+//! let _ = release_tx.send(());
+//! let _ = holder.await;
+//! # });
+//! ```
 
 use crate::ResilienceError;
 use std::future::Future;
@@ -6,14 +40,19 @@ use std::sync::Arc;
 use tokio::sync::Semaphore;
 
 #[derive(Debug, Clone)]
+/// Concurrency-limiting bulkhead. Clones share the same underlying semaphore via `Arc`, so they
+/// observe and affect the same in-flight count. `max_concurrent` is the configured permit ceiling.
 pub struct BulkheadPolicy {
     semaphore: Arc<Semaphore>,
     /// Mirrors the initial semaphore capacity; used only for reporting.
     max_concurrent: usize,
 }
 
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Errors produced while configuring a bulkhead (e.g., invalid permit counts).
 pub enum BulkheadError {
+    /// `max_concurrent` was zero (invalid).
     InvalidMaxConcurrent { provided: usize },
 }
 
@@ -30,11 +69,12 @@ impl std::fmt::Display for BulkheadError {
 impl std::error::Error for BulkheadError {}
 
 /// Large but finite permit count used to approximate "unlimited".
-pub const UNLIMITED_PERMITS: usize = 1_000_000_000;
+pub const UNLIMITED_PERMITS: usize = Semaphore::MAX_PERMITS as usize;
 
 impl BulkheadPolicy {
     /// Create a bulkhead with the given maximum concurrent permits.
     /// Returns `Err` if `max_concurrent` is zero.
+    #[must_use]
     pub fn new(max_concurrent: usize) -> Result<Self, BulkheadError> {
         if max_concurrent == 0 {
             return Err(BulkheadError::InvalidMaxConcurrent { provided: max_concurrent });
@@ -43,12 +83,26 @@ impl BulkheadPolicy {
         Ok(Self { semaphore: Arc::new(Semaphore::new(max_concurrent)), max_concurrent })
     }
 
+    /// Construct an effectively unlimited bulkhead using `UNLIMITED_PERMITS` (derived from
+    /// `Semaphore::MAX_PERMITS`). Operations still reject immediately if all permits are in use.
     pub fn unlimited() -> Self {
-        // Semaphore::MAX_PERMITS is defined as usize::MAX >> 3 (about usize::MAX / 8)
-        // Use a large but safe value: UNLIMITED_PERMITS concurrent operations
-        Self::new(UNLIMITED_PERMITS).expect("UNLIMITED_PERMITS is always > 0")
+        // Safe: constant respects semaphore maximum.
+        Self::new(UNLIMITED_PERMITS).unwrap()
     }
 
+    /// Maximum configured concurrent permits.
+    pub fn max_concurrent(&self) -> usize {
+        self.max_concurrent
+    }
+
+    /// Best-effort current available permits (may be stale due to races).
+    pub fn available_permits(&self) -> usize {
+        self.semaphore.available_permits()
+    }
+
+    /// Execute an operation with bulkhead protection. Non-blocking: if no permits are available
+    /// the call is rejected immediately with `ResilienceError::Bulkhead`. Permits are released when
+    /// the operation future completes. The reported `in_flight` is best-effort due to races.
     pub async fn execute<T, E, Fut, Op>(&self, operation: Op) -> Result<T, ResilienceError<E>>
     where
         T: Send,
@@ -58,10 +112,16 @@ impl BulkheadPolicy {
     {
         let _permit = match self.semaphore.try_acquire() {
             Ok(p) => p,
-            Err(_) => {
-                let available = self.semaphore.available_permits();
+            Err(tokio::sync::TryAcquireError::NoPermits) => {
+                let available = self.semaphore.available_permits(); // best-effort snapshot
                 let in_flight = self.max_concurrent.saturating_sub(available);
                 return Err(ResilienceError::Bulkhead { in_flight, max: self.max_concurrent });
+            }
+            Err(tokio::sync::TryAcquireError::Closed) => {
+                return Err(ResilienceError::Bulkhead {
+                    in_flight: self.max_concurrent,
+                    max: self.max_concurrent,
+                });
             }
         };
 

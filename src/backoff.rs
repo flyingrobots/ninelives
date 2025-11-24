@@ -47,12 +47,12 @@ impl Backoff {
         }
     }
 
-    /// Calculate the delay for a given attempt number (0-based; 0 is the first attempt)
+    /// Calculate the delay for a given attempt number (1-indexed)
     pub fn delay(&self, attempt: usize) -> Duration {
         match self {
             Backoff::Constant { delay } => *delay,
             Backoff::Linear { base, max } => {
-                // Duration::checked_mul takes u32, so clamp attempt to u32::MAX to avoid truncation
+                // Use checked_mul to prevent overflow
                 let attempt_u32 = attempt.min(u32::MAX as usize) as u32;
                 let linear = base.checked_mul(attempt_u32).unwrap_or(Duration::from_secs(u64::MAX));
                 if let Some(max) = max {
