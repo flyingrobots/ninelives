@@ -5,10 +5,11 @@ edition = "2021"
 authors = ["James Ross <james@flyingrobots.dev>"]
 description = "JSONL file sink for ninelives telemetry"
 license = "Apache-2.0"
-publish = false
+publish = true
+repository = "https://github.com/flyingrobots/ninelives"
 
 [dependencies]
-ninelives = { path = ".." }
+ninelives = { version = "0.1.0", path = ".." }
 tracing = "0.1"
 serde_json = { version = "1", optional = true }
 tokio = { version = "1", features = ["fs", "macros"], optional = true }

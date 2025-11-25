@@ -5,10 +5,11 @@ edition = "2021"
 authors = ["James Ross <james@flyingrobots.dev>"]
 description = "Optional etcd telemetry sink for ninelives"
 license = "Apache-2.0"
-publish = false
+publish = true
+repository = "https://github.com/flyingrobots/ninelives"
 
 [dependencies]
-ninelives = { path = ".." }
+ninelives = { version = "0.1.0", path = ".." }
 tracing = "0.1"
 chrono = { version = "0.4", default-features = false, features = ["clock"], optional = true }
 
