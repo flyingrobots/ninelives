@@ -2,7 +2,7 @@
 
 > Tower-native fractal supervision for async Rust — autonomous, self-healing Services via composable policy algebra.
 
-**Production-grade resilience patterns for Rust with algebraic composition.**
+Resilience patterns for Rust with algebraic composition.
 
 [![Crates.io](https://img.shields.io/crates/v/ninelives.svg)](https://crates.io/crates/ninelives)
 [![Documentation](https://docs.rs/ninelives/badge.svg)](https://docs.rs/ninelives)

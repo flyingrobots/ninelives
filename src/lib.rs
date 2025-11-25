@@ -2,7 +2,7 @@
 
 //! # Nine Lives 🐱
 //!
-//! Production-grade resilience patterns for Rust: retry policies, circuit breakers,
+//! Resilience patterns for Rust: retry policies, circuit breakers,
 //! bulkheads, and timeouts.
 //!
 //! ## Features
