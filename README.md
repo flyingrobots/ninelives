@@ -1,5 +1,7 @@
 # Nine Lives 🐱
 
+<img alt="ninelives" src="https://github.com/user-attachments/assets/354f1818-c1c5-4e0a-ba1d-30382db5705f" width="500" align="right" />
+
 **Resilience patterns for Rust with algebraic composition.**
 
 [![Crates.io](https://img.shields.io/crates/v/ninelives.svg)](https://crates.io/crates/ninelives)
@@ -8,7 +10,7 @@
 
 Nine Lives provides battle-tested resilience patterns (retry, circuit breaker, bulkhead, timeout) as composable [tower](https://github.com/tower-rs/tower) layers with a unique algebraic composition system.
 
-## Features
+### Features
 
 - 🔁 **Retry policies** with exponential/linear/constant backoff and jitter
 - ⚡ **Circuit breakers** with half-open state recovery
