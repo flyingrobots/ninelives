@@ -1,6 +1,6 @@
 //! Demonstrating algebraic composition operators in Nine Lives.
 //!
-//! Shows how to compose resilience strategies using + and | operators.
+//! Shows how to compose resilience strategies using +, |, and & operators.
 
 use ninelives::prelude::*;
 use std::time::Duration;
@@ -31,21 +31,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("   Created: Policy(Timeout100ms) | Policy(Timeout5s)");
     println!("   Behavior: Try 100ms timeout, fallback to 5s on failure\n");
 
-    // Example 3: Operator Precedence
-    println!("3. Operator Precedence: + binds tighter than |");
-    println!("   A | B + C is parsed as A | (B + C)\n");
+    // Example 3: Fork-Join Composition (&)
+    println!("3. Fork-Join Composition: A & B");
+    println!("   Try both strategies concurrently, return first success\n");
+
+    let ipv4 = Policy(TimeoutLayer::new(Duration::from_millis(100))?);
+    let ipv6 = Policy(TimeoutLayer::new(Duration::from_millis(150))?);
+
+    let _forkjoin = ipv4 & ipv6;
+    println!("   Created: Policy(Timeout100ms) & Policy(Timeout150ms)");
+    println!("   Behavior: Race both concurrently (Happy Eyeballs pattern)\n");
+
+    // Example 4: Operator Precedence
+    println!("4. Operator Precedence: & > + > |");
+    println!("   A | B + C & D is parsed as A | (B + (C & D))\n");
 
     let a = Policy(TimeoutLayer::new(Duration::from_millis(50))?);
     let b = Policy(TimeoutLayer::new(Duration::from_secs(10))?);
-    let c = Policy(TimeoutLayer::new(Duration::from_secs(5))?);
+    let c = Policy(TimeoutLayer::new(Duration::from_millis(100))?);
+    let d = Policy(TimeoutLayer::new(Duration::from_millis(150))?);
 
-    let _precedence = a | (b + c);
-    println!("   Created: A | B + C");
-    println!("   Parsed as: A | (B + C)");
-    println!("   Structure: Timeout50ms | (Timeout10s(Timeout5s(Service)))\n");
+    let _precedence = a.clone() | b.clone() + (c.clone() & d.clone());
+    println!("   Created: A | B + C & D");
+    println!("   Parsed as: A | (B + (C & D))");
+    println!("   Structure: Fallback(A, Seq(B, ForkJoin(C, D)))\n");
 
-    // Example 4: Explicit Parentheses
-    println!("4. Explicit Parentheses: (A | B) + C");
+    // Example 5: Explicit Parentheses
+    println!("5. Explicit Parentheses: (A | B) + C");
     println!("   C wraps the fallback between A and B\n");
 
     let a = Policy(TimeoutLayer::new(Duration::from_millis(100))?);
@@ -56,8 +68,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("   Created: (A | B) + C");
     println!("   Structure: Timeout30s(Fallback(Timeout100ms, Timeout5s)(Service))\n");
 
-    // Example 5: Complex Multi-Tier Strategy
-    println!("5. Complex Multi-Tier Resilience\n");
+    // Example 6: Complex Multi-Tier Strategy
+    println!("6. Complex Multi-Tier Resilience\n");
 
     let aggressive = Policy(TimeoutLayer::new(Duration::from_millis(50))?);
 
@@ -76,7 +88,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("   3. On failure, try last resort (60s timeout)");
 
     // Actually use one in a ServiceBuilder to show it works
-    println!("\n6. Using in ServiceBuilder\n");
+    println!("\n7. Using in ServiceBuilder\n");
 
     let policy = Policy(TimeoutLayer::new(Duration::from_secs(5))?)
         + Policy(TimeoutLayer::new(Duration::from_secs(1))?);

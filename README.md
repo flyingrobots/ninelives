@@ -14,7 +14,8 @@ Nine Lives provides battle-tested resilience patterns (retry, circuit breaker, b
 - ⚡ **Circuit breakers** with half-open state recovery
 - 🚧 **Bulkheads** for concurrency limiting and resource isolation
 - ⏱️ **Timeout policies** integrated with tokio
-- 🧮 **Algebraic composition** via intuitive operators (`+`, `|`)
+- 🧮 **Algebraic composition** via intuitive operators (`+`, `|`, `&`)
+- 🏎️ **Fork-join** for concurrent racing (Happy Eyeballs pattern)
 - 🔒 **Lock-free implementations** using atomics
 - 🏗️ **Tower-native** - works with any tower `Service`
 
@@ -57,8 +58,9 @@ Compose resilience strategies using intuitive operators:
 
 - **`Policy(A) + Policy(B)`** - Sequential composition: `A` wraps `B`
 - **`Policy(A) | Policy(B)`** - Fallback: try `A`, fall back to `B` on error
+- **`Policy(A) & Policy(B)`** - Fork-join: try both concurrently, return first success
 
-**Precedence:** `+` binds tighter than `|` (like multiplication and addition)
+**Precedence:** `&` > `+` > `|` (like `*` > `+` > bitwise-or in math)
 
 ### Example: Fallback Strategy
 
@@ -72,6 +74,26 @@ use tower::{ServiceBuilder, Layer};
 let fast = Policy(TimeoutLayer::new(Duration::from_millis(100))?);
 let slow = Policy(TimeoutLayer::new(Duration::from_secs(5))?);
 let policy = fast | slow;
+
+let svc = ServiceBuilder::new()
+    .layer(policy)
+    .service_fn(|req| async { Ok::<_, std::io::Error>(req) });
+```
+
+### Example: Fork-Join (Happy Eyeballs)
+
+Race two strategies concurrently and return the first success:
+
+```rust
+use ninelives::prelude::*;
+use std::time::Duration;
+
+// Create two timeout policies with different durations
+let ipv4 = Policy(TimeoutLayer::new(Duration::from_millis(100))?);
+let ipv6 = Policy(TimeoutLayer::new(Duration::from_millis(150))?);
+
+// Race them concurrently - first success wins
+let policy = ipv4 & ipv6;
 
 let svc = ServiceBuilder::new()
     .layer(policy)
@@ -241,11 +263,11 @@ match service.call(request).await {
 When combining operators, understand the precedence rules:
 
 ```rust
-// + binds tighter than |
-A | B + C   // Parsed as: A | (B + C)
+// & binds tighter than +, and + binds tighter than |
+A | B + C & D   // Parsed as: A | (B + (C & D))
 
 // Use parentheses for explicit control
-(A | B) + C // C wraps the fallback between A and B
+(A | B) + C     // C wraps the fallback between A and B
 ```
 
 **Examples:**
@@ -257,6 +279,14 @@ let policy = fast | retry + slow;
 
 // Retry wraps a fallback
 let policy = retry + (fast | slow);
+
+// Happy Eyeballs: race IPv4 and IPv6
+let policy = ipv4 & ipv6;
+// Both called concurrently, first success wins
+
+// Complex composition
+let policy = aggressive | defensive + (ipv4 & ipv6);
+// Try aggressive, fallback to defensive wrapping parallel attempts
 ```
 
 ## Testability
@@ -313,7 +343,8 @@ Benchmarks coming soon.
 | Feature | Nine Lives | Resilience4j (Java) | Polly (C#) | tower |
 |---------|-----------|---------------------|-----------|-------|
 | Uniform Service Abstraction | ✅ | ❌ | ❌ | ✅ |
-| Algebraic Composition (`+`, `\|`) | ✅ | ❌ | ❌ | ❌ |
+| Algebraic Composition (`+`, `\|`, `&`) | ✅ | ❌ | ❌ | ❌ |
+| Fork-Join (Happy Eyeballs) | ✅ | ❌ | ❌ | ❌ |
 | Tower Integration | ✅ Native | N/A | N/A | ✅ Native |
 | Lock-Free Implementations | ✅ | Partial | Partial | Varies |
 | Retry with Backoff/Jitter | ✅ | ✅ | ✅ | ❌ |
@@ -321,7 +352,7 @@ Benchmarks coming soon.
 | Bulkhead | ✅ | ✅ | ✅ | ❌ |
 | Timeout | ✅ | ✅ | ✅ | ✅ |
 
-**Nine Lives' unique advantage:** Algebraic composition lets you express complex resilience strategies declaratively, without nested builders or imperative code.
+**Nine Lives' unique advantage:** Algebraic composition with fork-join support lets you express complex resilience strategies declaratively, including concurrent racing patterns like Happy Eyeballs, without nested builders or imperative code.
 
 ## Examples
 

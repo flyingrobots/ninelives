@@ -1,6 +1,6 @@
 //! Convenient re-exports for common Nine Lives types.
 pub use crate::{
-    algebra::{CombinedLayer, FallbackLayer, Policy},
+    algebra::{CombinedLayer, FallbackLayer, ForkJoinLayer, Policy},
     backoff::{
         Backoff, BackoffError, BackoffStrategy, ConstantBackoff, ExponentialBackoff, LinearBackoff,
         MAX_BACKOFF,

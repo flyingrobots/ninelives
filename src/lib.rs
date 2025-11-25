@@ -95,10 +95,11 @@
 //!
 //! - **`Policy(A) + Policy(B)`** - Sequential composition: `A` wraps `B`
 //! - **`Policy(A) | Policy(B)`** - Fallback: try `A`, fall back to `B` on error
+//! - **`Policy(A) & Policy(B)`** - Fork-join: try both concurrently, return first success
 //!
-//! **Precedence:** `+` binds tighter than `|`
+//! **Precedence:** `&` > `+` > `|` (like `*` > `+` > bitwise-or in math)
 //!
-//! Example: `A | B + C` is parsed as `A | (B + C)`
+//! Example: `A | B + C & D` is parsed as `A | (B + (C & D))`
 //!
 //! ## Available Layers
 //!
@@ -122,7 +123,7 @@ mod sleeper;
 mod timeout;
 
 // Re-exports
-pub use algebra::{CombinedLayer, FallbackLayer, Policy};
+pub use algebra::{CombinedLayer, FallbackLayer, ForkJoinLayer, Policy};
 pub use backoff::{
     Backoff, BackoffError, BackoffStrategy, ConstantBackoff, ExponentialBackoff, LinearBackoff,
     MAX_BACKOFF,

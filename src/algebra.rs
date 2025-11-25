@@ -5,13 +5,15 @@
 //!
 //! - `Policy(A) + Policy(B)` - Sequential composition (A wraps B)
 //! - `Policy(A) | Policy(B)` - Fallback on error (try A, then B)
+//! - `Policy(A) & Policy(B)` - Fork-join (try both concurrently, return first success)
 //!
 //! # Operator Precedence
 //!
 //! When combining operators, Rust's standard operator precedence applies:
+//! - `&` (BitAnd) has higher precedence than `+` (Add)
 //! - `+` (Add) has higher precedence than `|` (BitOr)
 //!
-//! This means: `A | B + C` is parsed as `A | (B + C)`.
+//! This means: `A | B + C & D` is parsed as `A | (B + (C & D))`.
 //!
 //! **Example precedence:**
 //! ```text
@@ -82,7 +84,8 @@
 //! # }
 //! ```
 
-use std::ops::{Add, BitOr};
+use futures::future::{select, Either};
+use std::ops::{Add, BitAnd, BitOr};
 use tower_layer::Layer;
 
 /// Opt-in wrapper enabling algebraic composition of tower layers.
@@ -90,6 +93,7 @@ use tower_layer::Layer;
 /// The `Policy` wrapper allows layers to be combined using intuitive operators:
 /// - `Policy(A) + Policy(B)` - Sequential composition (A wraps B)
 /// - `Policy(A) | Policy(B)` - Fallback on error (try A, then B)
+/// - `Policy(A) & Policy(B)` - Fork-join (try both, return first success)
 ///
 /// # Examples
 ///
@@ -118,6 +122,21 @@ use tower_layer::Layer;
 /// let fast = Policy(TimeoutLayer::new(Duration::from_millis(100))?);
 /// let slow = Policy(TimeoutLayer::new(Duration::from_secs(5))?);
 /// let _policy = fast | slow;
+/// # Ok(())
+/// # }
+/// ```
+///
+/// Fork-join composition with `&`:
+/// ```
+/// use ninelives::prelude::*;
+/// use std::time::Duration;
+/// use tower_layer::Layer;
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// // Try both strategies concurrently, use whichever succeeds first
+/// let cache_a = Policy(TimeoutLayer::new(Duration::from_millis(100))?);
+/// let cache_b = Policy(TimeoutLayer::new(Duration::from_millis(100))?);
+/// let _policy = cache_a & cache_b;  // "Happy eyeballs" pattern
 /// # Ok(())
 /// # }
 /// ```
@@ -328,6 +347,165 @@ where
             match primary.call(req).await {
                 Ok(resp) => Ok(resp),
                 Err(_) => secondary.call(req_clone).await,
+            }
+        })
+    }
+}
+
+/// Fork-join composition layer that tries both `left` and `right` concurrently.
+///
+/// Created by the `&` operator on `Policy<L>` types:
+/// `Policy(A) & Policy(B)` produces `Policy<ForkJoinLayer<A, B>>`.
+///
+/// Both services are called concurrently, and the first successful result is returned.
+/// If both fail, an error is returned (currently the left error, but this may change).
+///
+/// This implements the "happy eyeballs" pattern commonly used for IPv4/IPv6 racing,
+/// cache racing, or trying multiple backends simultaneously.
+///
+/// # Example
+///
+/// ```
+/// use ninelives::prelude::*;
+/// use std::time::Duration;
+/// use tower_layer::Layer;
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// // Race two caches - use whichever responds first
+/// let cache_a = Policy(TimeoutLayer::new(Duration::from_millis(100))?);
+/// let cache_b = Policy(TimeoutLayer::new(Duration::from_millis(100))?);
+/// let _policy = cache_a & cache_b;
+/// // Tries both concurrently, returns first Ok result
+/// # Ok(())
+/// # }
+/// ```
+///
+/// # IPv4/IPv6 Happy Eyeballs Example
+///
+/// ```
+/// use ninelives::prelude::*;
+/// use std::time::Duration;
+/// use tower_layer::Layer;
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// // Try IPv4 and IPv6 in parallel
+/// let ipv4_path = Policy(TimeoutLayer::new(Duration::from_millis(300))?);
+/// let ipv6_path = Policy(TimeoutLayer::new(Duration::from_millis(300))?);
+/// let _policy = ipv4_path & ipv6_path;
+/// # Ok(())
+/// # }
+/// ```
+#[derive(Clone, Debug)]
+pub struct ForkJoinLayer<A, B> {
+    /// The left strategy (tried concurrently with right)
+    pub left: A,
+    /// The right strategy (tried concurrently with left)
+    pub right: B,
+}
+
+impl<L1, L2> BitAnd<Policy<L2>> for Policy<L1> {
+    type Output = Policy<ForkJoinLayer<L1, L2>>;
+    fn bitand(self, rhs: Policy<L2>) -> Self::Output {
+        Policy(ForkJoinLayer { left: self.0, right: rhs.0 })
+    }
+}
+
+impl<S, A, B> Layer<S> for ForkJoinLayer<A, B>
+where
+    S: Clone + Send + 'static,
+    A: Layer<S>,
+    B: Layer<S>,
+    A::Service: Send + 'static,
+    B::Service: Send + 'static,
+{
+    type Service = ForkJoinService<A::Service, B::Service>;
+
+    fn layer(&self, service: S) -> Self::Service {
+        let left = self.left.layer(service.clone());
+        let right = self.right.layer(service);
+        ForkJoinService { left, right }
+    }
+}
+
+/// Tower service that races two services concurrently, returning the first success.
+///
+/// This service is created by [`ForkJoinLayer`] and implements the actual
+/// fork-join logic at the service level. Both services are called concurrently,
+/// and the first `Ok` result is returned. If both fail, returns an error.
+///
+/// The slower service's future is dropped when the first succeeds.
+#[derive(Clone, Debug)]
+pub struct ForkJoinService<S1, S2> {
+    left: S1,
+    right: S2,
+}
+
+impl<S1, S2, Request> tower_service::Service<Request> for ForkJoinService<S1, S2>
+where
+    Request: Clone + Send + 'static,
+    S1: tower_service::Service<Request> + Clone + Send + 'static,
+    S1::Future: Send + 'static,
+    S1::Response: Send + 'static,
+    S1::Error: Send + 'static,
+    S2: tower_service::Service<Request, Response = S1::Response, Error = S1::Error>
+        + Clone
+        + Send
+        + 'static,
+    S2::Future: Send + 'static,
+    S2::Response: Send + 'static,
+    S2::Error: Send + 'static,
+{
+    type Response = S1::Response;
+    type Error = S1::Error;
+    type Future = futures::future::BoxFuture<'static, Result<Self::Response, Self::Error>>;
+
+    fn poll_ready(
+        &mut self,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Result<(), Self::Error>> {
+        let left_ready = self.left.poll_ready(cx);
+        let right_ready = self.right.poll_ready(cx);
+        match (left_ready, right_ready) {
+            (std::task::Poll::Ready(Ok(_)), _) => std::task::Poll::Ready(Ok(())),
+            (_, std::task::Poll::Ready(Ok(_))) => std::task::Poll::Ready(Ok(())),
+            (std::task::Poll::Ready(Err(e)), _) => std::task::Poll::Ready(Err(e)),
+            (_, std::task::Poll::Ready(Err(e))) => std::task::Poll::Ready(Err(e)),
+            _ => std::task::Poll::Pending,
+        }
+    }
+
+    fn call(&mut self, req: Request) -> Self::Future {
+        let mut left = self.left.clone();
+        let mut right = self.right.clone();
+        let req_clone = req.clone();
+
+        Box::pin(async move {
+            use futures::pin_mut;
+
+            let left_fut = left.call(req);
+            let right_fut = right.call(req_clone);
+
+            pin_mut!(left_fut);
+            pin_mut!(right_fut);
+
+            // Race the two futures
+            match select(left_fut, right_fut).await {
+                Either::Left((Ok(resp), _)) => Ok(resp),
+                Either::Right((Ok(resp), _)) => Ok(resp),
+                Either::Left((Err(left_err), right_fut)) => {
+                    // Left failed, try right
+                    match right_fut.await {
+                        Ok(resp) => Ok(resp),
+                        Err(_) => Err(left_err), // Both failed, return left error
+                    }
+                }
+                Either::Right((Err(right_err), left_fut)) => {
+                    // Right failed, try left
+                    match left_fut.await {
+                        Ok(resp) => Ok(resp),
+                        Err(_) => Err(right_err), // Both failed, return right error
+                    }
+                }
             }
         })
     }
