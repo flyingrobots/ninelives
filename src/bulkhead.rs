@@ -38,7 +38,7 @@ use crate::ResilienceError;
 use futures::future::BoxFuture;
 use std::future::Future;
 use std::sync::Arc;
-use tokio::sync::Semaphore;
+use tokio::sync::{Semaphore, TryAcquireError};
 use tower_layer::Layer;
 use tower_service::Service;
 
@@ -184,22 +184,16 @@ where
     }
 
     fn call(&mut self, req: Request) -> Self::Future {
-        let available = self.semaphore.available_permits();
-        if available == 0 {
-            let in_flight = self.max_concurrent;
-            return Box::pin(async move {
-                Err(ResilienceError::Bulkhead { in_flight, max: in_flight })
-            });
-        }
-
         let semaphore = self.semaphore.clone();
         let mut inner = self.inner.clone();
         let max = self.max_concurrent;
         Box::pin(async move {
-            let permit = semaphore
-                .acquire_owned()
-                .await
-                .map_err(|_| ResilienceError::Bulkhead { in_flight: max, max })?;
+            let permit = match semaphore.try_acquire_owned() {
+                Ok(p) => p,
+                Err(TryAcquireError::NoPermits) | Err(TryAcquireError::Closed) => {
+                    return Err(ResilienceError::Bulkhead { in_flight: max, max });
+                }
+            };
             let result = inner.call(req).await;
             drop(permit);
             result.map_err(ResilienceError::Inner)
@@ -220,6 +214,7 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
     use std::time::Duration;
+    use tokio::sync::oneshot;
 
     #[derive(Debug, Clone, PartialEq, Eq)]
     struct TestError(String);
@@ -441,5 +436,64 @@ mod tests {
             ResilienceError::Inner(e) => assert_eq!(e.0, "operation failed"),
             e => panic!("Expected Inner error, got {:?}", e),
         }
+    }
+
+    #[derive(Debug, Clone, Default)]
+    struct HoldService {
+        hold: Arc<tokio::sync::Mutex<Option<oneshot::Receiver<()>>>>,
+    }
+
+    impl HoldService {
+        fn with_block(rx: oneshot::Receiver<()>) -> Self {
+            Self { hold: Arc::new(tokio::sync::Mutex::new(Some(rx))) }
+        }
+    }
+
+    impl tower_service::Service<()> for HoldService {
+        type Response = ();
+        type Error = TestError;
+        type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
+
+        fn poll_ready(
+            &mut self,
+            _cx: &mut std::task::Context<'_>,
+        ) -> std::task::Poll<Result<(), Self::Error>> {
+            std::task::Poll::Ready(Ok(()))
+        }
+
+        fn call(&mut self, _req: ()) -> Self::Future {
+            let hold = self.hold.clone();
+            Box::pin(async move {
+                if let Some(rx) = hold.lock().await.take() {
+                    let _ = rx.await;
+                }
+                Ok(())
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn service_fails_fast_when_permits_exhausted() {
+        let (tx, rx) = oneshot::channel();
+        let mut svc = BulkheadService::new(HoldService::with_block(rx), 1);
+
+        // First call acquires the single permit and blocks until `tx` fires
+        let first = tokio::spawn({
+            let mut s = svc.clone();
+            async move { s.call(()).await }
+        });
+
+        // Allow the first task to reach the await point
+        tokio::task::yield_now().await;
+
+        // Second call should fail immediately with Bulkhead error (no queuing)
+        let start = tokio::time::Instant::now();
+        let res = svc.call(()).await;
+        assert!(res.is_err() && res.as_ref().unwrap_err().is_bulkhead());
+        assert!(start.elapsed() < Duration::from_millis(20));
+
+        // Unblock the first call and ensure it completes
+        let _ = tx.send(());
+        assert!(first.await.unwrap().is_ok());
     }
 }
