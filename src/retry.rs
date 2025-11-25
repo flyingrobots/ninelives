@@ -89,51 +89,15 @@ where
         Fut: Future<Output = Result<T, ResilienceError<E>>> + Send,
         Op: FnMut() -> Fut + Send,
     {
-        let mut failures: VecDeque<E> = VecDeque::new();
-
-        for attempt in 0..self.max_attempts {
-            match operation().await {
-                Ok(value) => return Ok(value),
-                Err(ResilienceError::Inner(e)) => {
-                    // Check if we should retry this error
-                    if !(self.should_retry)(&e) {
-                        return Err(ResilienceError::Inner(e));
-                    }
-
-                    failures.push_back(e);
-                    while failures.len() > MAX_RETRY_FAILURES {
-                        failures.pop_front();
-                    }
-
-                    // If this was the last attempt, return RetryExhausted
-                    if attempt + 1 >= self.max_attempts {
-                        return Err(ResilienceError::retry_exhausted(
-                            self.max_attempts,
-                            failures.into_iter().collect(),
-                        ));
-                    }
-
-                    // Calculate backoff delay for this retry (1-indexed: first retry uses delay(1))
-                    let mut delay = self.backoff.delay(attempt + 1);
-
-                    delay = match &self.jitter {
-                        Jitter::Decorrelated(_) => self.jitter.apply_stateful(),
-                        _ => self.jitter.apply(delay),
-                    };
-
-                    // Sleep before next attempt
-                    self.sleeper.sleep(delay).await;
-                }
-                // Non-Inner errors (Timeout, Bulkhead, CircuitOpen) are not retried
-                Err(e) => return Err(e),
-            }
-        }
-
-        // Safety: unreachable because loop executes max_attempts times and each iteration
-        // either returns or continues. On last iteration (attempt == max_attempts - 1),
-        // we always return RetryExhausted for retryable errors.
-        debug_assert!(false, "Retry loop should have returned; this indicates a logic bug");
-        unreachable!()
+        run_retry_loop(
+            self.max_attempts,
+            &self.backoff,
+            &self.jitter,
+            &self.should_retry,
+            &self.sleeper,
+            || operation(),
+        )
+        .await
     }
 }
 
@@ -691,42 +655,74 @@ where
 
     fn call(&mut self, req: Request) -> Self::Future {
         let layer = self.layer.clone();
-        let mut inner = self.inner.clone();
+        let inner = self.inner.clone();
         Box::pin(async move {
-            let mut failures: VecDeque<E> = VecDeque::new();
-            for attempt in 0..layer.max_attempts {
-                match inner.call(req.clone()).await {
-                    Ok(resp) => return Ok(resp),
-                    Err(err) => {
-                        let e: E = err;
-                        if !(layer.should_retry)(&e) {
-                            return Err(ResilienceError::Inner(e));
-                        }
-                        failures.push_back(e);
-                        while failures.len() > crate::error::MAX_RETRY_FAILURES {
-                            failures.pop_front();
-                        }
-                        if attempt + 1 >= layer.max_attempts {
-                            return Err(ResilienceError::retry_exhausted(
-                                layer.max_attempts,
-                                failures.into_iter().collect(),
-                            ));
-                        }
-                        let mut delay = layer.backoff.delay(attempt + 1);
-                        delay = match &layer.jitter {
-                            Jitter::Decorrelated(_) => layer.jitter.apply_stateful(),
-                            _ => layer.jitter.apply(delay),
-                        };
-                        layer.sleeper.sleep(delay).await;
-                    }
-                }
-            }
-            Err(ResilienceError::retry_exhausted(
+            run_retry_loop(
                 layer.max_attempts,
-                failures.into_iter().collect(),
-            ))
+                &layer.backoff,
+                &layer.jitter,
+                &layer.should_retry,
+                &layer.sleeper,
+                move || {
+                    let req_clone = req.clone();
+                    let mut inner_clone = inner.clone();
+                    async move { inner_clone.call(req_clone).await.map_err(ResilienceError::Inner) }
+                },
+            )
+            .await
         })
     }
+}
+
+async fn run_retry_loop<T, E, Fut, Attempt>(
+    max_attempts: usize,
+    backoff: &Backoff,
+    jitter: &Jitter,
+    should_retry: &Arc<dyn Fn(&E) -> bool + Send + Sync>,
+    sleeper: &Arc<dyn Sleeper>,
+    mut attempt: Attempt,
+) -> Result<T, ResilienceError<E>>
+where
+    T: Send,
+    E: std::error::Error + Send + Sync + 'static,
+    Fut: Future<Output = Result<T, ResilienceError<E>>> + Send,
+    Attempt: FnMut() -> Fut + Send,
+{
+    let mut failures: VecDeque<E> = VecDeque::new();
+
+    for attempt_idx in 0..max_attempts {
+        match attempt().await {
+            Ok(value) => return Ok(value),
+            Err(ResilienceError::Inner(e)) => {
+                if !(should_retry)(&e) {
+                    return Err(ResilienceError::Inner(e));
+                }
+
+                failures.push_back(e);
+                while failures.len() > MAX_RETRY_FAILURES {
+                    failures.pop_front();
+                }
+
+                if attempt_idx + 1 >= max_attempts {
+                    return Err(ResilienceError::retry_exhausted(
+                        max_attempts,
+                        failures.into_iter().collect(),
+                    ));
+                }
+
+                let mut delay = backoff.delay(attempt_idx + 1);
+                delay = match jitter {
+                    Jitter::Decorrelated(_) => jitter.apply_stateful(),
+                    _ => jitter.apply(delay),
+                };
+                sleeper.sleep(delay).await;
+            }
+            Err(e) => return Err(e),
+        }
+    }
+
+    debug_assert!(false, "Retry loop should have returned; logic bug");
+    unreachable!()
 }
 
 impl<S, E> Layer<S> for RetryLayer<E>
