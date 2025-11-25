@@ -30,10 +30,15 @@
 
 ## 🗑️ Data Handling and PII
 
-- **PII Sanitation:** **Security reports must be sanitized before submission** so they never contain Personally Identifiable Information (PII).
-- **Data Retention:** Sanitized (non-PII) report data and analysis are retained for **365 days** after resolution and then deleted.
-- **PII Error Handling:** If PII is discovered in a report due to an error, it must be **immediately redacted and escalated to maintainers**. Any retained PII must be **deleted within 180 days** of resolution.
-    * **PII Exception:** Any exception to the 180-day deletion rule requires written maintainer approval with a documented justification and expiry date. **Upon expiry of any exception, the designated maintainer or data owner must delete the retained PII within 5 business days and store a documented confirmation of deletion (timestamp, responsible person, and method) with the incident record.**
+- **PII Sanitation (submission):** **Security reports must be sanitized before submission** so they never contain Personally Identifiable Information (PII).
+- **Operational Scope:** Deletion guarantees apply to the systems we control: (1) this repository’s GitHub issues/PRs/security advisories, (2) internal trackers and ticketing systems sanctioned by the project, and (3) `@flyingrobots.dev` email accounts. Third‑party providers’ own retention (e.g., email relays, GitHub backups) may be outside our control and may keep copies per their policies.
+- **Data Retention (sanitized data):** Sanitized (non-PII) report data and analysis are retained for **365 days** after resolution and then deleted from the systems above.
+- **PII Incident Handling Process:** If PII is discovered post-submission:
+    1. **Detect & Escalate:** Reporter or reviewer flags PII; notify maintainers at security@flyingrobots.dev.
+    2. **Redact:** Within the covered systems, redact/remove PII immediately.
+    3. **Delete:** Ensure PII is deleted from covered systems within **180 days** of resolution.
+    4. **Recordkeeping:** If deletion cannot occur immediately, create an exception record containing justification, expiry date, responsible maintainer, planned deletion method, and storage location of deletion proof.
+    5. **Expiry Enforcement:** Upon exception expiry, the responsible maintainer must delete the PII within **5 business days** and store confirmation (timestamp, person, method) alongside the incident record.
 
 ---
 
