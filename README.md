@@ -1,5 +1,7 @@
 # Nine Lives 🐱
 
+> Tower-native fractal supervision for async Rust — autonomous, self-healing Services via composable policy algebra.
+
 **Production-grade resilience patterns for Rust with algebraic composition.**
 
 [![Crates.io](https://img.shields.io/crates/v/ninelives.svg)](https://crates.io/crates/ninelives)
@@ -160,6 +162,18 @@ See recipes in `src/cookbook.rs` and companion cookbooks:
 - `ninelives-etcd/README.md`
 - `ninelives-prometheus/README.md`
 - `ninelives-jsonl/README.md`
+
+## Cookbook (pick your recipe)
+
+- **Simple retry:** `retry_fast` — 3 attempts, 50ms exp backoff + jitter.
+- **Latency guard:** `timeout_p95` — 300ms budget.
+- **Bulkhead:** `bulkhead_isolate(max)` — protect shared deps.
+- **API guardrail (intermediate):** `api_guardrail` — timeout + breaker + bulkhead.
+- **Reliable read (advanced):** `reliable_read` — fast path then fallback stack.
+- **Hedged read (tricky):** `hedged_read` — fork-join two differently-tuned stacks.
+- **Sensible defaults:** `sensible_defaults` — timeout + retry + bulkhead starter pack.
+
+All live in `src/cookbook.rs`.
 
 ## Tower Integration
 

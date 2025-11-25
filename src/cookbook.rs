@@ -1,6 +1,13 @@
 //! Ready-to-use policy recipes (“cookbook”).
 //! Each function returns a `Policy<Layer>` stack you can drop into `tower::ServiceBuilder`.
 //! The goal is pragmatic defaults that are safe for production.
+//!
+//! **Ladder:**
+//! - Simple: [`retry_fast`], [`timeout_p95`], [`bulkhead_isolate`]
+//! - Intermediate: [`api_guardrail`]
+//! - Advanced: [`reliable_read`]
+//! - Tricky: [`hedged_read`]
+//! - Starter pack: [`sensible_defaults`]
 
 use std::time::Duration;
 
