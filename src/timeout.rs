@@ -41,6 +41,7 @@
 //! }
 //! ```
 
+use crate::adaptive::Adaptive;
 use crate::ResilienceError;
 use futures::future::BoxFuture;
 use std::future::Future;
@@ -83,9 +84,9 @@ impl std::fmt::Display for TimeoutError {
 impl std::error::Error for TimeoutError {}
 
 /// Policy that enforces a maximum duration on async operations.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct TimeoutPolicy {
-    duration: Duration,
+    duration: Adaptive<Duration>,
 }
 
 impl TimeoutPolicy {
@@ -108,14 +109,18 @@ impl TimeoutPolicy {
         if duration > max {
             return Err(TimeoutError::ExceedsMaximum { requested: duration, limit: max });
         }
-        Ok(Self { duration })
+        Ok(Self { duration: Adaptive::new(duration) })
     }
 
     /// Returns the configured timeout duration.
     #[must_use]
     #[inline]
     pub fn duration(&self) -> Duration {
-        self.duration
+        *self.duration.get()
+    }
+
+    pub fn adaptive_duration(&self) -> Adaptive<Duration> {
+        self.duration.clone()
     }
 
     /// Execute an operation with a timeout.
@@ -151,11 +156,12 @@ impl TimeoutPolicy {
     {
         let start = Instant::now();
 
-        match tokio::time::timeout(self.duration, operation()).await {
+        let duration = *self.duration.get();
+        match tokio::time::timeout(duration, operation()).await {
             Ok(result) => result,
             Err(_) => {
                 let elapsed = start.elapsed();
-                Err(ResilienceError::Timeout { elapsed, timeout: self.duration })
+                Err(ResilienceError::Timeout { elapsed, timeout: duration })
             }
         }
     }
@@ -166,7 +172,7 @@ use crate::telemetry::{emit_best_effort, NullSink, PolicyEvent, RequestOutcome, 
 /// Tower-native timeout layer with optional telemetry.
 #[derive(Clone)]
 pub struct TimeoutLayer<Sink = NullSink> {
-    duration: Duration,
+    duration: Adaptive<Duration>,
     sink: Sink,
 }
 
@@ -188,7 +194,7 @@ where
         NewSink: Clone,
     {
         TimeoutLayer {
-            duration: self.duration,
+            duration: self.duration.clone(),
             sink,
         }
     }
@@ -198,13 +204,13 @@ where
 #[derive(Clone)]
 pub struct TimeoutService<S, Sink = NullSink> {
     inner: S,
-    duration: Duration,
+    duration: Adaptive<Duration>,
     sink: Sink,
 }
 
 impl<S, Sink> TimeoutService<S, Sink> {
     fn new(inner: S, duration: Duration, sink: Sink) -> Self {
-        Self { inner, duration, sink }
+        Self { inner, duration: Adaptive::new(duration), sink }
     }
 }
 
@@ -231,7 +237,7 @@ where
     }
 
     fn call(&mut self, req: Request) -> Self::Future {
-        let duration = self.duration;
+        let duration = *self.duration.get();
         let fut = self.inner.call(req);
         let sink = self.sink.clone();
 
@@ -279,7 +285,7 @@ where
 {
     type Service = TimeoutService<S, Sink>;
     fn layer(&self, service: S) -> Self::Service {
-        TimeoutService::new(service, self.duration, self.sink.clone())
+        TimeoutService::new(service, *self.duration.get(), self.sink.clone())
     }
 }
 

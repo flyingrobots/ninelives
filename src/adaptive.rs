@@ -12,6 +12,7 @@ use std::sync::RwLock;
 use arc_swap::ArcSwap;
 
 /// Adaptive<T> gives cheap reads and controlled updates for shared config.
+#[derive(Debug)]
 pub struct Adaptive<T> {
     #[cfg(not(feature = "adaptive-rwlock"))]
     inner: Arc<ArcSwap<T>>,
