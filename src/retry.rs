@@ -41,6 +41,7 @@
 //! # });
 //! ```
 
+use crate::adaptive::Adaptive;
 use crate::error::MAX_RETRY_FAILURES;
 use crate::{Backoff, Jitter, ResilienceError, Sleeper, TokioSleeper};
 use futures::future::BoxFuture;
@@ -54,9 +55,9 @@ use tower_service::Service;
 /// Retry policy combining backoff, jitter, predicate, and sleeper.
 #[derive(Clone)]
 pub struct RetryPolicy<E> {
-    max_attempts: usize,
-    backoff: Backoff,
-    jitter: Jitter,
+    max_attempts: Adaptive<usize>,
+    backoff: Adaptive<Backoff>,
+    jitter: Adaptive<Jitter>,
     should_retry: Arc<dyn Fn(&E) -> bool + Send + Sync>,
     sleeper: Arc<dyn Sleeper>,
 }
@@ -64,9 +65,9 @@ pub struct RetryPolicy<E> {
 impl<E> std::fmt::Debug for RetryPolicy<E> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("RetryPolicy")
-            .field("max_attempts", &self.max_attempts)
-            .field("backoff", &self.backoff)
-            .field("jitter", &self.jitter)
+            .field("max_attempts", &*self.max_attempts.get())
+            .field("backoff", &*self.backoff.get())
+            .field("jitter", &*self.jitter.get())
             .field("sleeper", &"<sleeper>")
             .field("should_retry", &"<predicate>")
             .finish()
@@ -80,6 +81,11 @@ where
     /// Construct a new builder with defaults.
     pub fn builder() -> RetryPolicyBuilder<E> {
         RetryPolicyBuilder::new()
+    }
+
+    /// Adaptive handle for max attempts.
+    pub fn adaptive_max_attempts(&self) -> Adaptive<usize> {
+        self.max_attempts.clone()
     }
 
     /// Convert this policy into a tower Layer.
@@ -102,12 +108,14 @@ where
         Op: FnMut() -> Fut + Send,
     {
         let mut failures: VecDeque<E> = VecDeque::new();
+        let max_attempts = *self.max_attempts.get();
+        let backoff = self.backoff.get();
+        let jitter = self.jitter.get();
 
-        for attempt in 0..self.max_attempts {
+        for attempt in 0..max_attempts {
             match operation().await {
                 Ok(value) => return Ok(value),
                 Err(ResilienceError::Inner(e)) => {
-                    // Check if we should retry this error
                     if !(self.should_retry)(&e) {
                         return Err(ResilienceError::Inner(e));
                     }
@@ -117,26 +125,20 @@ where
                         failures.pop_front();
                     }
 
-                    // If this was the last attempt, return RetryExhausted
-                    if attempt + 1 >= self.max_attempts {
+                    if attempt + 1 >= max_attempts {
                         return Err(ResilienceError::retry_exhausted(
-                            self.max_attempts,
+                            max_attempts,
                             failures.into_iter().collect(),
                         ));
                     }
 
-                    // Calculate backoff delay for this retry (1-indexed: first retry uses delay(1))
-                    let mut delay = self.backoff.delay(attempt + 1);
-
-                    delay = match &self.jitter {
-                        Jitter::Decorrelated(_) => self.jitter.apply_stateful(),
-                        _ => self.jitter.apply(delay),
+                    let mut delay = backoff.delay(attempt + 1);
+                    delay = match &*jitter {
+                        Jitter::Decorrelated(_) => jitter.apply_stateful(),
+                        _ => jitter.apply(delay),
                     };
-
-                    // Sleep before next attempt
                     self.sleeper.sleep(delay).await;
                 }
-                // Non-Inner errors (Timeout, Bulkhead, CircuitOpen) are not retried
                 Err(e) => return Err(e),
             }
         }
@@ -237,9 +239,9 @@ where
             return Err(BuildError::InvalidMaxAttempts(0));
         }
         Ok(RetryPolicy {
-            max_attempts: self.max_attempts,
-            backoff: self.backoff,
-            jitter: self.jitter,
+            max_attempts: Adaptive::new(self.max_attempts),
+            backoff: Adaptive::new(self.backoff),
+            jitter: Adaptive::new(self.jitter),
             should_retry: self.should_retry,
             sleeper: self.sleeper,
         })
@@ -628,9 +630,9 @@ use std::time::Instant;
 
 /// Tower-native retry layer with optional telemetry.
 pub struct RetryLayer<E, Sink = NullSink> {
-    max_attempts: usize,
-    backoff: Backoff,
-    jitter: Jitter,
+    max_attempts: Adaptive<usize>,
+    backoff: Adaptive<Backoff>,
+    jitter: Adaptive<Jitter>,
     should_retry: Arc<dyn Fn(&E) -> bool + Send + Sync>,
     sleeper: Arc<dyn Sleeper>,
     sink: Sink,
@@ -658,9 +660,9 @@ where
             return Err(BuildError::InvalidMaxAttempts(0));
         }
         Ok(Self {
-            max_attempts,
-            backoff,
-            jitter,
+            max_attempts: Adaptive::new(max_attempts),
+            backoff: Adaptive::new(backoff),
+            jitter: Adaptive::new(jitter),
             should_retry,
             sleeper,
             sink: NullSink,
@@ -679,9 +681,9 @@ where
         NewSink: Clone,
     {
         RetryLayer {
-            max_attempts: self.max_attempts,
-            backoff: self.backoff,
-            jitter: self.jitter,
+            max_attempts: self.max_attempts.clone(),
+            backoff: self.backoff.clone(),
+            jitter: self.jitter.clone(),
             should_retry: self.should_retry,
             sleeper: self.sleeper,
             sink,
@@ -695,7 +697,7 @@ where
 {
     fn clone(&self) -> Self {
         Self {
-            max_attempts: self.max_attempts,
+            max_attempts: self.max_attempts.clone(),
             backoff: self.backoff.clone(),
             jitter: self.jitter.clone(),
             should_retry: self.should_retry.clone(),
@@ -749,7 +751,11 @@ where
             let start = Instant::now();
             let mut failures: Vec<E> = Vec::new();
 
-            for attempt in 0..layer.max_attempts {
+            let max_attempts = *layer.max_attempts.get();
+            let backoff = layer.backoff.get();
+            let jitter = layer.jitter.get();
+
+            for attempt in 0..max_attempts {
                 match inner.call(req.clone()).await {
                     Ok(resp) => {
                         // Emit success event (best effort - honor readiness)
@@ -769,11 +775,11 @@ where
                             return Err(ResilienceError::Inner(e));
                         }
                         failures.push(e);
-                        if attempt + 1 >= layer.max_attempts {
+                        if attempt + 1 >= max_attempts {
                             // Emit exhausted event
                             let total_duration = start.elapsed();
                             emit_best_effort(sink.clone(), PolicyEvent::Retry(RetryEvent::Exhausted {
-                                total_attempts: layer.max_attempts,
+                                total_attempts: max_attempts,
                                 total_duration,
                             })).await;
                             let duration = start.elapsed();
@@ -781,14 +787,14 @@ where
                                 crate::telemetry::RequestOutcome::Failure { duration }
                             )).await;
                             return Err(ResilienceError::retry_exhausted(
-                                layer.max_attempts,
+                                max_attempts,
                                 failures,
                             ));
                         }
-                        let mut delay = layer.backoff.delay(attempt + 1);
-                        delay = match &layer.jitter {
-                            Jitter::Decorrelated(_) => layer.jitter.apply_stateful(),
-                            _ => layer.jitter.apply(delay),
+                        let mut delay = backoff.delay(attempt + 1);
+                        delay = match &*jitter {
+                            Jitter::Decorrelated(_) => jitter.apply_stateful(),
+                            _ => jitter.apply(delay),
                         };
 
                         // Emit retry attempt event
@@ -801,7 +807,7 @@ where
                     }
                 }
             }
-            Err(ResilienceError::retry_exhausted(layer.max_attempts, failures))
+            Err(ResilienceError::retry_exhausted(max_attempts, failures))
         })
     }
 }

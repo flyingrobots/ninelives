@@ -1,8 +1,5 @@
 use ninelives::adaptive::Adaptive;
-use ninelives::retry::{RetryLayer, RetryPolicy};
-use ninelives::backoff::Backoff;
-use ninelives::jitter::Jitter;
-use ninelives::ResilienceError;
+use ninelives::{RetryPolicy, Backoff, Jitter};
 use tower::{Service, ServiceBuilder, ServiceExt};
 use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
 use std::time::Duration;
@@ -20,7 +17,7 @@ async fn retry_respects_live_max_attempts() {
     // Extract adaptive handle (future API to be provided by policy/layer)
     let max_handle: Adaptive<usize> = policy.adaptive_max_attempts();
 
-    let layer = policy.into_layer();
+    let layer = policy.clone().into_layer();
     let svc = TestService::new(3);
     let mut wrapped = ServiceBuilder::new().layer(layer).service(svc.clone());
 
