@@ -693,7 +693,7 @@ where
         let layer = self.layer.clone();
         let mut inner = self.inner.clone();
         Box::pin(async move {
-            let mut failures: Vec<E> = Vec::new();
+            let mut failures: VecDeque<E> = VecDeque::new();
             for attempt in 0..layer.max_attempts {
                 match inner.call(req.clone()).await {
                     Ok(resp) => return Ok(resp),
@@ -702,11 +702,14 @@ where
                         if !(layer.should_retry)(&e) {
                             return Err(ResilienceError::Inner(e));
                         }
-                        failures.push(e);
+                        failures.push_back(e);
+                        while failures.len() > crate::error::MAX_RETRY_FAILURES {
+                            failures.pop_front();
+                        }
                         if attempt + 1 >= layer.max_attempts {
                             return Err(ResilienceError::retry_exhausted(
                                 layer.max_attempts,
-                                failures,
+                                failures.into_iter().collect(),
                             ));
                         }
                         let mut delay = layer.backoff.delay(attempt + 1);
@@ -718,7 +721,10 @@ where
                     }
                 }
             }
-            Err(ResilienceError::retry_exhausted(layer.max_attempts, failures))
+            Err(ResilienceError::retry_exhausted(
+                layer.max_attempts,
+                failures.into_iter().collect(),
+            ))
         })
     }
 }
