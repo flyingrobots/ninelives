@@ -108,7 +108,7 @@
 //! - **[`CircuitBreakerLayer`]** - Prevent cascading failures
 //! - **[`BulkheadLayer`]** - Limit concurrent requests
 //!
-//! For more examples, see the [`algebra`](crate::algebra) module documentation.
+//! For more examples, see the algebra module documentation.
 
 mod algebra;
 mod backoff;
@@ -130,6 +130,7 @@ pub use backoff::{
     Backoff, BackoffError, BackoffStrategy, ConstantBackoff, ExponentialBackoff, LinearBackoff,
     MAX_BACKOFF,
 };
+pub use bulkhead::BulkheadLayer;
 pub use bulkhead::{BulkheadError, BulkheadPolicy};
 pub use circuit_breaker::{
     CircuitBreakerConfig, CircuitBreakerError, CircuitBreakerLayer, CircuitState,
@@ -139,6 +140,6 @@ pub use error::ResilienceError;
 pub use jitter::Jitter;
 pub use retry::{BuildError, RetryLayer, RetryPolicy, RetryPolicyBuilder, RetryService};
 pub use sleeper::{InstantSleeper, Sleeper, TokioSleeper, TrackingSleeper};
-pub use timeout::{TimeoutError, TimeoutPolicy, MAX_TIMEOUT};
+pub use timeout::{TimeoutError, TimeoutLayer, TimeoutPolicy, MAX_TIMEOUT};
 
 pub mod prelude;
