@@ -51,7 +51,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let c = Policy(TimeoutLayer::new(Duration::from_millis(100))?);
     let d = Policy(TimeoutLayer::new(Duration::from_millis(150))?);
 
-    let _precedence = a.clone() | b.clone() + (c.clone() & d.clone());
+    let _precedence = a | (b + (c & d));
     println!("   Created: A | B + C & D");
     println!("   Parsed as: A | (B + (C & D))");
     println!("   Structure: Fallback(A, Seq(B, ForkJoin(C, D)))\n");

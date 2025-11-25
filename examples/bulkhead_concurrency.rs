@@ -33,7 +33,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     assert!(rejected.unwrap_err().is_bulkhead());
 
     let _ = release_tx.send(());
-    let _ = holder.await?;
+    holder.await?;
     assert_eq!(counter.load(Ordering::SeqCst), 1);
     Ok(())
 }
