@@ -1,4 +1,3 @@
-release = false # workspace releases disabled; per-package `release = true` enables publishing
 # Labels used to signal release readiness on PRs.
 pr_labels = ["release", "release-ready"]
 
@@ -14,6 +13,7 @@ publish_timeout = "10m"
 publish_delay = "30s"
 
 [workspace]
+release = false # workspace releases disabled; per-package `release = true` enables publishing
 semver_check = true
 
 [[packages]]
