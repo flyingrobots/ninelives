@@ -106,11 +106,11 @@
 - [x] Design `Adaptive<T>` wrapper:
   - [x] Arc<RwLock<T>> or Arc<ArcSwap<T>> for lock-free reads
   - [x] Methods: `get()`, `set()`, `update()`
-- [ ] Integrate Adaptive into policy configs:
-  - [ ] RetryPolicy: max_attempts, backoff parameters
-  - [ ] CircuitBreaker: failure_threshold, timeout_duration
-  - [ ] Bulkhead: max_concurrency
-  - [ ] Timeout: duration
+- [x] Integrate Adaptive into policy configs:
+  - [x] RetryPolicy: max_attempts, backoff parameters
+  - [x] CircuitBreaker: failure_threshold, timeout_duration
+  - [x] Bulkhead: max_concurrency
+  - [x] Timeout: duration
 
 ### Command System
 - [ ] Define `CommandContext` struct:
