@@ -14,8 +14,8 @@ echo "[pre-push] running cargo doc --no-deps with -D warnings"
 RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
 
 if ! command -v cargo-llvm-cov >/dev/null 2>&1; then
-  echo "[pre-push] installing cargo-llvm-cov (missing locally)"
-  cargo install cargo-llvm-cov --locked
+  echo "[pre-push] cargo-llvm-cov not found. Install once with: cargo install cargo-llvm-cov --locked" >&2
+  exit 1
 fi
 
 echo "[pre-push] running cargo llvm-cov --package ninelives --all-features (no report)"
