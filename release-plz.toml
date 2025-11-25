@@ -1,5 +1,4 @@
 [workspace]
-release = false # workspace releases disabled; per-package `release = true` enables publishing
 semver_check = true
 
 # Labels used to signal release readiness on PRs.
