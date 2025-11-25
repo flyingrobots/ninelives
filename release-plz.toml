@@ -4,9 +4,6 @@ semver_check = true
 # Labels used to signal release readiness on PRs.
 pr_labels = ["release", "release-ready"]
 
-[changelog]
-template = "keepachangelog"
-
 [git]
 commit_message = "chore(release): {{ crate_name }} v{{ version }}"
 tag_name = "{{ crate_name }}-v{{ version }}"
