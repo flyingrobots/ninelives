@@ -95,57 +95,51 @@ where
     }
 
     /// Execute an async operation with retry semantics.
-    pub async fn execute<T, Fut, Op>(&self, mut operation: Op) -> Result<T, ResilienceError<E>>
+    pub async fn execute<T, Fut, Op>(&self, operation: Op) -> Result<T, ResilienceError<E>>
     where
         T: Send,
         Fut: Future<Output = Result<T, ResilienceError<E>>> + Send,
         Op: FnMut() -> Fut + Send,
     {
-        let mut failures: VecDeque<E> = VecDeque::new();
+        run_retry_loop(
+            self.max_attempts,
+            &self.backoff,
+            &self.jitter,
+            &self.should_retry,
+            &self.sleeper,
+            operation,
+            None::<(NullSink, Instant)>,
+        )
+        .await
+    }
 
-        for attempt in 0..self.max_attempts {
-            match operation().await {
-                Ok(value) => return Ok(value),
-                Err(ResilienceError::Inner(e)) => {
-                    // Check if we should retry this error
-                    if !(self.should_retry)(&e) {
-                        return Err(ResilienceError::Inner(e));
-                    }
-
-                    failures.push_back(e);
-                    while failures.len() > MAX_RETRY_FAILURES {
-                        failures.pop_front();
-                    }
-
-                    // If this was the last attempt, return RetryExhausted
-                    if attempt + 1 >= self.max_attempts {
-                        return Err(ResilienceError::retry_exhausted(
-                            self.max_attempts,
-                            failures.into_iter().collect(),
-                        ));
-                    }
-
-                    // Calculate backoff delay for this retry (1-indexed: first retry uses delay(1))
-                    let mut delay = self.backoff.delay(attempt + 1);
-
-                    delay = match &self.jitter {
-                        Jitter::Decorrelated(_) => self.jitter.apply_stateful(),
-                        _ => self.jitter.apply(delay),
-                    };
-
-                    // Sleep before next attempt
-                    self.sleeper.sleep(delay).await;
-                }
-                // Non-Inner errors (Timeout, Bulkhead, CircuitOpen) are not retried
-                Err(e) => return Err(e),
-            }
-        }
-
-        // Safety: unreachable because loop executes max_attempts times and each iteration
-        // either returns or continues. On last iteration (attempt == max_attempts - 1),
-        // we always return RetryExhausted for retryable errors.
-        debug_assert!(false, "Retry loop should have returned; this indicates a logic bug");
-        unreachable!()
+    /// Execute with telemetry delivered to the provided sink.
+    ///
+    /// This mirrors `execute` but emits `PolicyEvent`s for attempts, exhaustion, and final
+    /// request outcomes using the supplied sink. Callers can pass `NonBlockingSink` etc.
+    pub async fn execute_with_sink<T, Fut, Op, Sink>(
+        &self,
+        operation: Op,
+        sink: Sink,
+    ) -> Result<T, ResilienceError<E>>
+    where
+        T: Send,
+        Fut: Future<Output = Result<T, ResilienceError<E>>> + Send,
+        Op: FnMut() -> Fut + Send,
+        Sink: tower::Service<PolicyEvent, Response = ()> + Clone + Send + Sync + 'static,
+        Sink::Error: std::error::Error + Send + 'static,
+        Sink::Future: Send + 'static,
+    {
+        run_retry_loop(
+            self.max_attempts,
+            &self.backoff,
+            &self.jitter,
+            &self.should_retry,
+            &self.sleeper,
+            operation,
+            Some((sink, Instant::now())),
+        )
+        .await
     }
 }
 
@@ -657,14 +651,7 @@ where
         if max_attempts == 0 {
             return Err(BuildError::InvalidMaxAttempts(0));
         }
-        Ok(Self {
-            max_attempts,
-            backoff,
-            jitter,
-            should_retry,
-            sleeper,
-            sink: NullSink,
-        })
+        Ok(Self { max_attempts, backoff, jitter, should_retry, sleeper, sink: NullSink })
     }
 }
 
@@ -725,7 +712,7 @@ where
     S::Response: Send + 'static,
     S::Future: Send + 'static,
     E: std::error::Error + Send + Sync + 'static,
-    Sink: tower::Service<PolicyEvent, Response = ()> + Clone + Send + 'static,
+    Sink: tower::Service<PolicyEvent, Response = ()> + Clone + Send + Sync + 'static,
     Sink::Error: std::error::Error + Send + 'static,
     Sink::Future: Send + 'static,
 {
@@ -742,68 +729,124 @@ where
 
     fn call(&mut self, req: Request) -> Self::Future {
         let layer = self.layer.clone();
-        let mut inner = self.inner.clone();
+        let inner = self.inner.clone();
         let sink = layer.sink.clone();
 
         Box::pin(async move {
             let start = Instant::now();
-            let mut failures: Vec<E> = Vec::new();
-
-            for attempt in 0..layer.max_attempts {
-                match inner.call(req.clone()).await {
-                    Ok(resp) => {
-                        // Emit success event (best effort - honor readiness)
-                        let duration = start.elapsed();
-                        emit_best_effort(sink.clone(), PolicyEvent::Request(
-                            crate::telemetry::RequestOutcome::Success { duration }
-                        )).await;
-                        return Ok(resp);
-                    }
-                    Err(err) => {
-                        let e: E = err;
-                        if !(layer.should_retry)(&e) {
-                            let duration = start.elapsed();
-                            emit_best_effort(sink.clone(), PolicyEvent::Request(
-                                crate::telemetry::RequestOutcome::Failure { duration }
-                            )).await;
-                            return Err(ResilienceError::Inner(e));
-                        }
-                        failures.push(e);
-                        if attempt + 1 >= layer.max_attempts {
-                            // Emit exhausted event
-                            let total_duration = start.elapsed();
-                            emit_best_effort(sink.clone(), PolicyEvent::Retry(RetryEvent::Exhausted {
-                                total_attempts: layer.max_attempts,
-                                total_duration,
-                            })).await;
-                            let duration = start.elapsed();
-                            emit_best_effort(sink.clone(), PolicyEvent::Request(
-                                crate::telemetry::RequestOutcome::Failure { duration }
-                            )).await;
-                            return Err(ResilienceError::retry_exhausted(
-                                layer.max_attempts,
-                                failures,
-                            ));
-                        }
-                        let mut delay = layer.backoff.delay(attempt + 1);
-                        delay = match &layer.jitter {
-                            Jitter::Decorrelated(_) => layer.jitter.apply_stateful(),
-                            _ => layer.jitter.apply(delay),
-                        };
-
-                        // Emit retry attempt event
-                        emit_best_effort(sink.clone(), PolicyEvent::Retry(RetryEvent::Attempt {
-                            attempt: attempt + 1,
-                            delay,
-                        })).await;
-
-                        layer.sleeper.sleep(delay).await;
-                    }
-                }
-            }
-            Err(ResilienceError::retry_exhausted(layer.max_attempts, failures))
+            run_retry_loop(
+                layer.max_attempts,
+                &layer.backoff,
+                &layer.jitter,
+                &layer.should_retry,
+                &layer.sleeper,
+                move || {
+                    let req_clone = req.clone();
+                    let mut inner_clone = inner.clone();
+                    async move { inner_clone.call(req_clone).await.map_err(ResilienceError::Inner) }
+                },
+                Some((sink, start)),
+            )
+            .await
         })
     }
+}
+
+async fn run_retry_loop<T, E, Fut, Attempt, Sink>(
+    max_attempts: usize,
+    backoff: &Backoff,
+    jitter: &Jitter,
+    should_retry: &Arc<dyn Fn(&E) -> bool + Send + Sync>,
+    sleeper: &Arc<dyn Sleeper>,
+    mut attempt: Attempt,
+    telemetry: Option<(Sink, Instant)>,
+) -> Result<T, ResilienceError<E>>
+where
+    T: Send,
+    E: std::error::Error + Send + Sync + 'static,
+    Fut: Future<Output = Result<T, ResilienceError<E>>> + Send,
+    Attempt: FnMut() -> Fut + Send,
+    Sink: tower::Service<PolicyEvent, Response = ()> + Clone + Send + Sync + 'static,
+    Sink::Error: std::error::Error + Send + 'static,
+    Sink::Future: Send + 'static,
+{
+    let mut failures: VecDeque<E> = VecDeque::new();
+
+    for attempt_idx in 0..max_attempts {
+        match attempt().await {
+            Ok(value) => {
+                if let Some((sink, start)) = telemetry.as_ref() {
+                    let duration = start.elapsed();
+                    emit_best_effort(
+                        sink.clone(),
+                        PolicyEvent::Request(crate::telemetry::RequestOutcome::Success {
+                            duration,
+                        }),
+                    )
+                    .await;
+                }
+                return Ok(value);
+            }
+            Err(ResilienceError::Inner(e)) => {
+                if !(should_retry)(&e) {
+                    if let Some((sink, start)) = telemetry.as_ref() {
+                        let duration = start.elapsed();
+                        emit_best_effort(
+                            sink.clone(),
+                            PolicyEvent::Request(crate::telemetry::RequestOutcome::Failure {
+                                duration,
+                            }),
+                        )
+                        .await;
+                    }
+                    return Err(ResilienceError::Inner(e));
+                }
+
+                failures.push_back(e);
+                while failures.len() > MAX_RETRY_FAILURES {
+                    failures.pop_front();
+                }
+
+                if attempt_idx + 1 >= max_attempts {
+                    if let Some((sink, start)) = telemetry.as_ref() {
+                        let total_duration = start.elapsed();
+                        emit_best_effort(
+                            sink.clone(),
+                            PolicyEvent::Retry(RetryEvent::Exhausted {
+                                total_attempts: max_attempts,
+                                total_duration,
+                            }),
+                        )
+                        .await;
+                        emit_best_effort(
+                            sink.clone(),
+                            PolicyEvent::Request(crate::telemetry::RequestOutcome::Failure {
+                                duration: total_duration,
+                            }),
+                        )
+                        .await;
+                    }
+                    return Err(ResilienceError::retry_exhausted(
+                        max_attempts,
+                        failures.into_iter().collect(),
+                    ));
+                }
+
+                let delay = jitter.apply_with_state(backoff.delay(attempt_idx + 1));
+                if let Some((sink, _)) = telemetry.as_ref() {
+                    emit_best_effort(
+                        sink.clone(),
+                        PolicyEvent::Retry(RetryEvent::Attempt { attempt: attempt_idx + 1, delay }),
+                    )
+                    .await;
+                }
+                sleeper.sleep(delay).await;
+            }
+            Err(e) => return Err(e),
+        }
+    }
+
+    unreachable!("Retry loop should have returned; this indicates a logic bug");
 }
 
 impl<S, E, Sink> Layer<S> for RetryLayer<E, Sink>

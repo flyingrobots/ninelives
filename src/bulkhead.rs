@@ -5,40 +5,46 @@
 //! (`ResilienceError::Bulkhead`) rather than queuing. Permits are released when the wrapped
 //! operation finishes.
 //!
-//! Example
+//! Example (brief):
 //! ```rust
 //! use ninelives::{BulkheadPolicy, ResilienceError};
-//! use std::sync::atomic::{AtomicUsize, Ordering};
 //!
 //! # tokio::runtime::Runtime::new().unwrap().block_on(async {
-//! let bulkhead = BulkheadPolicy::new(1).expect("valid bulkhead");
-//! let counter = AtomicUsize::new(0);
+//! let bulkhead = BulkheadPolicy::new(1).unwrap();
+//! let (hold_tx, hold_rx) = tokio::sync::oneshot::channel();
 //! let (started_tx, started_rx) = tokio::sync::oneshot::channel();
-//! let (release_tx, release_rx) = tokio::sync::oneshot::channel();
-//! let holder = tokio::spawn({
-//!     let bh = bulkhead.clone();
-//!     async move {
-//!         let _ = bh.execute(|| async {
-//!             counter.fetch_add(1, Ordering::SeqCst);
+//!
+//! // Hold the single permit
+//! let bh_handle = bulkhead.clone();
+//! let first_task = tokio::spawn(async move {
+//!     bh_handle
+//!         .execute(|| async move {
 //!             let _ = started_tx.send(());
-//!             let _ = release_rx.await;
+//!             let _ = hold_rx.await;
 //!             Ok::<_, ResilienceError<std::io::Error>>(())
-//!         }).await;
-//!     }
+//!         })
+//!         .await
 //! });
-//! started_rx.await.unwrap();
-//! let rejected = bulkhead.execute(|| async { Ok::<_, ResilienceError<std::io::Error>>(()) }).await;
-//! assert!(rejected.unwrap_err().is_bulkhead());
-//! let _ = release_tx.send(());
-//! let _ = holder.await;
+//! tokio::task::yield_now().await; // ensure the first task acquires the permit
+//! let _ = started_rx.await;
+//!
+//! // Compete for the already-held permit
+//! let second_res = bulkhead
+//!     .execute(|| async { Ok::<_, ResilienceError<std::io::Error>>(()) })
+//!     .await;
+//! assert!(second_res.unwrap_err().is_bulkhead());
+//! let _ = hold_tx.send(());
+//! assert!(first_task.await.unwrap().is_ok());
 //! # });
 //! ```
+//!
+//! For a fuller concurrent walkthrough, see `examples/bulkhead_concurrency.rs`.
 
 use crate::ResilienceError;
 use futures::future::BoxFuture;
 use std::future::Future;
 use std::sync::Arc;
-use tokio::sync::Semaphore;
+use tokio::sync::{Semaphore, TryAcquireError};
 use tower_layer::Layer;
 use tower_service::Service;
 
@@ -106,9 +112,10 @@ impl BulkheadPolicy {
     }
 
     /// Execute an operation with bulkhead protection. Non-blocking: if no permits are available
-    /// the call is rejected immediately with `ResilienceError::Bulkhead`. Permits are released when
-    /// the operation future completes. The reported `in_flight` is a best-effort snapshot and may
-    /// be stale due to races.
+    /// the call is rejected immediately with `ResilienceError::Bulkhead`. If the semaphore has been
+    /// closed, returns `ResilienceError::BulkheadClosed`. Permits are released when the operation
+    /// future completes. The reported `in_flight` is a best-effort snapshot and may be stale due to
+    /// races.
     pub async fn execute<T, E, Fut, Op>(&self, operation: Op) -> Result<T, ResilienceError<E>>
     where
         T: Send,
@@ -124,10 +131,7 @@ impl BulkheadPolicy {
                 return Err(ResilienceError::Bulkhead { in_flight, max: self.max_concurrent });
             }
             Err(tokio::sync::TryAcquireError::Closed) => {
-                return Err(ResilienceError::Bulkhead {
-                    in_flight: self.max_concurrent,
-                    max: self.max_concurrent,
-                });
+                return Err(ResilienceError::BulkheadClosed);
             }
         };
 
@@ -136,10 +140,16 @@ impl BulkheadPolicy {
     }
 }
 
-use crate::telemetry::{emit_best_effort, BulkheadEvent, NullSink, PolicyEvent, RequestOutcome};
+use crate::telemetry::{
+    emit_best_effort, BulkheadEvent, BulkheadRejectReason, NullSink, PolicyEvent, RequestOutcome,
+};
 use std::time::Instant as StdInstant;
 
 /// Tower-native bulkhead layer with optional telemetry.
+///
+/// Each call to `layer()` creates a new `BulkheadService` with its own `Arc<Semaphore>`; limits are
+/// therefore per-service instance. To share concurrency limits across multiple services, store an
+/// `Arc<Semaphore>` inside the layer and clone it into each service.
 #[derive(Clone)]
 pub struct BulkheadLayer<Sink = NullSink> {
     max_concurrent: usize,
@@ -163,10 +173,7 @@ where
     where
         NewSink: Clone,
     {
-        BulkheadLayer {
-            max_concurrent: self.max_concurrent,
-            sink,
-        }
+        BulkheadLayer { max_concurrent: self.max_concurrent, sink }
     }
 }
 
@@ -181,12 +188,7 @@ pub struct BulkheadService<S, Sink = NullSink> {
 
 impl<S, Sink> BulkheadService<S, Sink> {
     fn new(inner: S, max_concurrent: usize, sink: Sink) -> Self {
-        Self {
-            semaphore: Arc::new(Semaphore::new(max_concurrent)),
-            max_concurrent,
-            inner,
-            sink,
-        }
+        Self { semaphore: Arc::new(Semaphore::new(max_concurrent)), max_concurrent, inner, sink }
     }
 }
 
@@ -220,14 +222,10 @@ where
         let sink = self.sink.clone();
 
         Box::pin(async move {
-            // Check available permits before acquiring
             let available_before = semaphore.available_permits();
-
-            // Try to acquire permit
             let permit = match semaphore.clone().try_acquire_owned() {
                 Ok(p) => {
-                    let active_count = max - available_before + 1;
-                    // Emit acquired event
+                    let active_count = max.saturating_sub(available_before).saturating_add(1);
                     emit_best_effort(
                         sink.clone(),
                         PolicyEvent::Bulkhead(BulkheadEvent::Acquired {
@@ -238,31 +236,39 @@ where
                     .await;
                     p
                 }
-                Err(_) => {
-                    let active_count = max;
-                    // Emit rejected event
+                Err(TryAcquireError::NoPermits) => {
+                    let available_after = semaphore.available_permits();
+                    let active_count = max.saturating_sub(available_after);
                     emit_best_effort(
                         sink.clone(),
                         PolicyEvent::Bulkhead(BulkheadEvent::Rejected {
                             active_count,
                             max_concurrency: max,
+                            reason: BulkheadRejectReason::Saturated,
                         }),
                     )
                     .await;
-                    return Err(ResilienceError::Bulkhead {
-                        in_flight: active_count,
-                        max,
-                    });
+                    return Err(ResilienceError::Bulkhead { in_flight: active_count, max });
+                }
+                Err(TryAcquireError::Closed) => {
+                    emit_best_effort(
+                        sink.clone(),
+                        PolicyEvent::Bulkhead(BulkheadEvent::Rejected {
+                            active_count: max.saturating_sub(available_before),
+                            max_concurrency: max,
+                            reason: BulkheadRejectReason::Closed,
+                        }),
+                    )
+                    .await;
+                    emit_best_effort(sink.clone(), PolicyEvent::Bulkhead(BulkheadEvent::Closed))
+                        .await;
+                    return Err(ResilienceError::BulkheadClosed);
                 }
             };
 
-            // Execute request
             let result = inner.call(req).await;
-
-            // Release permit
             drop(permit);
 
-            // Emit outcome event
             let duration = start.elapsed();
             match &result {
                 Ok(_) => {
@@ -302,6 +308,7 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
     use std::time::Duration;
+    use tokio::sync::oneshot;
 
     #[derive(Debug, Clone, PartialEq, Eq)]
     struct TestError(String);
@@ -345,6 +352,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_rejects_when_at_capacity() {
+        tokio::time::pause();
         let bulkhead = BulkheadPolicy::new(2).expect("valid bulkhead");
         let notify = Arc::new(tokio::sync::Notify::new());
         let started = Arc::new(AtomicUsize::new(0));
@@ -374,6 +382,7 @@ mod tests {
 
         // Wait until both tasks have acquired permits
         while started.load(Ordering::SeqCst) < 2 {
+            tokio::time::advance(Duration::from_millis(1)).await;
             notify.notified().await;
         }
 
@@ -384,6 +393,7 @@ mod tests {
         assert!(result.unwrap_err().is_bulkhead());
 
         // Wait for tasks to finish
+        tokio::time::advance(Duration::from_millis(100)).await;
         for handle in handles {
             let _ = handle.await;
         }
@@ -431,6 +441,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_unlimited_bulkhead_never_rejects() {
+        tokio::time::pause();
         let bulkhead = BulkheadPolicy::unlimited();
         let mut handles = vec![];
 
@@ -449,6 +460,7 @@ mod tests {
         }
 
         // All should succeed
+        tokio::time::advance(Duration::from_millis(20)).await;
         let results: Vec<_> = futures::future::join_all(handles).await;
         let successes = results.iter().filter(|r| r.as_ref().unwrap().is_ok()).count();
 
@@ -457,6 +469,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_concurrent_operations_up_to_limit() {
+        tokio::time::pause();
         let bulkhead = BulkheadPolicy::new(5).expect("valid bulkhead");
         let concurrent_count = Arc::new(AtomicUsize::new(0));
         let max_concurrent = Arc::new(AtomicUsize::new(0));
@@ -489,6 +502,7 @@ mod tests {
             handles.push(handle);
         }
 
+        tokio::time::advance(Duration::from_millis(60)).await;
         // Wait for all to complete
         let results: Vec<_> = futures::future::join_all(handles).await;
 
@@ -523,5 +537,64 @@ mod tests {
             ResilienceError::Inner(e) => assert_eq!(e.0, "operation failed"),
             e => panic!("Expected Inner error, got {:?}", e),
         }
+    }
+
+    #[derive(Debug, Clone, Default)]
+    struct HoldService {
+        hold: Arc<tokio::sync::Mutex<Option<oneshot::Receiver<()>>>>,
+    }
+
+    impl HoldService {
+        fn with_block(rx: oneshot::Receiver<()>) -> Self {
+            Self { hold: Arc::new(tokio::sync::Mutex::new(Some(rx))) }
+        }
+    }
+
+    impl tower_service::Service<()> for HoldService {
+        type Response = ();
+        type Error = TestError;
+        type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
+
+        fn poll_ready(
+            &mut self,
+            _cx: &mut std::task::Context<'_>,
+        ) -> std::task::Poll<Result<(), Self::Error>> {
+            std::task::Poll::Ready(Ok(()))
+        }
+
+        fn call(&mut self, _req: ()) -> Self::Future {
+            let hold = self.hold.clone();
+            Box::pin(async move {
+                if let Some(rx) = hold.lock().await.take() {
+                    let _ = rx.await;
+                }
+                Ok(())
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn service_fails_fast_when_permits_exhausted() {
+        let (tx, rx) = oneshot::channel();
+        let mut svc = BulkheadService::new(HoldService::with_block(rx), 1);
+
+        // First call acquires the single permit and blocks until `tx` fires
+        let first = tokio::spawn({
+            let mut s = svc.clone();
+            async move { s.call(()).await }
+        });
+
+        // Allow the first task to reach the await point
+        tokio::task::yield_now().await;
+
+        // Second call should fail immediately with Bulkhead error (no queuing)
+        let start = tokio::time::Instant::now();
+        let res = svc.call(()).await;
+        assert!(res.is_err() && res.as_ref().unwrap_err().is_bulkhead());
+        assert!(start.elapsed() < Duration::from_millis(20));
+
+        // Unblock the first call and ensure it completes
+        let _ = tx.send(());
+        assert!(first.await.unwrap().is_ok());
     }
 }

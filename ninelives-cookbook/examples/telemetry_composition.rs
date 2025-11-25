@@ -31,18 +31,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let attempt = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let attempt_clone = attempt.clone();
-    let mut svc = ServiceBuilder::new()
-        .layer(retry_layer)
-        .service_fn(move |_req: &str| {
-            let count = attempt_clone.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            async move {
-                if count == 0 {
-                    Err(std::io::Error::new(std::io::ErrorKind::Other, "first attempt failed"))
-                } else {
-                    Ok::<_, std::io::Error>("success")
-                }
+    let mut svc = ServiceBuilder::new().layer(retry_layer).service_fn(move |_req: &str| {
+        let count = attempt_clone.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        async move {
+            if count == 0 {
+                Err(std::io::Error::new(std::io::ErrorKind::Other, "first attempt failed"))
+            } else {
+                Ok::<_, std::io::Error>("success")
             }
-        });
+        }
+    });
 
     let result = svc.ready().await?.call("test").await;
     println!("\nResult: {:?}", result);
@@ -62,19 +60,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // For this example, we'll use MemorySink for both (which never fails)
     let fallback = FallbackSink::new(memory_sink2.clone(), fallback_memory.clone());
 
-    let circuit_config = CircuitBreakerConfig::new(
-        3,
-        Duration::from_secs(10),
-        1,
-    )?;
+    let circuit_config = CircuitBreakerConfig::new(3, Duration::from_secs(10), 1)?;
 
     let circuit_layer = CircuitBreakerLayer::new(circuit_config)?.with_sink(fallback);
 
     let mut svc = ServiceBuilder::new()
         .layer(circuit_layer)
-        .service_fn(|_req: &str| async move {
-            Ok::<_, std::io::Error>("response")
-        });
+        .service_fn(|_req: &str| async move { Ok::<_, std::io::Error>("response") });
 
     let _ = svc.ready().await?.call("test").await;
 

@@ -3,6 +3,7 @@
 All notable changes will be documented in this file.
 
 ## [Unreleased]
+
 ### Added
 - Backoff refactor: concrete strategy types (`Constant`, `Linear`, `Exponential`), `BackoffStrategy` trait, `with_max` validation, helper codes/messages, and monotonic/cap tests.
 - Decorrelated jitter invariants documented; added concurrent/stateful tests and upper-bound checks.
@@ -20,6 +21,7 @@ All notable changes will be documented in this file.
 - Removed stray Obsidian files; documentation typos.
 
 ## [0.1.0] - Initial
+
 - Initial crate scaffolding with retries, circuit breaker, bulkhead, timeout, stack builder, and helper sleepers/clocks.
 
 [Unreleased]: https://github.com/flyingrobots/ninelives/compare/0.1.0...HEAD

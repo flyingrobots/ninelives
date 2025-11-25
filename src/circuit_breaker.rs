@@ -143,7 +143,9 @@ impl CircuitBreakerState {
     }
 }
 
-use crate::telemetry::{emit_best_effort, CircuitBreakerEvent, NullSink, PolicyEvent, RequestOutcome};
+use crate::telemetry::{
+    emit_best_effort, CircuitBreakerEvent, NullSink, PolicyEvent, RequestOutcome,
+};
 use std::time::Instant as StdInstant;
 
 /// Tower-native circuit breaker layer with optional telemetry.
@@ -164,11 +166,7 @@ impl CircuitBreakerLayer<NullSink> {
     /// Returns error if the configuration is invalid.
     pub fn new(config: CircuitBreakerConfig) -> Result<Self, CircuitBreakerError> {
         config.validate()?;
-        Ok(Self {
-            config,
-            clock: Arc::new(MonotonicClock::default()),
-            sink: NullSink,
-        })
+        Ok(Self { config, clock: Arc::new(MonotonicClock::default()), sink: NullSink })
     }
 
     /// Create a circuit breaker layer with a custom clock implementation and no telemetry.
@@ -183,11 +181,7 @@ impl CircuitBreakerLayer<NullSink> {
         clock: C,
     ) -> Result<Self, CircuitBreakerError> {
         config.validate()?;
-        Ok(Self {
-            config,
-            clock: Arc::new(clock),
-            sink: NullSink,
-        })
+        Ok(Self { config, clock: Arc::new(clock), sink: NullSink })
     }
 }
 
@@ -200,11 +194,7 @@ where
     where
         NewSink: Clone,
     {
-        CircuitBreakerLayer {
-            config: self.config,
-            clock: self.clock,
-            sink,
-        }
+        CircuitBreakerLayer { config: self.config, clock: self.clock, sink }
     }
 }
 
@@ -220,13 +210,7 @@ pub struct CircuitBreakerService<S, Sink = NullSink> {
 
 impl<S, Sink> CircuitBreakerService<S, Sink> {
     fn new(inner: S, config: CircuitBreakerConfig, clock: Arc<dyn Clock>, sink: Sink) -> Self {
-        Self {
-            inner,
-            state: Arc::new(CircuitBreakerState::new()),
-            config,
-            clock,
-            sink,
-        }
+        Self { inner, state: Arc::new(CircuitBreakerState::new()), config, clock, sink }
     }
 }
 
@@ -287,7 +271,8 @@ where
                         )
                         .await;
                     }
-                    state.half_open_calls.store(0, Ordering::Release);
+                    // Count the transitioning call as the first half-open probe
+                    state.half_open_calls.store(1, Ordering::Release);
                 }
                 CircuitState::HalfOpen => {
                     let calls = state.half_open_calls.fetch_add(1, Ordering::AcqRel) + 1;
@@ -376,6 +361,11 @@ where
 {
     type Service = CircuitBreakerService<S, Sink>;
     fn layer(&self, service: S) -> Self::Service {
-        CircuitBreakerService::new(service, self.config.clone(), self.clock.clone(), self.sink.clone())
+        CircuitBreakerService::new(
+            service,
+            self.config.clone(),
+            self.clock.clone(),
+            self.sink.clone(),
+        )
     }
 }

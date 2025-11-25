@@ -26,18 +26,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let attempt = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let attempt_clone = attempt.clone();
-    let mut svc = ServiceBuilder::new()
-        .layer(retry_layer)
-        .service_fn(move |_req: &str| {
-            let count = attempt_clone.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            async move {
-                if count < 1 {
-                    Err(std::io::Error::new(std::io::ErrorKind::Other, "temporary failure"))
-                } else {
-                    Ok::<_, std::io::Error>("success!")
-                }
+    let mut svc = ServiceBuilder::new().layer(retry_layer).service_fn(move |_req: &str| {
+        let count = attempt_clone.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        async move {
+            if count < 1 {
+                Err(std::io::Error::new(std::io::ErrorKind::Other, "temporary failure"))
+            } else {
+                Ok::<_, std::io::Error>("success!")
             }
-        });
+        }
+    });
 
     let result = svc.ready().await?.call("request").await;
     println!("Result: {:?}", result);
@@ -51,27 +49,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n\nExample 2: Circuit breaker with LogSink");
 
     let circuit_config = CircuitBreakerConfig::new(
-        2,                             // failure threshold
-        Duration::from_secs(5),        // recovery timeout
-        1,                             // half-open max calls
+        2,                      // failure threshold
+        Duration::from_secs(5), // recovery timeout
+        1,                      // half-open max calls
     )?;
 
     let circuit_layer = CircuitBreakerLayer::new(circuit_config)?.with_sink(LogSink);
 
     let fail_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let fail_count_clone = fail_count.clone();
-    let mut svc = ServiceBuilder::new()
-        .layer(circuit_layer)
-        .service_fn(move |_req: &str| {
-            let count = fail_count_clone.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            async move {
-                if count < 2 {
-                    Err(std::io::Error::new(std::io::ErrorKind::Other, "failing"))
-                } else {
-                    Ok::<_, std::io::Error>("recovered")
-                }
+    let mut svc = ServiceBuilder::new().layer(circuit_layer).service_fn(move |_req: &str| {
+        let count = fail_count_clone.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        async move {
+            if count < 2 {
+                Err(std::io::Error::new(std::io::ErrorKind::Other, "failing"))
+            } else {
+                Ok::<_, std::io::Error>("recovered")
             }
-        });
+        }
+    });
 
     // First two calls will fail
     for i in 1..=2 {
@@ -92,17 +88,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let timeout_layer = TimeoutLayer::new(Duration::from_millis(50))?.with_sink(streaming_sink);
 
-    let mut svc = ServiceBuilder::new()
-        .layer(timeout_layer)
-        .service_fn(|req: &str| {
-            let slow = req == "slow";
-            async move {
-                if slow {
-                    tokio::time::sleep(Duration::from_millis(100)).await;
-                }
-                Ok::<_, std::io::Error>("done")
+    let mut svc = ServiceBuilder::new().layer(timeout_layer).service_fn(|req: &str| {
+        let slow = req == "slow";
+        async move {
+            if slow {
+                tokio::time::sleep(Duration::from_millis(100)).await;
             }
-        });
+            Ok::<_, std::io::Error>("done")
+        }
+    });
 
     // Spawn a task to print events as they arrive
     let event_printer = tokio::spawn(async move {

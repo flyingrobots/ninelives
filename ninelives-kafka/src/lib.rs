@@ -19,9 +19,7 @@ impl KafkaSink {
         #[cfg(feature = "client")]
         {
             use rdkafka::config::ClientConfig;
-            let producer = ClientConfig::new()
-                .set("bootstrap.servers", brokers.into())
-                .create()?;
+            let producer = ClientConfig::new().set("bootstrap.servers", brokers.into()).create()?;
             return Ok(Self { topic, producer });
         }
         #[cfg(not(feature = "client"))]
@@ -54,9 +52,7 @@ impl tower_service::Service<PolicyEvent> for KafkaSink {
             let producer = self.producer.clone();
             let payload = format!("{:?}", event).into_bytes();
             Box::pin(async move {
-                let _ = producer
-                    .send(FutureRecord::to(&topic).payload(&payload), 0)
-                    .await;
+                let _ = producer.send(FutureRecord::to(&topic).payload(&payload), 0).await;
                 Ok(())
             })
         };

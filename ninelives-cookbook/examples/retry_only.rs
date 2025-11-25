@@ -1,59 +1,78 @@
-//! Tower-native timeout example with algebraic composition.
+//! Minimal, focused retry example with backoff, jitter, and a `should_retry` predicate.
 
 use ninelives::prelude::*;
-use std::time::Duration;
+use std::{
+    fmt,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
 use tower::{Service, ServiceBuilder, ServiceExt};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum MyError {
+    Retryable(&'static str),
+    Fatal(&'static str),
+}
+
+impl fmt::Display for MyError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            MyError::Retryable(msg) => write!(f, "retryable: {}", msg),
+            MyError::Fatal(msg) => write!(f, "fatal: {}", msg),
+        }
+    }
+}
+
+impl std::error::Error for MyError {}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("=== Nine Lives: Timeout Example ===\n");
+    println!("=== Nine Lives: Retry-Only Example ===\n");
 
-    // Create a service with a 1-second timeout
-    let mut svc = ServiceBuilder::new()
-        .layer(TimeoutLayer::new(Duration::from_secs(1))?)
-        .service_fn(|req: &'static str| async move {
-            // Simulate some work
-            tokio::time::sleep(Duration::from_millis(100)).await;
-            Ok::<_, std::io::Error>(format!("Processed: {}", req))
-        });
+    // Policy: 4 total attempts, exponential backoff starting at 50ms, full jitter, retry only on Retryable.
+    let retry_policy = RetryPolicy::builder()
+        .max_attempts(4)
+        .backoff(Backoff::exponential(Duration::from_millis(50)))
+        .with_jitter(Jitter::full())
+        .should_retry(|err: &MyError| matches!(err, MyError::Retryable(_)))
+        .build()?;
 
-    // This should succeed (100ms < 1s timeout)
-    println!("Calling service (will succeed)...");
-    let response = svc.ready().await?.call("fast-request").await?;
-    println!("✓ Success: {}\n", response);
+    // Attach a MemorySink so we can print telemetry events at the end.
+    let sink = MemorySink::new();
+    let retry_layer = retry_policy.into_layer().with_sink(sink.clone());
 
-    // Now create a service that will timeout
-    let mut slow_svc = ServiceBuilder::new()
-        .layer(TimeoutLayer::new(Duration::from_millis(50))?)
-        .service_fn(|_req: &'static str| async move {
-            tokio::time::sleep(Duration::from_secs(1)).await;
-            Ok::<_, std::io::Error>("Should not reach here")
-        });
+    // A flaky service: first two attempts are retryable failures, third succeeds unless we trigger a fatal path.
+    let attempt = Arc::new(AtomicUsize::new(0));
+    let attempt_clone = attempt.clone();
+    let mut svc = ServiceBuilder::new().layer(retry_layer).service_fn(move |req: &'static str| {
+        let n = attempt_clone.fetch_add(1, Ordering::SeqCst);
+        async move {
+            if req == "fatal" {
+                return Err(MyError::Fatal("do not retry"));
+            }
 
-    // This should timeout (1s > 50ms timeout)
-    println!("Calling service (will timeout)...");
-    match slow_svc.ready().await?.call("slow-request").await {
-        Ok(_) => println!("Unexpected success"),
-        Err(e) => println!("✗ Timeout: {:?}\n", e),
+            match n {
+                0 | 1 => Err(MyError::Retryable("transient upstream")),
+                _ => Ok::<_, MyError>(format!("ok on attempt {}", n + 1)),
+            }
+        }
+    });
+
+    println!("Calling flaky service (should succeed after retries)...");
+    let ok = svc.ready().await?.call("happy").await?;
+    println!("✓ Result: {}", ok);
+
+    println!("\nCalling fatal path (should NOT retry)...");
+    let err = svc.ready().await?.call("fatal").await.unwrap_err();
+    println!("✗ Fatal error returned immediately: {}", err);
+
+    println!("\nTelemetry events (MemorySink):");
+    for event in sink.events() {
+        println!("  - {}", event);
     }
-
-    // Demonstrate algebraic composition: fallback strategy
-    println!("=== Algebraic Composition: Fallback ===\n");
-
-    let fast = Policy(TimeoutLayer::new(Duration::from_millis(50))?);
-    let slow = Policy(TimeoutLayer::new(Duration::from_secs(2))?);
-    let policy = fast | slow; // Try fast first, fallback to slow
-
-    let mut fallback_svc =
-        ServiceBuilder::new().layer(policy).service_fn(|req: &'static str| async move {
-            tokio::time::sleep(Duration::from_millis(100)).await;
-            Ok::<_, std::io::Error>(format!("Processed: {}", req))
-        });
-
-    println!("Using fallback policy (fast 50ms | slow 2s)...");
-    println!("Request takes 100ms - fast will timeout, slow will succeed");
-    let response = fallback_svc.ready().await?.call("request").await?;
-    println!("✓ Success via fallback: {}", response);
 
     Ok(())
 }

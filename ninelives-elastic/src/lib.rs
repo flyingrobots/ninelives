@@ -18,7 +18,8 @@ impl ElasticSink {
         let index = index.into();
         #[cfg(feature = "client")]
         {
-            let transport = elasticsearch::http::transport::Transport::single_node(&endpoint.into())?;
+            let transport =
+                elasticsearch::http::transport::Transport::single_node(&endpoint.into())?;
             let client = elasticsearch::Elasticsearch::new(transport);
             return Ok(Self { index, client });
         }
@@ -55,11 +56,7 @@ impl tower_service::Service<PolicyEvent> for ElasticSink {
             let index = self.index.clone();
             Box::pin(async move {
                 // ensure index exists (best-effort)
-                let _ = client
-                    .indices()
-                    .create(IndicesCreateParts::Index(&index))
-                    .send()
-                    .await;
+                let _ = client.indices().create(IndicesCreateParts::Index(&index)).send().await;
 
                 let body = JsonBody::new(format!("{{\"event\":\"{:?}\"}}", event));
                 let _ = client.index(IndexParts::Index(&index)).body(body).send().await;

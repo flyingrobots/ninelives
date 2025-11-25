@@ -2,7 +2,9 @@
 
 > Tower-native fractal supervision for async Rust — autonomous, self-healing Services via composable policy algebra.
 
-Resilience patterns for Rust with algebraic composition.
+<img alt="ninelives" src="https://github.com/user-attachments/assets/354f1818-c1c5-4e0a-ba1d-30382db5705f" />
+
+**Resilience patterns for Rust with algebraic composition.**
 
 [![Crates.io](https://img.shields.io/crates/v/ninelives.svg)](https://crates.io/crates/ninelives)
 [![Documentation](https://docs.rs/ninelives/badge.svg)](https://docs.rs/ninelives)
@@ -10,7 +12,7 @@ Resilience patterns for Rust with algebraic composition.
 
 Nine Lives provides battle-tested resilience patterns (retry, circuit breaker, bulkhead, timeout) as composable [tower](https://github.com/tower-rs/tower) layers with a unique algebraic composition system.
 
-## Features
+### Features
 
 - 🔁 **Retry policies** with exponential/linear/constant backoff and jitter
 - ⚡ **Circuit breakers** with half-open state recovery
@@ -28,7 +30,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-ninelives = "0.1"
+ninelives = "0.2"
 tower = "0.5"
 tokio = { version = "1", features = ["full"] }
 ```
@@ -389,26 +391,20 @@ Benchmarks coming soon.
 
 ## Examples
 
-See the [`examples/`](examples/) directory for runnable examples:
+See the [`ninelives-cookbook/examples`](ninelives-cookbook/examples/) directory for runnable examples:
 
-- `retry_only.rs` - Basic retry with backoff
+- `retry_only.rs` - Focused retry with backoff, jitter, and `should_retry`
+- `bulkhead_concurrency.rs` - Non-blocking bulkhead behavior under contention
+- `timeout_fallback.rs` - Timeout with fallback policy
 - `decorrelated_jitter.rs` - AWS-style decorrelated jitter
-- `algebra_composition.rs` - Complex algebraic composition patterns
+- `algebra_composition.rs` - Algebraic composition patterns
+- `telemetry_basic.rs` / `telemetry_composition.rs` - Attaching sinks and composing telemetry
 
 Run with:
 
 ```bash
-cargo run --example retry_only
+cargo run -p ninelives-cookbook --example timeout_fallback
 ```
-
-## License
-
-Licensed under either of:
-
-- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
-- MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
-
-at your option.
 
 ## Contributing
 
@@ -416,6 +412,8 @@ Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for gui
 
 Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in the work by you shall be dual licensed as above, without any additional terms or conditions.
 
----
+## License
 
-**Built with ❤️ for the Rust async ecosystem.**
+Apache License, Version 2.0 ([LICENSE](LICENSE) or <http://www.apache.org/licenses/LICENSE-2.0>)
+
+_@ 2025 • James Ross • [📧](mailto:james@flyingrobots.dev) • [🔗 FLYING•ROBOTS](https://github.com/flyingrobots)_

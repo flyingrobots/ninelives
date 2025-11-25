@@ -7,14 +7,15 @@ pub use crate::{
     },
     bulkhead::BulkheadLayer,
     circuit_breaker::{CircuitBreakerConfig, CircuitBreakerError, CircuitBreakerLayer},
+    clock::{Clock, MonotonicClock},
     jitter::Jitter,
     retry::{BuildError, RetryLayer, RetryPolicy, RetryPolicyBuilder},
+    sleeper::{InstantSleeper, Sleeper, TokioSleeper, TrackingSleeper},
     telemetry::{
         BulkheadEvent, CircuitBreakerEvent, FallbackSink, LogSink, MemorySink, MulticastSink,
         NullSink, PolicyEvent, RequestOutcome, RetryEvent, StreamingSink, TelemetrySink,
         TimeoutEvent,
     },
-    timeout::TimeoutLayer,
-    timeout::{TimeoutError, TimeoutPolicy, MAX_TIMEOUT},
+    timeout::{TimeoutError, TimeoutLayer, TimeoutPolicy, MAX_TIMEOUT},
     BulkheadPolicy, ResilienceError,
 };

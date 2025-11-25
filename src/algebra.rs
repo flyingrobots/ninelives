@@ -330,11 +330,13 @@ where
     ) -> std::task::Poll<Result<(), Self::Error>> {
         let primary_ready = self.primary.poll_ready(cx);
         let secondary_ready = self.secondary.poll_ready(cx);
+
         match (primary_ready, secondary_ready) {
-            (std::task::Poll::Ready(Ok(_)), _) => std::task::Poll::Ready(Ok(())),
-            (_, std::task::Poll::Ready(Ok(_))) => std::task::Poll::Ready(Ok(())),
             (std::task::Poll::Ready(Err(e)), _) => std::task::Poll::Ready(Err(e)),
             (_, std::task::Poll::Ready(Err(e))) => std::task::Poll::Ready(Err(e)),
+            (std::task::Poll::Ready(Ok(_)), std::task::Poll::Ready(Ok(_))) => {
+                std::task::Poll::Ready(Ok(()))
+            }
             _ => std::task::Poll::Pending,
         }
     }
@@ -346,7 +348,10 @@ where
         Box::pin(async move {
             match primary.call(req).await {
                 Ok(resp) => Ok(resp),
-                Err(_) => secondary.call(req_clone).await,
+                Err(primary_err) => match secondary.call(req_clone).await {
+                    Ok(resp) => Ok(resp),
+                    Err(_) => Err(primary_err), // preserve first failure for diagnostics
+                },
             }
         })
     }
@@ -466,8 +471,9 @@ where
         let left_ready = self.left.poll_ready(cx);
         let right_ready = self.right.poll_ready(cx);
         match (left_ready, right_ready) {
-            (std::task::Poll::Ready(Ok(_)), _) => std::task::Poll::Ready(Ok(())),
-            (_, std::task::Poll::Ready(Ok(_))) => std::task::Poll::Ready(Ok(())),
+            (std::task::Poll::Ready(Ok(_)), std::task::Poll::Ready(Ok(_))) => {
+                std::task::Poll::Ready(Ok(()))
+            }
             (std::task::Poll::Ready(Err(e)), _) => std::task::Poll::Ready(Err(e)),
             (_, std::task::Poll::Ready(Err(e))) => std::task::Poll::Ready(Err(e)),
             _ => std::task::Poll::Pending,
@@ -499,14 +505,163 @@ where
                         Err(_) => Err(left_err), // Both failed, return left error
                     }
                 }
-                Either::Right((Err(right_err), left_fut)) => {
+                Either::Right((Err(_right_err), left_fut)) => {
                     // Right failed, try left
                     match left_fut.await {
                         Ok(resp) => Ok(resp),
-                        Err(_) => Err(right_err), // Both failed, return right error
+                        Err(left_err) => Err(left_err), // Both failed, return deterministic left error
                     }
                 }
             }
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use futures::task::noop_waker;
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use std::sync::Arc;
+    use std::task::{Context, Poll};
+    use tower_service::Service;
+
+    #[derive(Clone, Debug)]
+    struct GateService {
+        ready: Arc<AtomicBool>,
+        calls: Arc<AtomicUsize>,
+    }
+
+    impl GateService {
+        fn new() -> Self {
+            Self { ready: Arc::new(AtomicBool::new(false)), calls: Arc::new(AtomicUsize::new(0)) }
+        }
+
+        fn set_ready(&self, ready: bool) {
+            self.ready.store(ready, Ordering::SeqCst);
+        }
+
+        #[allow(dead_code)]
+        fn calls(&self) -> usize {
+            self.calls.load(Ordering::SeqCst)
+        }
+    }
+
+    impl<Request> tower_service::Service<Request> for GateService
+    where
+        Request: Clone + Send + 'static,
+    {
+        type Response = ();
+        type Error = &'static str;
+        type Future = futures::future::Ready<Result<Self::Response, Self::Error>>;
+
+        fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+            if self.ready.load(Ordering::SeqCst) {
+                Poll::Ready(Ok(()))
+            } else {
+                // wake to allow external state change to be observed
+                cx.waker().wake_by_ref();
+                Poll::Pending
+            }
+        }
+
+        fn call(&mut self, _req: Request) -> Self::Future {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            futures::future::ready(Ok(()))
+        }
+    }
+
+    #[test]
+    fn fallback_poll_ready_waits_for_both() {
+        let primary = GateService::new();
+        let secondary = GateService::new();
+
+        let mut svc = FallbackService { primary: primary.clone(), secondary: secondary.clone() };
+
+        // Primary ready, secondary not ready => still Pending
+        primary.set_ready(true);
+        secondary.set_ready(false);
+        let waker = noop_waker();
+        let mut cx = Context::from_waker(&waker);
+        assert!(matches!(Service::<()>::poll_ready(&mut svc, &mut cx), Poll::Pending));
+
+        // Both ready => Ready
+        secondary.set_ready(true);
+        assert!(matches!(Service::<()>::poll_ready(&mut svc, &mut cx), Poll::Ready(Ok(()))));
+    }
+
+    #[tokio::test]
+    async fn fallback_returns_primary_error_when_both_fail() {
+        #[derive(Clone, Debug)]
+        struct ErrSvc;
+
+        impl tower_service::Service<()> for ErrSvc {
+            type Response = ();
+            type Error = &'static str;
+            type Future = futures::future::Ready<Result<Self::Response, Self::Error>>;
+            fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+                Poll::Ready(Ok(()))
+            }
+            fn call(&mut self, _req: ()) -> Self::Future {
+                futures::future::ready(Err("primary failed"))
+            }
+        }
+
+        let mut svc = FallbackService { primary: ErrSvc, secondary: ErrSvc };
+        let err = svc.call(()).await.unwrap_err();
+        assert_eq!(err, "primary failed");
+    }
+
+    #[tokio::test]
+    async fn fork_join_returns_left_error_if_both_fail() {
+        #[derive(Clone, Debug)]
+        struct LeftErr;
+        #[derive(Clone, Debug)]
+        struct RightErr;
+
+        impl tower_service::Service<()> for LeftErr {
+            type Response = ();
+            type Error = &'static str;
+            type Future = futures::future::Ready<Result<Self::Response, Self::Error>>;
+            fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+                Poll::Ready(Ok(()))
+            }
+            fn call(&mut self, _req: ()) -> Self::Future {
+                futures::future::ready(Err("left"))
+            }
+        }
+
+        impl tower_service::Service<()> for RightErr {
+            type Response = ();
+            type Error = &'static str;
+            type Future = futures::future::Ready<Result<Self::Response, Self::Error>>;
+            fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+                Poll::Ready(Ok(()))
+            }
+            fn call(&mut self, _req: ()) -> Self::Future {
+                futures::future::ready(Err("right"))
+            }
+        }
+
+        let mut svc = ForkJoinService { left: LeftErr, right: RightErr };
+        let err = svc.call(()).await.unwrap_err();
+        assert_eq!(err, "left");
+    }
+
+    #[test]
+    fn fork_join_poll_ready_waits_for_both() {
+        let left = GateService::new();
+        let right = GateService::new();
+
+        let mut svc = ForkJoinService { left: left.clone(), right: right.clone() };
+
+        left.set_ready(true);
+        right.set_ready(false);
+        let waker = noop_waker();
+        let mut cx = Context::from_waker(&waker);
+        assert!(matches!(Service::<()>::poll_ready(&mut svc, &mut cx), Poll::Pending));
+
+        right.set_ready(true);
+        assert!(matches!(Service::<()>::poll_ready(&mut svc, &mut cx), Poll::Ready(Ok(()))));
     }
 }
