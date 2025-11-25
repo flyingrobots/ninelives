@@ -23,7 +23,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4.1.6
-      - uses: dtolnay/rust-toolchain@v1.1.3
+      - uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: 1.82.0
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2.7.3
       - name: Format check
@@ -33,13 +35,30 @@ jobs:
       - name: Tests (all features)
         run: cargo test --all-features --all-targets
 
+  msrv:
+    needs: actionlint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.1.6
+      - uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: 1.70.0
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2.7.3
+      - name: Tests on MSRV
+        run: cargo test --all-features --all-targets
+
   docs:
     needs: actionlint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4.1.6
-      - uses: dtolnay/rust-toolchain@v1.1.3
+      - uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: 1.82.0
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2.7.3
       - name: Docs
+        env:
+          RUSTDOCFLAGS: "-D warnings"
         run: cargo doc --no-deps

@@ -36,7 +36,7 @@
   - Tower integration guide
   - Quick start with `Policy(A) + Policy(B) | Policy(C)`
 - [x] Update examples/:
-  - [x] retry_only.rs (tower-native)
+  - [x] timeout_fallback.rs (tower-native)
   - [x] decorrelated_jitter.rs (tower-native)
   - [x] Create algebra_composition.rs example
 - [x] Add doc tests for algebra operators

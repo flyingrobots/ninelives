@@ -1,21 +1,7 @@
-release = false # workspace releases disabled; per-package `release = true` enables publishing
-# Labels used to signal release readiness on PRs.
-pr_labels = ["release", "release-ready"]
-
-[changelog_config]
-template = "keepachangelog"
-
-[git]
-commit_message = "chore(release): {{ crate_name }} v{{ version }}"
-tag_name = "{{ crate_name }}-v{{ version }}"
-
-prerelease_suffix = "alpha"
-publish_timeout = "10m"
-publish_delay = "30s"
-
 [workspace]
 semver_check = true
+pr_labels = ["release", "release-ready"]
 
-[[packages]]
+[package]
 name = "ninelives"
 release = true

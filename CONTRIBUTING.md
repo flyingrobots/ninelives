@@ -4,14 +4,16 @@ Thanks for wanting to improve Nine Lives! This document provides guidelines for 
 
 ## 🚀 Quick Start
 
-1. Install the latest stable Rust (see https://rustup.rs/).
+1. Install the latest stable Rust (see <https://rustup.rs/>).
 2. Clone and Branch: git checkout -b feature/your-idea.
 3. Run Checks Locally:
+
 ```bash
 cargo fmt -- --check
-cargo clippy --all-targets --all-features -- -D warnings
+cargo clippy --all-targets --all-features -- -D warnings 
 cargo test --all-features --all-targets
 ```
+To enable the repo's pre-push hook (runs the commands above plus `cargo doc --no-deps -D warnings`), set: `git config core.hooksPath .githooks`.
 4. Open a PR with a clear description and necessary tests.
 
 ## 🧪 Testing Notes

@@ -138,6 +138,15 @@ impl Jitter {
         self.apply_internal(delay, rng)
     }
 
+    /// Apply jitter, automatically using stateful behavior for decorrelated jitter and stateless
+    /// behavior for other variants.
+    pub fn apply_with_state(&self, delay: Duration) -> Duration {
+        match self {
+            Jitter::Decorrelated(_) => self.apply_stateful(),
+            _ => self.apply(delay),
+        }
+    }
+
     fn as_millis_saturated(duration: Duration) -> u64 {
         duration.as_millis().try_into().unwrap_or(u64::MAX) // Saturate extremely large durations
     }

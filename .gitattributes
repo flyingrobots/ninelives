@@ -9,4 +9,3 @@ Cargo.lock text eol=lf
 .gitignore text eol=lf
 *.sh text eol=lf
 *.json text eol=lf
-Cargo.lock text eol=lf

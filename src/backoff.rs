@@ -204,14 +204,6 @@ pub struct Backoff {
     strategy: Arc<dyn BackoffStrategy>,
 }
 
-impl PartialEq for Backoff {
-    fn eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.strategy, &other.strategy)
-    }
-}
-
-impl Eq for Backoff {}
-
 impl fmt::Debug for Backoff {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Backoff").finish_non_exhaustive()
