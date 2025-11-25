@@ -10,6 +10,7 @@ repository = "https://github.com/flyingrobots/ninelives"
 
 [dependencies]
 ninelives = { version = "0.1.0", path = ".." }
+tower-service = "0.3"
 tracing = "0.1"
 
 # Optional heavy client
