@@ -599,7 +599,7 @@ impl Service<PolicyEvent> for StreamingSink {
         if let Err(_e) = self.sender.send(event) {
             // Receiver lagged or none connected
             self.dropped.fetch_add(1, Ordering::Relaxed);
-            let _ = self.last_drop_ns.store(
+            self.last_drop_ns.store(
                 SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos() as u64,
                 Ordering::Relaxed,
             );
