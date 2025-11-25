@@ -10,7 +10,7 @@ cargo clippy --all-targets --all-features -- -D warnings -D missing_docs
 echo "[pre-push] running cargo test --all-features --all-targets"
 cargo test --all-features --all-targets
 
-echo "[pre-push] running cargo doc --no-deps -D warnings"
-cargo doc --no-deps -D warnings
+echo "[pre-push] running cargo doc --no-deps with -D warnings"
+RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
 
 echo "[pre-push] all checks passed"
