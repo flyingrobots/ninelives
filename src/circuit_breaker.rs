@@ -1,6 +1,6 @@
 //! Circuit breaker implemented as a tower Layer/Service.
 
-use crate::{clock::Clock, clock::MonotonicClock, ResilienceError};
+use crate::{adaptive::Adaptive, clock::Clock, clock::MonotonicClock, ResilienceError};
 use futures::future::BoxFuture;
 use std::sync::atomic::{AtomicU64, AtomicU8, AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -45,9 +45,9 @@ impl CircuitState {
 /// Validated configuration for the circuit breaker.
 #[derive(Debug, Clone)]
 pub struct CircuitBreakerConfig {
-    failure_threshold: usize,
-    recovery_timeout: Duration,
-    half_open_max_calls: usize,
+    failure_threshold: Adaptive<usize>,
+    recovery_timeout: Adaptive<Duration>,
+    half_open_max_calls: Adaptive<usize>,
 }
 
 /// Errors produced when validating breaker configuration.
@@ -96,7 +96,11 @@ impl CircuitBreakerConfig {
         recovery_timeout: Duration,
         half_open_max_calls: usize,
     ) -> Result<Self, CircuitBreakerError> {
-        let cfg = Self { failure_threshold, recovery_timeout, half_open_max_calls };
+        let cfg = Self {
+            failure_threshold: Adaptive::new(failure_threshold),
+            recovery_timeout: Adaptive::new(recovery_timeout),
+            half_open_max_calls: Adaptive::new(half_open_max_calls),
+        };
         cfg.validate()?;
         Ok(cfg)
     }
@@ -104,20 +108,20 @@ impl CircuitBreakerConfig {
     /// Create a disabled circuit breaker (never opens).
     pub fn disabled() -> Self {
         Self {
-            failure_threshold: usize::MAX,
-            recovery_timeout: Duration::MAX,
-            half_open_max_calls: usize::MAX,
+            failure_threshold: Adaptive::new(usize::MAX),
+            recovery_timeout: Adaptive::new(Duration::MAX),
+            half_open_max_calls: Adaptive::new(usize::MAX),
         }
     }
 
     fn validate(&self) -> Result<(), CircuitBreakerError> {
-        if self.failure_threshold == 0 {
+        if *self.failure_threshold.get() == 0 {
             return Err(CircuitBreakerError::InvalidFailureThreshold { provided: 0 });
         }
-        if self.recovery_timeout.is_zero() {
-            return Err(CircuitBreakerError::InvalidRecoveryTimeout(self.recovery_timeout));
+        if self.recovery_timeout.get().is_zero() {
+            return Err(CircuitBreakerError::InvalidRecoveryTimeout(*self.recovery_timeout.get()));
         }
-        if self.half_open_max_calls == 0 {
+        if *self.half_open_max_calls.get() == 0 {
             return Err(CircuitBreakerError::InvalidHalfOpenLimit { provided: 0 });
         }
         Ok(())
@@ -263,11 +267,14 @@ where
             let start = StdInstant::now();
             let now = clock.now_millis();
             let current = CircuitState::from_u8(state.state.load(Ordering::Acquire));
+            let recovery_timeout = *config.recovery_timeout.get();
+            let failure_threshold = *config.failure_threshold.get();
+            let half_open_max_calls = *config.half_open_max_calls.get();
 
             match current {
                 CircuitState::Open => {
                     let opened_at = state.opened_at_millis.load(Ordering::Acquire);
-                    if now.saturating_sub(opened_at) < config.recovery_timeout.as_millis() as u64 {
+                    if now.saturating_sub(opened_at) < recovery_timeout.as_millis() as u64 {
                         return Err(ResilienceError::CircuitOpen {
                             failure_count: state.failure_count.load(Ordering::Acquire),
                             open_duration: Duration::from_millis(now.saturating_sub(opened_at)),
@@ -291,7 +298,7 @@ where
                 }
                 CircuitState::HalfOpen => {
                     let calls = state.half_open_calls.fetch_add(1, Ordering::AcqRel) + 1;
-                    if calls > config.half_open_max_calls {
+                    if calls > half_open_max_calls {
                         return Err(ResilienceError::CircuitOpen {
                             failure_count: state.failure_count.load(Ordering::Acquire),
                             open_duration: Duration::ZERO,
@@ -330,7 +337,7 @@ where
                     let failures = state.failure_count.fetch_add(1, Ordering::AcqRel) + 1;
                     match CircuitState::from_u8(state.state.load(Ordering::Acquire)) {
                         CircuitState::Closed => {
-                            if failures >= config.failure_threshold {
+                            if failures >= failure_threshold {
                                 // Transition Closed -> Open
                                 let prev = state.state.compare_exchange(
                                     CircuitState::Closed.to_u8(),
