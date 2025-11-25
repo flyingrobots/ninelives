@@ -111,6 +111,7 @@
 //! For more examples, see the algebra module documentation.
 
 mod algebra;
+pub mod adaptive;
 mod backoff;
 mod bulkhead;
 mod circuit_breaker;

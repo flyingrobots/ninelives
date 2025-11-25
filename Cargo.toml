@@ -34,6 +34,7 @@ tower-layer = "0.3"
 futures = "~0.3.31"
 tower = { version = "0.5.2", features = ["full"] }
 thiserror = "1"
+arc-swap = { version = "1", optional = true }
 
 [dev-dependencies]
 tokio = { version = "~1.48.0", features = ["full", "test-util"] }
@@ -43,3 +44,5 @@ hdrhistogram = { version = "7", default-features = false }
 
 [features]
 bench-telemetry = []
+adaptive-rwlock = []
+default = ["arc-swap"]
