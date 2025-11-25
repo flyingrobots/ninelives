@@ -2,7 +2,7 @@
 
 //! # Nine Lives 🐱
 //!
-//! Production-grade resilience patterns for Rust: retry policies, circuit breakers,
+//! Resilience patterns for Rust: retry policies, circuit breakers,
 //! bulkheads, and timeouts.
 //!
 //! ## Features
@@ -120,6 +120,7 @@ mod jitter;
 mod retry;
 mod sleeper;
 // stack module removed in favor of tower-native algebra
+pub mod telemetry;
 mod timeout;
 
 // Re-exports

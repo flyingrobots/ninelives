@@ -1,5 +1,7 @@
 # Nine Lives 🐱
 
+> Tower-native fractal supervision for async Rust — autonomous, self-healing Services via composable policy algebra.
+
 <img alt="ninelives" src="https://github.com/user-attachments/assets/354f1818-c1c5-4e0a-ba1d-30382db5705f" />
 
 **Resilience patterns for Rust with algebraic composition.**
@@ -20,6 +22,7 @@ Nine Lives provides battle-tested resilience patterns (retry, circuit breaker, b
 - 🏎️ **Fork-join** for concurrent racing (Happy Eyeballs pattern)
 - 🔒 **Lock-free implementations** using atomics
 - 🏗️ **Tower-native** - works with any tower `Service`
+- 🌐 **Companion sinks** (OTLP, NATS, Kafka, Elastic, etcd, Prometheus, JSONL) via optional crates
 
 ## Quick Start
 
@@ -27,7 +30,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-ninelives = "0.1"
+ninelives = "0.2"
 tower = "0.5"
 tokio = { version = "1", features = ["full"] }
 ```
@@ -145,6 +148,36 @@ let circuit_breaker = CircuitBreakerLayer::new(
 // Compose: circuit breaker wraps retry
 let policy = Policy(circuit_breaker) + Policy(retry.into_layer());
 ```
+
+## Telemetry Sink Ladder
+
+- **Baby mode:** `MemorySink::with_capacity(1_000)` for local inspection.
+- **Intermediate:** `NonBlockingSink(LogSink)` to keep request paths non-blocking while logging.
+- **Advanced:** `NonBlockingSink(OtlpSink)` + `StreamingSink` fan-out for in-cluster consumers.
+- **GOD MODE:** `StreamingSink` → NATS/Kafka/Elastic via companion crates, with Observer + Sentinel auto-tuning when drop/evict metrics spike.
+
+See recipes in `src/cookbook.rs` and companion cookbooks:
+- `ninelives-otlp/README.md`
+- `ninelives-nats/README.md`
+- `ninelives-kafka/README.md`
+- `ninelives-elastic/README.md`
+- `ninelives-etcd/README.md`
+- `ninelives-prometheus/README.md`
+- `ninelives-jsonl/README.md`
+
+## Cookbook (pick your recipe)
+
+- **Simple retry:** `retry_fast` — 3 attempts, 50ms exp backoff + jitter.
+- **Latency guard:** `timeout_p95` — 300ms budget.
+- **Bulkhead:** `bulkhead_isolate(max)` — protect shared deps.
+- **API guardrail (intermediate):** `api_guardrail` — timeout + breaker + bulkhead.
+- **Reliable read (advanced):** `reliable_read` — fast path then fallback stack.
+- **Hedged read (tricky):** `hedged_read` — fork-join two differently-tuned stacks.
+- **Hedge + fallback (god tier):** `hedged_then_fallback` — race two fast paths, then fall back to a sturdy stack.
+- **Sensible defaults:** `sensible_defaults` — timeout + retry + bulkhead starter pack.
+
+All live in `src/cookbook.rs`.
+Moved to the `ninelives-cookbook` crate (see its README/examples).
 
 ## Tower Integration
 
@@ -319,16 +352,16 @@ let sleeps = tracker.get_sleeps();
 assert_eq!(sleeps.len(), 2); // Slept twice before success
 ```
 
-## Roadmap
+## Roadmap (snapshot)
 
-Nine Lives is evolving toward a **fractal resilience framework** with autonomous operation:
+Nine Lives is marching toward autonomous, fractal resilience. Current focus:
 
-- **v1.0** (Current Phase): Tower-native layers with algebraic composition ✅
-- **v1.5**: Telemetry events, control plane for runtime tuning 🚧
-- **v2.0**: Autonomous Sentinel with meta-policies, shadow evaluation 🔮
-- **v3.0**: Rich adapter ecosystem (Redis, OTLP, Prometheus) 🌐
+- ✅ Phase 0–1: Tower-native algebra + telemetry sinks (done)
+- 🚧 Phase 2: Control plane & adaptive configs (in progress)
+- 🧭 Phase 3: Observer for aggregated state (planned)
+- 🔮 Phase 5: Sentinel meta-policies + shadow eval (planned)
 
-See [ROADMAP.md](ROADMAP.md) for the full vision.
+Full detail and milestones live in [ROADMAP.md](ROADMAP.md).
 
 ## Performance
 
@@ -358,16 +391,19 @@ Benchmarks coming soon.
 
 ## Examples
 
-See the [`examples/`](examples/) directory for runnable examples:
+See the [`ninelives-cookbook/examples`](ninelives-cookbook/examples/) directory for runnable examples:
 
+- `retry_only.rs` - Focused retry with backoff, jitter, and `should_retry`
+- `bulkhead_concurrency.rs` - Non-blocking bulkhead behavior under contention
 - `timeout_fallback.rs` - Timeout with fallback policy
 - `decorrelated_jitter.rs` - AWS-style decorrelated jitter
-- `algebra_composition.rs` - Complex algebraic composition patterns
+- `algebra_composition.rs` - Algebraic composition patterns
+- `telemetry_basic.rs` / `telemetry_composition.rs` - Attaching sinks and composing telemetry
 
 Run with:
 
 ```bash
-cargo run --example timeout_fallback
+cargo run -p ninelives-cookbook --example timeout_fallback
 ```
 
 ## Contributing

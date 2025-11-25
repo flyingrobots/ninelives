@@ -82,6 +82,18 @@ where
         RetryPolicyBuilder::new()
     }
 
+    /// Convert this policy into a tower Layer.
+    pub fn into_layer(self) -> RetryLayer<E, NullSink> {
+        RetryLayer {
+            max_attempts: self.max_attempts,
+            backoff: self.backoff,
+            jitter: self.jitter,
+            should_retry: self.should_retry,
+            sleeper: self.sleeper,
+            sink: NullSink,
+        }
+    }
+
     /// Execute an async operation with retry semantics.
     pub async fn execute<T, Fut, Op>(&self, operation: Op) -> Result<T, ResilienceError<E>>
     where
@@ -96,6 +108,36 @@ where
             &self.should_retry,
             &self.sleeper,
             operation,
+            None::<(NullSink, Instant)>,
+        )
+        .await
+    }
+
+    /// Execute with telemetry delivered to the provided sink.
+    ///
+    /// This mirrors `execute` but emits `PolicyEvent`s for attempts, exhaustion, and final
+    /// request outcomes using the supplied sink. Callers can pass `NonBlockingSink` etc.
+    pub async fn execute_with_sink<T, Fut, Op, Sink>(
+        &self,
+        operation: Op,
+        sink: Sink,
+    ) -> Result<T, ResilienceError<E>>
+    where
+        T: Send,
+        Fut: Future<Output = Result<T, ResilienceError<E>>> + Send,
+        Op: FnMut() -> Fut + Send,
+        Sink: tower::Service<PolicyEvent, Response = ()> + Clone + Send + Sync + 'static,
+        Sink::Error: std::error::Error + Send + 'static,
+        Sink::Future: Send + 'static,
+    {
+        run_retry_loop(
+            self.max_attempts,
+            &self.backoff,
+            &self.jitter,
+            &self.should_retry,
+            &self.sleeper,
+            operation,
+            Some((sink, Instant::now())),
         )
         .await
     }
@@ -575,20 +617,24 @@ mod tests {
 
 // end of file
 
-/// Tower-native retry layer.
-pub struct RetryLayer<E> {
+use crate::telemetry::{emit_best_effort, NullSink, PolicyEvent, RetryEvent};
+use std::time::Instant;
+
+/// Tower-native retry layer with optional telemetry.
+pub struct RetryLayer<E, Sink = NullSink> {
     max_attempts: usize,
     backoff: Backoff,
     jitter: Jitter,
     should_retry: Arc<dyn Fn(&E) -> bool + Send + Sync>,
     sleeper: Arc<dyn Sleeper>,
+    sink: Sink,
 }
 
-impl<E> RetryLayer<E>
+impl<E> RetryLayer<E, NullSink>
 where
     E: std::error::Error + Send + Sync + 'static,
 {
-    /// Create a new retry layer with explicit configuration.
+    /// Create a new retry layer with explicit configuration and no telemetry.
     ///
     /// Most users should use [`RetryPolicy::builder()`](crate::RetryPolicy::builder) instead.
     ///
@@ -605,11 +651,35 @@ where
         if max_attempts == 0 {
             return Err(BuildError::InvalidMaxAttempts(0));
         }
-        Ok(Self { max_attempts, backoff, jitter, should_retry, sleeper })
+        Ok(Self { max_attempts, backoff, jitter, should_retry, sleeper, sink: NullSink })
     }
 }
 
-impl<E> Clone for RetryLayer<E> {
+impl<E, Sink> RetryLayer<E, Sink>
+where
+    E: std::error::Error + Send + Sync + 'static,
+    Sink: Clone,
+{
+    /// Attach a telemetry sink to this retry layer.
+    pub fn with_sink<NewSink>(self, sink: NewSink) -> RetryLayer<E, NewSink>
+    where
+        NewSink: Clone,
+    {
+        RetryLayer {
+            max_attempts: self.max_attempts,
+            backoff: self.backoff,
+            jitter: self.jitter,
+            should_retry: self.should_retry,
+            sleeper: self.sleeper,
+            sink,
+        }
+    }
+}
+
+impl<E, Sink> Clone for RetryLayer<E, Sink>
+where
+    Sink: Clone,
+{
     fn clone(&self) -> Self {
         Self {
             max_attempts: self.max_attempts,
@@ -617,30 +687,34 @@ impl<E> Clone for RetryLayer<E> {
             jitter: self.jitter.clone(),
             should_retry: self.should_retry.clone(),
             sleeper: self.sleeper.clone(),
+            sink: self.sink.clone(),
         }
     }
 }
 
 /// Retry service produced by `RetryLayer`.
 #[derive(Clone)]
-pub struct RetryService<S, E> {
+pub struct RetryService<S, E, Sink = NullSink> {
     inner: S,
-    layer: RetryLayer<E>,
+    layer: RetryLayer<E, Sink>,
 }
 
-impl<S, E> RetryService<S, E> {
-    fn new(inner: S, layer: RetryLayer<E>) -> Self {
+impl<S, E, Sink> RetryService<S, E, Sink> {
+    fn new(inner: S, layer: RetryLayer<E, Sink>) -> Self {
         Self { inner, layer }
     }
 }
 
-impl<S, E, Request> Service<Request> for RetryService<S, E>
+impl<S, E, Request, Sink> Service<Request> for RetryService<S, E, Sink>
 where
     Request: Clone + Send + 'static,
     S: Service<Request, Error = E> + Clone + Send + 'static,
     S::Response: Send + 'static,
     S::Future: Send + 'static,
     E: std::error::Error + Send + Sync + 'static,
+    Sink: tower::Service<PolicyEvent, Response = ()> + Clone + Send + Sync + 'static,
+    Sink::Error: std::error::Error + Send + 'static,
+    Sink::Future: Send + 'static,
 {
     type Response = S::Response;
     type Error = ResilienceError<E>;
@@ -656,7 +730,10 @@ where
     fn call(&mut self, req: Request) -> Self::Future {
         let layer = self.layer.clone();
         let inner = self.inner.clone();
+        let sink = layer.sink.clone();
+
         Box::pin(async move {
+            let start = Instant::now();
             run_retry_loop(
                 layer.max_attempts,
                 &layer.backoff,
@@ -668,33 +745,60 @@ where
                     let mut inner_clone = inner.clone();
                     async move { inner_clone.call(req_clone).await.map_err(ResilienceError::Inner) }
                 },
+                Some((sink, start)),
             )
             .await
         })
     }
 }
 
-async fn run_retry_loop<T, E, Fut, Attempt>(
+async fn run_retry_loop<T, E, Fut, Attempt, Sink>(
     max_attempts: usize,
     backoff: &Backoff,
     jitter: &Jitter,
     should_retry: &Arc<dyn Fn(&E) -> bool + Send + Sync>,
     sleeper: &Arc<dyn Sleeper>,
     mut attempt: Attempt,
+    telemetry: Option<(Sink, Instant)>,
 ) -> Result<T, ResilienceError<E>>
 where
     T: Send,
     E: std::error::Error + Send + Sync + 'static,
     Fut: Future<Output = Result<T, ResilienceError<E>>> + Send,
     Attempt: FnMut() -> Fut + Send,
+    Sink: tower::Service<PolicyEvent, Response = ()> + Clone + Send + Sync + 'static,
+    Sink::Error: std::error::Error + Send + 'static,
+    Sink::Future: Send + 'static,
 {
     let mut failures: VecDeque<E> = VecDeque::new();
 
     for attempt_idx in 0..max_attempts {
         match attempt().await {
-            Ok(value) => return Ok(value),
+            Ok(value) => {
+                if let Some((sink, start)) = telemetry.as_ref() {
+                    let duration = start.elapsed();
+                    emit_best_effort(
+                        sink.clone(),
+                        PolicyEvent::Request(crate::telemetry::RequestOutcome::Success {
+                            duration,
+                        }),
+                    )
+                    .await;
+                }
+                return Ok(value);
+            }
             Err(ResilienceError::Inner(e)) => {
                 if !(should_retry)(&e) {
+                    if let Some((sink, start)) = telemetry.as_ref() {
+                        let duration = start.elapsed();
+                        emit_best_effort(
+                            sink.clone(),
+                            PolicyEvent::Request(crate::telemetry::RequestOutcome::Failure {
+                                duration,
+                            }),
+                        )
+                        .await;
+                    }
                     return Err(ResilienceError::Inner(e));
                 }
 
@@ -704,6 +808,24 @@ where
                 }
 
                 if attempt_idx + 1 >= max_attempts {
+                    if let Some((sink, start)) = telemetry.as_ref() {
+                        let total_duration = start.elapsed();
+                        emit_best_effort(
+                            sink.clone(),
+                            PolicyEvent::Retry(RetryEvent::Exhausted {
+                                total_attempts: max_attempts,
+                                total_duration,
+                            }),
+                        )
+                        .await;
+                        emit_best_effort(
+                            sink.clone(),
+                            PolicyEvent::Request(crate::telemetry::RequestOutcome::Failure {
+                                duration: total_duration,
+                            }),
+                        )
+                        .await;
+                    }
                     return Err(ResilienceError::retry_exhausted(
                         max_attempts,
                         failures.into_iter().collect(),
@@ -711,6 +833,13 @@ where
                 }
 
                 let delay = jitter.apply_with_state(backoff.delay(attempt_idx + 1));
+                if let Some((sink, _)) = telemetry.as_ref() {
+                    emit_best_effort(
+                        sink.clone(),
+                        PolicyEvent::Retry(RetryEvent::Attempt { attempt: attempt_idx + 1, delay }),
+                    )
+                    .await;
+                }
                 sleeper.sleep(delay).await;
             }
             Err(e) => return Err(e),
@@ -720,11 +849,12 @@ where
     unreachable!("Retry loop should have returned; this indicates a logic bug");
 }
 
-impl<S, E> Layer<S> for RetryLayer<E>
+impl<S, E, Sink> Layer<S> for RetryLayer<E, Sink>
 where
     E: std::error::Error + Send + Sync + 'static,
+    Sink: Clone,
 {
-    type Service = RetryService<S, E>;
+    type Service = RetryService<S, E, Sink>;
     fn layer(&self, service: S) -> Self::Service {
         RetryService::new(service, self.clone())
     }

@@ -55,44 +55,46 @@
 
 ---
 
-## Phase 1: The Telemetry & Message Plane (PRIORITY: HIGH)
+## Phase 1: The Telemetry & Message Plane (PRIORITY: HIGH) ✅ COMPLETE
 
 **Goal:** Build the observability foundation that enables autonomous operation.
 
 ### Event System
-- [ ] Define `PolicyEvent` enum:
-  - [ ] RetryAttempt, RetryExhausted
-  - [ ] CircuitOpened, CircuitClosed, CircuitHalfOpen
-  - [ ] BulkheadRejected, BulkheadAcquired
-  - [ ] TimeoutOccurred
-  - [ ] RequestSuccess, RequestFailure
-- [ ] Add event emission to all policy layers:
-  - [ ] RetryService emits on each attempt
-  - [ ] CircuitBreakerService emits on state transitions
-  - [ ] BulkheadService emits on acquire/reject
-  - [ ] TimeoutService emits on timeout
+- [x] Define `PolicyEvent` enum:
+  - [x] RetryAttempt, RetryExhausted
+  - [x] CircuitOpened, CircuitClosed, CircuitHalfOpen
+  - [x] BulkheadRejected, BulkheadAcquired
+  - [x] TimeoutOccurred
+  - [x] RequestSuccess, RequestFailure
+- [x] Add event emission to all policy layers:
+  - [x] RetryService emits on each attempt
+  - [x] CircuitBreakerService emits on state transitions
+  - [x] BulkheadService emits on acquire/reject
+  - [x] TimeoutService emits on timeout
 
 ### TelemetrySink Abstraction
-- [ ] Define `TelemetrySink` as a `tower::Service<PolicyEvent, Response=(), Error=E>`
-- [ ] Implement basic sinks:
-  - [ ] `NullSink` (no-op for testing)
-  - [ ] `LogSink` (logs events via `tracing`)
-  - [ ] `MemorySink` (in-memory buffer for testing)
-  - [ ] `StreamingSink` (tokio::sync::broadcast pub/sub bus)
-- [ ] Wire policies to accept `Arc<dyn TelemetrySink>` (or generic)
+- [x] Define `TelemetrySink` as a `tower::Service<PolicyEvent, Response=(), Error=E>`
+- [x] Implement basic sinks:
+  - [x] `NullSink` (no-op for testing)
+  - [x] `LogSink` (logs events via `tracing`)
+  - [x] `MemorySink` (in-memory buffer for testing)
+  - [x] `StreamingSink` (tokio::sync::broadcast pub/sub bus)
+- [x] Wire policies to accept telemetry sink via `.with_sink()` method
 
 ### Algebraic Sink Composition
-- [ ] Implement `+` for TelemetrySink (multicast to both)
-- [ ] Implement `|` for TelemetrySink (fallback on failure)
-- [ ] Add tests for sink composition
-- [ ] Document sink algebra patterns
+- [x] Implement `MulticastSink` for sending to multiple sinks (multicast to both)
+- [x] Implement `FallbackSink` for fallback on failure
+- [x] Add `ComposedSinkError` type for composition errors
+- [x] Document sink composition patterns
 
 ### Integration
-- [ ] Thread sink through policy constructors/builders
-- [ ] Add examples showing telemetry integration
-- [ ] Benchmark overhead of event emission
+- [x] Thread sink through policy constructors/builders via `.with_sink()` method
+- [x] Add examples showing telemetry integration:
+  - [x] `telemetry_basic.rs` - Basic usage with MemorySink, LogSink, StreamingSink
+  - [x] `telemetry_composition.rs` - MulticastSink and FallbackSink examples
+- [ ] Benchmark overhead of event emission (deferred to Phase 10)
 
-**Milestone:** `ninelives` v1.1.0 - Policies emit structured telemetry
+**Milestone:** `ninelives` v1.1.0 - Policies emit structured telemetry ✅
 
 ---
 
@@ -332,7 +334,7 @@
 - [ ] Multi-Region Failover
 
 ### Reference Implementations
-- [ ] Build example apps in `examples/recipes/`
+- [ ] Build example apps in `ninelives-cookbook/examples/recipes/`
 - [ ] Include Sentinel scripts for each pattern
 - [ ] Add integration tests
 

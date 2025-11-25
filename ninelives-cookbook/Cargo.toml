@@ -1,0 +1,12 @@
+[package]
+name = "ninelives-cookbook"
+version = "0.1.0"
+edition = "2021"
+authors = ["James Ross <james@flyingrobots.dev>"]
+description = "Examples and ready-made policy recipes for the ninelives resilience library"
+license = "Apache-2.0"
+publish = true
+repository = "https://github.com/flyingrobots/ninelives"
+
+[dependencies]
+ninelives = { version = "0.1.0", path = ".." }

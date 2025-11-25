@@ -1,0 +1,19 @@
+[package]
+name = "ninelives-kafka"
+version = "0.1.0"
+edition = "2021"
+authors = ["James Ross <james@flyingrobots.dev>"]
+description = "Optional Kafka telemetry sink for ninelives"
+license = "Apache-2.0"
+publish = true
+repository = "https://github.com/flyingrobots/ninelives"
+
+[dependencies]
+ninelives = { version = "0.1.0", path = ".." }
+tracing = "0.1"
+
+# Heavy deps are optional
+rdkafka = { version = "0.36", features = ["tokio"], optional = true }
+
+[features]
+client = ["rdkafka"]

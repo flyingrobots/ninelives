@@ -140,45 +140,68 @@ impl BulkheadPolicy {
     }
 }
 
-/// Tower-native bulkhead layer that limits concurrent in-flight requests.
+use crate::telemetry::{
+    emit_best_effort, BulkheadEvent, BulkheadRejectReason, NullSink, PolicyEvent, RequestOutcome,
+};
+use std::time::Instant as StdInstant;
+
+/// Tower-native bulkhead layer with optional telemetry.
 ///
-/// Each call to `layer()` creates a new `BulkheadService` with its own `Arc<Semaphore>`;
-/// limits are therefore per-service instance. To share concurrency limits across multiple
-/// services, store an `Arc<Semaphore>` inside the layer and clone it into each service.
-#[derive(Debug, Clone)]
-pub struct BulkheadLayer {
+/// Each call to `layer()` creates a new `BulkheadService` with its own `Arc<Semaphore>`; limits are
+/// therefore per-service instance. To share concurrency limits across multiple services, store an
+/// `Arc<Semaphore>` inside the layer and clone it into each service.
+#[derive(Clone)]
+pub struct BulkheadLayer<Sink = NullSink> {
     max_concurrent: usize,
+    sink: Sink,
 }
 
-impl BulkheadLayer {
-    /// Create a bulkhead layer; returns error if `max_concurrent` is zero.
+impl BulkheadLayer<NullSink> {
+    /// Create a bulkhead layer with no telemetry; returns error if `max_concurrent` is zero.
     pub fn new(max_concurrent: usize) -> Result<Self, BulkheadError> {
-        BulkheadPolicy::new(max_concurrent)
-            .map(|p| BulkheadLayer { max_concurrent: p.max_concurrent })
+        BulkheadPolicy::new(max_concurrent)?;
+        Ok(Self { max_concurrent, sink: NullSink })
+    }
+}
+
+impl<Sink> BulkheadLayer<Sink>
+where
+    Sink: Clone,
+{
+    /// Attach a telemetry sink to this bulkhead layer.
+    pub fn with_sink<NewSink>(self, sink: NewSink) -> BulkheadLayer<NewSink>
+    where
+        NewSink: Clone,
+    {
+        BulkheadLayer { max_concurrent: self.max_concurrent, sink }
     }
 }
 
 /// Service produced by [`BulkheadLayer`]; enforces permit limits.
-#[derive(Debug, Clone)]
-pub struct BulkheadService<S> {
+#[derive(Clone)]
+pub struct BulkheadService<S, Sink = NullSink> {
     semaphore: Arc<Semaphore>,
     max_concurrent: usize,
     inner: S,
+    sink: Sink,
 }
 
-impl<S> BulkheadService<S> {
-    fn new(inner: S, max_concurrent: usize) -> Self {
-        Self { semaphore: Arc::new(Semaphore::new(max_concurrent)), max_concurrent, inner }
+impl<S, Sink> BulkheadService<S, Sink> {
+    fn new(inner: S, max_concurrent: usize, sink: Sink) -> Self {
+        Self { semaphore: Arc::new(Semaphore::new(max_concurrent)), max_concurrent, inner, sink }
     }
 }
 
-impl<S, Request> Service<Request> for BulkheadService<S>
+impl<S, Request, Sink> Service<Request> for BulkheadService<S, Sink>
 where
     S: Service<Request> + Clone + Send + 'static,
     S::Future: Send + 'static,
     Request: Send + 'static,
     S::Error: std::error::Error + Send + Sync + 'static,
     S::Response: Send + 'static,
+    Sink: tower::Service<PolicyEvent, Response = ()> + Clone + Send + 'static,
+    Sink::Error: std::error::Error + Send + 'static,
+    Sink::Future: Send + 'static,
 {
     type Response = S::Response;
     type Error = ResilienceError<S::Error>;
@@ -192,29 +215,90 @@ where
     }
 
     fn call(&mut self, req: Request) -> Self::Future {
+        let start = StdInstant::now();
         let semaphore = self.semaphore.clone();
         let mut inner = self.inner.clone();
         let max = self.max_concurrent;
+        let sink = self.sink.clone();
+
         Box::pin(async move {
-            let _permit = match semaphore.try_acquire_owned() {
-                Ok(p) => p,
+            let available_before = semaphore.available_permits();
+            let permit = match semaphore.clone().try_acquire_owned() {
+                Ok(p) => {
+                    let active_count = max.saturating_sub(available_before).saturating_add(1);
+                    emit_best_effort(
+                        sink.clone(),
+                        PolicyEvent::Bulkhead(BulkheadEvent::Acquired {
+                            active_count,
+                            max_concurrency: max,
+                        }),
+                    )
+                    .await;
+                    p
+                }
                 Err(TryAcquireError::NoPermits) => {
-                    return Err(ResilienceError::Bulkhead { in_flight: max, max });
+                    let available_after = semaphore.available_permits();
+                    let active_count = max.saturating_sub(available_after);
+                    emit_best_effort(
+                        sink.clone(),
+                        PolicyEvent::Bulkhead(BulkheadEvent::Rejected {
+                            active_count,
+                            max_concurrency: max,
+                            reason: BulkheadRejectReason::Saturated,
+                        }),
+                    )
+                    .await;
+                    return Err(ResilienceError::Bulkhead { in_flight: active_count, max });
                 }
                 Err(TryAcquireError::Closed) => {
+                    emit_best_effort(
+                        sink.clone(),
+                        PolicyEvent::Bulkhead(BulkheadEvent::Rejected {
+                            active_count: max.saturating_sub(available_before),
+                            max_concurrency: max,
+                            reason: BulkheadRejectReason::Closed,
+                        }),
+                    )
+                    .await;
+                    emit_best_effort(sink.clone(), PolicyEvent::Bulkhead(BulkheadEvent::Closed))
+                        .await;
                     return Err(ResilienceError::BulkheadClosed);
                 }
             };
+
             let result = inner.call(req).await;
+            drop(permit);
+
+            let duration = start.elapsed();
+            match &result {
+                Ok(_) => {
+                    emit_best_effort(
+                        sink.clone(),
+                        PolicyEvent::Request(RequestOutcome::Success { duration }),
+                    )
+                    .await;
+                }
+                Err(_) => {
+                    emit_best_effort(
+                        sink.clone(),
+                        PolicyEvent::Request(RequestOutcome::Failure { duration }),
+                    )
+                    .await;
+                }
+            }
+
             result.map_err(ResilienceError::Inner)
         })
     }
 }
 
-impl<S> Layer<S> for BulkheadLayer {
-    type Service = BulkheadService<S>;
+impl<S, Sink> Layer<S> for BulkheadLayer<Sink>
+where
+    Sink: Clone,
+{
+    type Service = BulkheadService<S, Sink>;
     fn layer(&self, service: S) -> Self::Service {
-        BulkheadService::new(service, self.max_concurrent)
+        BulkheadService::new(service, self.max_concurrent, self.sink.clone())
     }
 }
 
@@ -492,7 +576,7 @@ mod tests {
     #[tokio::test]
     async fn service_fails_fast_when_permits_exhausted() {
         let (tx, rx) = oneshot::channel();
-        let mut svc = BulkheadService::new(HoldService::with_block(rx), 1);
+        let mut svc = BulkheadService::new(HoldService::with_block(rx), 1, NullSink);
 
         // First call acquires the single permit and blocks until `tx` fires
         let first = tokio::spawn({

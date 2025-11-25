@@ -161,39 +161,59 @@ impl TimeoutPolicy {
     }
 }
 
-/// Tower-native timeout layer; wraps services to enforce a maximum duration per call.
-#[derive(Debug, Clone, Copy)]
-pub struct TimeoutLayer {
+use crate::telemetry::{emit_best_effort, NullSink, PolicyEvent, RequestOutcome, TimeoutEvent};
+
+/// Tower-native timeout layer with optional telemetry.
+#[derive(Clone)]
+pub struct TimeoutLayer<Sink = NullSink> {
     duration: Duration,
+    sink: Sink,
 }
 
-impl TimeoutLayer {
-    /// Build a timeout layer with the provided duration.
+impl TimeoutLayer<NullSink> {
+    /// Build a timeout layer with the provided duration and no telemetry.
     pub fn new(duration: Duration) -> Result<Self, TimeoutError> {
-        TimeoutPolicy::new(duration).map(|p| TimeoutLayer { duration: p.duration })
+        TimeoutPolicy::new(duration).map(|p| TimeoutLayer { duration: p.duration, sink: NullSink })
+    }
+}
+
+impl<Sink> TimeoutLayer<Sink>
+where
+    Sink: Clone,
+{
+    /// Attach a telemetry sink to this timeout layer.
+    pub fn with_sink<NewSink>(self, sink: NewSink) -> TimeoutLayer<NewSink>
+    where
+        NewSink: Clone,
+    {
+        TimeoutLayer { duration: self.duration, sink }
     }
 }
 
 /// Service produced by [`TimeoutLayer`]; wraps an inner service with a timeout.
-#[derive(Debug, Clone)]
-pub struct TimeoutService<S> {
+#[derive(Clone)]
+pub struct TimeoutService<S, Sink = NullSink> {
     inner: S,
     duration: Duration,
+    sink: Sink,
 }
 
-impl<S> TimeoutService<S> {
-    fn new(inner: S, duration: Duration) -> Self {
-        Self { inner, duration }
+impl<S, Sink> TimeoutService<S, Sink> {
+    fn new(inner: S, duration: Duration, sink: Sink) -> Self {
+        Self { inner, duration, sink }
     }
 }
 
-impl<S, Request> Service<Request> for TimeoutService<S>
+impl<S, Request, Sink> Service<Request> for TimeoutService<S, Sink>
 where
     S: Service<Request>,
     S::Future: Send + 'static,
     Request: Send + 'static,
     S::Error: std::error::Error + Send + Sync + 'static,
     S::Response: Send + 'static,
+    Sink: tower::Service<PolicyEvent, Response = ()> + Clone + Send + 'static,
+    Sink::Error: std::error::Error + Send + 'static,
+    Sink::Future: Send + 'static,
 {
     type Response = S::Response;
     type Error = ResilienceError<S::Error>;
@@ -209,23 +229,53 @@ where
     fn call(&mut self, req: Request) -> Self::Future {
         let duration = self.duration;
         let fut = self.inner.call(req);
+        let sink = self.sink.clone();
+
         Box::pin(async move {
             let start = Instant::now();
             match tokio::time::timeout(duration, fut).await {
-                Ok(Ok(r)) => Ok(r),
-                Ok(Err(e)) => Err(ResilienceError::Inner(e)),
+                Ok(Ok(r)) => {
+                    // Emit success event
+                    let elapsed = start.elapsed();
+                    emit_best_effort(
+                        sink.clone(),
+                        PolicyEvent::Request(RequestOutcome::Success { duration: elapsed }),
+                    )
+                    .await;
+                    Ok(r)
+                }
+                Ok(Err(e)) => {
+                    // Emit failure event
+                    let elapsed = start.elapsed();
+                    emit_best_effort(
+                        sink.clone(),
+                        PolicyEvent::Request(RequestOutcome::Failure { duration: elapsed }),
+                    )
+                    .await;
+                    Err(ResilienceError::Inner(e))
+                }
                 Err(_) => {
-                    Err(ResilienceError::Timeout { elapsed: start.elapsed(), timeout: duration })
+                    let elapsed = start.elapsed();
+                    // Emit timeout event
+                    emit_best_effort(
+                        sink.clone(),
+                        PolicyEvent::Timeout(TimeoutEvent::Occurred { timeout: duration }),
+                    )
+                    .await;
+                    Err(ResilienceError::Timeout { elapsed, timeout: duration })
                 }
             }
         })
     }
 }
 
-impl<S> tower_layer::Layer<S> for TimeoutLayer {
-    type Service = TimeoutService<S>;
+impl<S, Sink> tower_layer::Layer<S> for TimeoutLayer<Sink>
+where
+    Sink: Clone,
+{
+    type Service = TimeoutService<S, Sink>;
     fn layer(&self, service: S) -> Self::Service {
-        TimeoutService::new(service, self.duration)
+        TimeoutService::new(service, self.duration, self.sink.clone())
     }
 }
 

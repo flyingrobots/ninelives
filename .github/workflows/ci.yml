@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4.1.6
-      - uses: dtolnay/rust-toolchain@v1
+      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
         with:
           toolchain: 1.82.0
       - name: Cache cargo
@@ -40,7 +40,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4.1.6
-      - uses: dtolnay/rust-toolchain@v1
+      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
         with:
           toolchain: 1.70.0
       - name: Cache cargo
@@ -53,7 +53,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4.1.6
-      - uses: dtolnay/rust-toolchain@v1
+      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
         with:
           toolchain: 1.82.0
       - name: Cache cargo
@@ -62,3 +62,26 @@ jobs:
         env:
           RUSTDOCFLAGS: "-D warnings"
         run: cargo doc --no-deps
+
+  coverage:
+    needs: fmt-clippy-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.1.6
+      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+        with:
+          toolchain: 1.82.0
+          components: llvm-tools-preview
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2.7.3
+      - name: Install cargo-llvm-cov
+        run: cargo install cargo-llvm-cov --locked
+      - name: Run coverage (all features)
+        run: |
+          mkdir -p coverage
+          cargo llvm-cov --workspace --all-features --lcov --output-path coverage/lcov.info
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lcov.info
+          path: coverage/lcov.info

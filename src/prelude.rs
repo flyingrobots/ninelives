@@ -11,6 +11,11 @@ pub use crate::{
     jitter::Jitter,
     retry::{BuildError, RetryLayer, RetryPolicy, RetryPolicyBuilder},
     sleeper::{InstantSleeper, Sleeper, TokioSleeper, TrackingSleeper},
+    telemetry::{
+        BulkheadEvent, CircuitBreakerEvent, FallbackSink, LogSink, MemorySink, MulticastSink,
+        NullSink, PolicyEvent, RequestOutcome, RetryEvent, StreamingSink, TelemetrySink,
+        TimeoutEvent,
+    },
     timeout::{TimeoutError, TimeoutLayer, TimeoutPolicy, MAX_TIMEOUT},
     BulkheadPolicy, ResilienceError,
 };
