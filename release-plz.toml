@@ -1,5 +1,6 @@
 [workspace]
 semver_check = true
-pr_labels = ["release", "release-ready"]
 
-packages = [{ name = "ninelives", release = true }]
+[package]
+name = "ninelives"
+release = true
