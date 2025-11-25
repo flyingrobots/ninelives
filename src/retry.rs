@@ -83,7 +83,7 @@ where
     }
 
     /// Execute an async operation with retry semantics.
-    pub async fn execute<T, Fut, Op>(&self, mut operation: Op) -> Result<T, ResilienceError<E>>
+    pub async fn execute<T, Fut, Op>(&self, operation: Op) -> Result<T, ResilienceError<E>>
     where
         T: Send,
         Fut: Future<Output = Result<T, ResilienceError<E>>> + Send,
