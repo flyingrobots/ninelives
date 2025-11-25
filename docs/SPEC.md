@@ -128,16 +128,16 @@ This section contextualizes the Nine Lives v2 design by comparing it against pop
 
 ### **8.2. Feature Comparison Matrix**
 
-| Feature                               | Nine Lives v2 | Resilience4j (Java) | Polly (C#) | go-kit (Go) | `tower` (Rust) |     |
-| :------------------------------------ | :-----------: | :-----------------: | :--------: | :---------: | :------------: | --- |
-| **1. Uniform `Service` Abstraction**  |       ✅       |          ❌          |     ❌      |      ✅      |       ✅        |     |
-| **2. Fractal/Recursive Architecture** |       ✅       |          ❌          |     ❌      |      ❌      |       ✅        |     |
+| Feature                               | Nine Lives v2 | Resilience4j (Java) | Polly (C#) | go-kit (Go) | `tower` (Rust) |
+| :------------------------------------ | :-----------: | :-----------------: | :--------: | :---------: | :------------: |
+| **1. Uniform `Service` Abstraction**  |       ✅       |          ❌          |     ❌      |      ✅      |       ✅        |
+| **2. Fractal/Recursive Architecture** |       ✅       |          ❌          |     ❌      |      ❌      |       ✅        |
 | **3. Algebraic Composition (add, or, and)**      |          ✅          |     ❌      |      ❌      |       ❌        | ❌   |
-| **4. Composable Telemetry Sinks**     |       ✅       |          ❌          |     ❌      |      ❌      |       ❌        |     |
-| **5. Live Policy Updates**            |       ✅       |          ✅          |     ✅      |   Partial   |       ❌        |     |
-| **6. Pluggable Control Plane**        |       ✅       |          ❌          |     ❌      |      ❌      |       ❌        |     |
-| **7. Autonomous Self-Healing Loop**   |       ✅       |          ❌          |     ❌      |      ❌      |       ❌        |     |
-| **8. Distributed/Fleet Policies**     |       ✅       |          ❌          |  Partial   |      ❌      |       ❌        |     |
+| **4. Composable Telemetry Sinks**     |       ✅       |          ❌          |     ❌      |      ❌      |       ❌        |
+| **5. Live Policy Updates**            |       ✅       |          ✅          |     ✅      |   Partial   |       ❌        |
+| **6. Pluggable Control Plane**        |       ✅       |          ❌          |     ❌      |      ❌      |       ❌        |
+| **7. Autonomous Self-Healing Loop**   |       ✅       |          ❌          |     ❌      |      ❌      |       ❌        |
+| **8. Distributed/Fleet Policies**     |       ✅       |          ❌          |  Partial   |      ❌      |       ❌        |
 
 ### **8.3. Analysis: The Nine Lives v2 Advantage**
 
