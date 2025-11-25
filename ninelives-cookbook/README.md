@@ -25,6 +25,7 @@ ninelives-cookbook = { path = "../ninelives-cookbook" }
 - `retry_fast`: adjust max_attempts/backoff/jitter live via `policy.adaptive_max_attempts()` and friends.
 - `timeout_p95`: adjust duration with `adaptive_duration()`.
 - `api_guardrail` / `hedged_then_fallback`: underlying layers are adaptive-capable; expose handles if you plumb them through your builder.
+- `bulkhead_isolate`: `adaptive_max_concurrent()` lets you raise the cap; semaphore grows dynamically on increase.
 
 Use them like:
 ```rust
