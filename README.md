@@ -370,21 +370,14 @@ Run with:
 cargo run --example timeout_fallback
 ```
 
-## License
-
-Licensed under either of:
-
-- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or <http://www.apache.org/licenses/LICENSE-2.0>)
-- MIT license ([LICENSE-MIT](LICENSE-MIT) or <http://opensource.org/licenses/MIT>)
-
-at your option.
-
 ## Contributing
 
 Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in the work by you shall be dual licensed as above, without any additional terms or conditions.
 
----
+## License
 
-**Built with ❤️ for the Rust async ecosystem.**
+Apache License, Version 2.0 ([LICENSE](LICENSE) or <http://www.apache.org/licenses/LICENSE-2.0>)
+
+_@ 2025 • James Ross • [📧](mailto:james@flyingrobots.dev) • [🔗 FLYING•ROBOTS](https://github.com/flyingrobots)_
