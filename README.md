@@ -1,6 +1,6 @@
 # Nine Lives 🐱
 
-<img alt="ninelives" src="https://github.com/user-attachments/assets/354f1818-c1c5-4e0a-ba1d-30382db5705f" width="500" align="right" />
+<img alt="ninelives" src="https://github.com/user-attachments/assets/354f1818-c1c5-4e0a-ba1d-30382db5705f" />
 
 **Resilience patterns for Rust with algebraic composition.**
 
