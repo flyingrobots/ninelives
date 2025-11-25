@@ -1,4 +1,4 @@
-//! Ready-to-use policy recipes (“cookbook”).
+//! Ready-to-use policy recipes (“cookbook”) for ninelives.
 //! Each function returns a `Policy<Layer>` stack you can drop into `tower::ServiceBuilder`.
 //! The goal is pragmatic defaults that are safe for production.
 //!
@@ -12,15 +12,15 @@
 
 use std::time::Duration;
 
-use crate::algebra::{CombinedLayer, FallbackLayer, ForkJoinLayer, Policy};
-use crate::bulkhead::BulkheadLayer;
-use crate::circuit_breaker::{CircuitBreakerConfig, CircuitBreakerLayer};
-use crate::retry::RetryLayer;
-use crate::timeout::TimeoutLayer;
-use crate::{Backoff, Jitter};
+use ninelives::algebra::{CombinedLayer, FallbackLayer, ForkJoinLayer, Policy};
+use ninelives::bulkhead::BulkheadLayer;
+use ninelives::circuit_breaker::{CircuitBreakerConfig, CircuitBreakerLayer};
+use ninelives::retry::RetryLayer;
+use ninelives::timeout::TimeoutLayer;
+use ninelives::{Backoff, Jitter};
 
 /// Simple, fast retry: 3 attempts, exponential backoff starting at 50ms, full jitter.
-pub fn retry_fast<E>() -> Result<Policy<RetryLayer<E>>, crate::retry::BuildError>
+pub fn retry_fast<E>() -> Result<Policy<RetryLayer<E>>, ninelives::retry::BuildError>
 where
     E: std::error::Error + Send + Sync + 'static,
 {
@@ -29,22 +29,22 @@ where
         Backoff::exponential(Duration::from_millis(50)).into(),
         Jitter::full(),
         std::sync::Arc::new(|_e: &E| true),
-        std::sync::Arc::new(crate::TokioSleeper::default()),
+        std::sync::Arc::new(ninelives::TokioSleeper::default()),
     )?))
 }
 
 /// Latency guard: 95th percentile focused timeout at 300ms.
-pub fn timeout_p95() -> Result<Policy<TimeoutLayer>, crate::timeout::TimeoutError> {
+pub fn timeout_p95() -> Result<Policy<TimeoutLayer>, ninelives::timeout::TimeoutError> {
     Ok(Policy(TimeoutLayer::new(Duration::from_millis(300))?))
 }
 
 /// Bulkhead for noisy neighbors: cap at `max_in_flight` with immediate rejection.
-pub fn bulkhead_isolate(max_in_flight: usize) -> Result<Policy<BulkheadLayer>, crate::bulkhead::BulkheadError> {
+pub fn bulkhead_isolate(max_in_flight: usize) -> Result<Policy<BulkheadLayer>, ninelives::bulkhead::BulkheadError> {
     Ok(Policy(BulkheadLayer::new(max_in_flight)?))
 }
 
 /// Circuit breaker tuned for flapping services.
-pub fn circuit_flap_guard() -> Result<Policy<CircuitBreakerLayer>, crate::circuit_breaker::CircuitBreakerError> {
+pub fn circuit_flap_guard() -> Result<Policy<CircuitBreakerLayer>, ninelives::circuit_breaker::CircuitBreakerError> {
     let cfg = CircuitBreakerConfig::new(5, Duration::from_secs(5), 3)?;
     Ok(Policy(CircuitBreakerLayer::new(cfg)?))
 }
@@ -61,7 +61,7 @@ where
         Backoff::exponential(Duration::from_millis(150)).into(),
         Jitter::full(),
         std::sync::Arc::new(|_e: &E| true),
-        std::sync::Arc::new(crate::TokioSleeper::default()),
+        std::sync::Arc::new(ninelives::TokioSleeper::default()),
     )?) + Policy(TimeoutLayer::new(Duration::from_secs(2))?);
 
     Ok(fast | slow)
@@ -86,7 +86,7 @@ where
             Backoff::constant(Duration::from_millis(20)).into(),
             Jitter::equal(),
             std::sync::Arc::new(|_e: &E| true),
-            std::sync::Arc::new(crate::TokioSleeper::default()),
+            std::sync::Arc::new(ninelives::TokioSleeper::default()),
         )?);
 
     let steady = Policy(TimeoutLayer::new(Duration::from_millis(400))?)
@@ -95,7 +95,7 @@ where
             Backoff::exponential(Duration::from_millis(60)).into(),
             Jitter::full(),
             std::sync::Arc::new(|_e: &E| true),
-            std::sync::Arc::new(crate::TokioSleeper::default()),
+            std::sync::Arc::new(ninelives::TokioSleeper::default()),
         )?);
 
     Ok(fast & steady)
@@ -112,7 +112,7 @@ where
             Backoff::exponential(Duration::from_millis(100)).into(),
             Jitter::full(),
             std::sync::Arc::new(|_e: &E| true),
-            std::sync::Arc::new(crate::TokioSleeper::default()),
+            std::sync::Arc::new(ninelives::TokioSleeper::default()),
         )?)
         + bulkhead_isolate(max_in_flight)?)
 }
@@ -134,7 +134,7 @@ where
             Backoff::exponential(Duration::from_millis(120)).into(),
             Jitter::full(),
             std::sync::Arc::new(|_e: &E| true),
-            std::sync::Arc::new(crate::TokioSleeper::default()),
+            std::sync::Arc::new(ninelives::TokioSleeper::default()),
         )?);
 
     Ok(hedge | sturdy)

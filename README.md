@@ -175,6 +175,7 @@ See recipes in `src/cookbook.rs` and companion cookbooks:
 - **Sensible defaults:** `sensible_defaults` — timeout + retry + bulkhead starter pack.
 
 All live in `src/cookbook.rs`.
+Moved to the `ninelives-cookbook` crate (see its README/examples).
 
 ## Tower Integration
 

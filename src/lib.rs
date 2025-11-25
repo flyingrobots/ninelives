@@ -119,7 +119,6 @@ mod error;
 mod jitter;
 mod retry;
 mod sleeper;
-pub mod cookbook;
 // stack module removed in favor of tower-native algebra
 pub mod telemetry;
 mod timeout;

@@ -1452,6 +1452,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "ninelives-cookbook"
+version = "0.1.0"
+dependencies = [
+ "ninelives",
+]
+
+[[package]]
 name = "ninelives-elastic"
 version = "0.1.0"
 dependencies = [

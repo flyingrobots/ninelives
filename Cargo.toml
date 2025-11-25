@@ -20,6 +20,7 @@ members = [
     "ninelives-prometheus",
     "ninelives-jsonl",
     "ninelives-otlp",
+    "ninelives-cookbook",
 ]
 resolver = "2"
 
