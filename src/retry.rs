@@ -95,7 +95,7 @@ where
             &self.jitter,
             &self.should_retry,
             &self.sleeper,
-            || operation(),
+            operation,
         )
         .await
     }
