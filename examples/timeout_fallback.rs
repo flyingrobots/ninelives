@@ -9,14 +9,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let slow = Policy(TimeoutLayer::new(Duration::from_secs(1))?);
     let policy = fast | slow;
 
-    let mut svc = ServiceBuilder::new()
-        .layer(policy)
-        .service_fn(|req: &'static str| async move {
-            if req == "slow" {
-                tokio::time::sleep(Duration::from_millis(200)).await;
-            }
-            Ok::<_, std::io::Error>(req)
-        });
+    let mut svc = ServiceBuilder::new().layer(policy).service_fn(|req: &'static str| async move {
+        if req == "slow" {
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        }
+        Ok::<_, std::io::Error>(req)
+    });
 
     let fast_result = svc.ready().await?.call("ok").await?;
     println!("fast path: {}", fast_result);
