@@ -105,7 +105,11 @@ To maximize adoption, Nine Lives will ship with a rich ecosystem of companion cr
 -   **Sentinel**: `ninelives-sentinel-prometheus` (for state input), `ninelives-sentinel-kubernetes` (for action output).
 
 ### **6.2. Control Plane Transports**
--   `ninelives-rest`, `ninelives-graphql`, `ninelives-jsonl`, `ninelives-mcp`.
+-   `ninelives-rest` (HTTP)
+-   `ninelives-grpc`
+-   `ninelives-jsonl` (stdin/file friendly; stream commands/events as JSONL)
+-   `ninelives-graphql`
+-   `ninelives-mcp`
 
 ---
 
