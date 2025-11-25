@@ -1,3 +1,7 @@
+[workspace]
+release = false # workspace releases disabled; per-package `release = true` enables publishing
+semver_check = true
+
 # Labels used to signal release readiness on PRs.
 pr_labels = ["release", "release-ready"]
 
@@ -11,10 +15,6 @@ tag_name = "{{ crate_name }}-v{{ version }}"
 prerelease_suffix = "alpha"
 publish_timeout = "10m"
 publish_delay = "30s"
-
-[workspace]
-release = false # workspace releases disabled; per-package `release = true` enables publishing
-semver_check = true
 
 [[packages]]
 name = "ninelives"
