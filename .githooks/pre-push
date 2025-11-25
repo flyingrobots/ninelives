@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "[pre-push] running cargo fmt -- --check"
+cargo fmt -- --check
+
+echo "[pre-push] running cargo clippy --all-targets --all-features -- -D warnings -D missing_docs"
+cargo clippy --all-targets --all-features -- -D warnings -D missing_docs
+
+echo "[pre-push] running cargo test --all-features --all-targets"
+cargo test --all-features --all-targets
+
+echo "[pre-push] running cargo doc --no-deps -D warnings"
+cargo doc --no-deps -D warnings
+
+echo "[pre-push] all checks passed"
