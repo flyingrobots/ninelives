@@ -611,20 +611,24 @@ mod tests {
 
 // end of file
 
-/// Tower-native retry layer.
-pub struct RetryLayer<E> {
+use crate::telemetry::{NullSink, PolicyEvent, RetryEvent};
+use std::time::Instant;
+
+/// Tower-native retry layer with optional telemetry.
+pub struct RetryLayer<E, Sink = NullSink> {
     max_attempts: usize,
     backoff: Backoff,
     jitter: Jitter,
     should_retry: Arc<dyn Fn(&E) -> bool + Send + Sync>,
     sleeper: Arc<dyn Sleeper>,
+    sink: Sink,
 }
 
-impl<E> RetryLayer<E>
+impl<E> RetryLayer<E, NullSink>
 where
     E: std::error::Error + Send + Sync + 'static,
 {
-    /// Create a new retry layer with explicit configuration.
+    /// Create a new retry layer with explicit configuration and no telemetry.
     ///
     /// Most users should use [`RetryPolicy::builder()`](crate::RetryPolicy::builder) instead.
     ///
@@ -641,11 +645,42 @@ where
         if max_attempts == 0 {
             return Err(BuildError::InvalidMaxAttempts(0));
         }
-        Ok(Self { max_attempts, backoff, jitter, should_retry, sleeper })
+        Ok(Self {
+            max_attempts,
+            backoff,
+            jitter,
+            should_retry,
+            sleeper,
+            sink: NullSink,
+        })
     }
 }
 
-impl<E> Clone for RetryLayer<E> {
+impl<E, Sink> RetryLayer<E, Sink>
+where
+    E: std::error::Error + Send + Sync + 'static,
+    Sink: Clone,
+{
+    /// Attach a telemetry sink to this retry layer.
+    pub fn with_sink<NewSink>(self, sink: NewSink) -> RetryLayer<E, NewSink>
+    where
+        NewSink: Clone,
+    {
+        RetryLayer {
+            max_attempts: self.max_attempts,
+            backoff: self.backoff,
+            jitter: self.jitter,
+            should_retry: self.should_retry,
+            sleeper: self.sleeper,
+            sink,
+        }
+    }
+}
+
+impl<E, Sink> Clone for RetryLayer<E, Sink>
+where
+    Sink: Clone,
+{
     fn clone(&self) -> Self {
         Self {
             max_attempts: self.max_attempts,
@@ -653,30 +688,34 @@ impl<E> Clone for RetryLayer<E> {
             jitter: self.jitter.clone(),
             should_retry: self.should_retry.clone(),
             sleeper: self.sleeper.clone(),
+            sink: self.sink.clone(),
         }
     }
 }
 
 /// Retry service produced by `RetryLayer`.
 #[derive(Clone)]
-pub struct RetryService<S, E> {
+pub struct RetryService<S, E, Sink = NullSink> {
     inner: S,
-    layer: RetryLayer<E>,
+    layer: RetryLayer<E, Sink>,
 }
 
-impl<S, E> RetryService<S, E> {
-    fn new(inner: S, layer: RetryLayer<E>) -> Self {
+impl<S, E, Sink> RetryService<S, E, Sink> {
+    fn new(inner: S, layer: RetryLayer<E, Sink>) -> Self {
         Self { inner, layer }
     }
 }
 
-impl<S, E, Request> Service<Request> for RetryService<S, E>
+impl<S, E, Request, Sink> Service<Request> for RetryService<S, E, Sink>
 where
     Request: Clone + Send + 'static,
     S: Service<Request, Error = E> + Clone + Send + 'static,
     S::Response: Send + 'static,
     S::Future: Send + 'static,
     E: std::error::Error + Send + Sync + 'static,
+    Sink: tower::Service<PolicyEvent, Response = ()> + Clone + Send + 'static,
+    Sink::Error: std::error::Error + Send + 'static,
+    Sink::Future: Send + 'static,
 {
     type Response = S::Response;
     type Error = ResilienceError<E>;
@@ -692,18 +731,43 @@ where
     fn call(&mut self, req: Request) -> Self::Future {
         let layer = self.layer.clone();
         let mut inner = self.inner.clone();
+        let mut sink = layer.sink.clone();
+
         Box::pin(async move {
+            let start = Instant::now();
             let mut failures: Vec<E> = Vec::new();
+
             for attempt in 0..layer.max_attempts {
                 match inner.call(req.clone()).await {
-                    Ok(resp) => return Ok(resp),
+                    Ok(resp) => {
+                        // Emit success event (best effort - ignore sink errors)
+                        let duration = start.elapsed();
+                        let _ = sink.call(PolicyEvent::Request(
+                            crate::telemetry::RequestOutcome::Success { duration }
+                        )).await;
+                        return Ok(resp);
+                    }
                     Err(err) => {
                         let e: E = err;
                         if !(layer.should_retry)(&e) {
+                            let duration = start.elapsed();
+                            let _ = sink.call(PolicyEvent::Request(
+                                crate::telemetry::RequestOutcome::Failure { duration }
+                            )).await;
                             return Err(ResilienceError::Inner(e));
                         }
                         failures.push(e);
                         if attempt + 1 >= layer.max_attempts {
+                            // Emit exhausted event
+                            let total_duration = start.elapsed();
+                            let _ = sink.call(PolicyEvent::Retry(RetryEvent::Exhausted {
+                                total_attempts: layer.max_attempts,
+                                total_duration,
+                            })).await;
+                            let duration = start.elapsed();
+                            let _ = sink.call(PolicyEvent::Request(
+                                crate::telemetry::RequestOutcome::Failure { duration }
+                            )).await;
                             return Err(ResilienceError::retry_exhausted(
                                 layer.max_attempts,
                                 failures,
@@ -714,6 +778,13 @@ where
                             Jitter::Decorrelated(_) => layer.jitter.apply_stateful(),
                             _ => layer.jitter.apply(delay),
                         };
+
+                        // Emit retry attempt event
+                        let _ = sink.call(PolicyEvent::Retry(RetryEvent::Attempt {
+                            attempt: attempt + 1,
+                            delay,
+                        })).await;
+
                         layer.sleeper.sleep(delay).await;
                     }
                 }
@@ -723,11 +794,12 @@ where
     }
 }
 
-impl<S, E> Layer<S> for RetryLayer<E>
+impl<S, E, Sink> Layer<S> for RetryLayer<E, Sink>
 where
     E: std::error::Error + Send + Sync + 'static,
+    Sink: Clone,
 {
-    type Service = RetryService<S, E>;
+    type Service = RetryService<S, E, Sink>;
     fn layer(&self, service: S) -> Self::Service {
         RetryService::new(service, self.clone())
     }

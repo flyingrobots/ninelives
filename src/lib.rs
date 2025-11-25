@@ -120,6 +120,7 @@ mod jitter;
 mod retry;
 mod sleeper;
 // stack module removed in favor of tower-native algebra
+pub mod telemetry;
 mod timeout;
 
 // Re-exports
