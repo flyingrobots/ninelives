@@ -21,6 +21,8 @@ pub enum ResilienceError<E> {
         /// Maximum allowed concurrent operations.
         max: usize,
     },
+    /// The bulkhead has been closed/shutdown; no further requests are accepted.
+    BulkheadClosed,
     /// The circuit breaker is open
     CircuitOpen {
         /// Failures that triggered opening.
@@ -47,6 +49,7 @@ impl<E: fmt::Display> fmt::Display for ResilienceError<E> {
             Self::Bulkhead { in_flight, max } => {
                 write!(f, "bulkhead rejected request ({} in-flight, max {})", in_flight, max)
             }
+            Self::BulkheadClosed => write!(f, "bulkhead is closed"),
             Self::CircuitOpen { failure_count, open_duration } => {
                 write!(
                     f,
@@ -110,7 +113,11 @@ impl<E> ResilienceError<E> {
     }
     /// Check if this error is due to bulkhead rejection
     pub fn is_bulkhead(&self) -> bool {
-        matches!(self, Self::Bulkhead { .. })
+        matches!(self, Self::Bulkhead { .. } | Self::BulkheadClosed)
+    }
+    /// Check if this error is due to a closed bulkhead.
+    pub fn is_bulkhead_closed(&self) -> bool {
+        matches!(self, Self::BulkheadClosed)
     }
     /// Check if this error is due to retry exhaustion
     pub fn is_retry_exhausted(&self) -> bool {
@@ -166,6 +173,7 @@ impl<E> ResilienceError<E> {
     pub fn bulkhead_capacity(&self) -> Option<(usize, usize)> {
         match self {
             Self::Bulkhead { in_flight, max } => Some((*in_flight, *max)),
+            Self::BulkheadClosed => None,
             _ => None,
         }
     }
@@ -207,6 +215,13 @@ mod tests {
         let msg = format!("{}", err);
         assert!(msg.contains("bulkhead"));
         assert!(msg.contains("50"));
+    }
+
+    #[test]
+    fn bulkhead_closed_display() {
+        let err: ResilienceError<io::Error> = ResilienceError::BulkheadClosed;
+        let msg = format!("{}", err);
+        assert!(msg.contains("closed"));
     }
     #[test]
     fn circuit_open_error_display() {
@@ -300,6 +315,7 @@ mod tests {
         let bulkhead: ResilienceError<DummyError> =
             ResilienceError::Bulkhead { in_flight: 1, max: 1 };
         assert!(bulkhead.is_bulkhead());
+        assert!(!bulkhead.is_bulkhead_closed());
         let circuit: ResilienceError<DummyError> = ResilienceError::CircuitOpen {
             failure_count: 1,
             open_duration: Duration::from_secs(1),
@@ -308,6 +324,9 @@ mod tests {
         let retry: ResilienceError<DummyError> =
             ResilienceError::RetryExhausted { attempts: 2, failures: Arc::new(vec![]) };
         assert!(retry.is_retry_exhausted());
+        let closed: ResilienceError<DummyError> = ResilienceError::BulkheadClosed;
+        assert!(closed.is_bulkhead());
+        assert!(closed.is_bulkhead_closed());
     }
     #[test]
     fn as_inner_accessors_work() {

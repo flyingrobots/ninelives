@@ -1,7 +1,8 @@
 //! Abstraction for sleeping/waiting
 //!
 //! Implementations provided:
-//! - `TokioSleeper`: production async sleeps via `tokio::time::sleep`.
+//! - `TokioSleeper`: production async sleeps via `tokio::time::sleep` (requires an active Tokio
+//!   runtime; using under other runtimes may panic).
 //! - `InstantSleeper`: test helper that returns immediately (no real delay).
 //! - `TrackingSleeper`: test helper that records every requested sleep for assertions.
 //!
@@ -96,6 +97,8 @@ impl Default for TrackingSleeper {
 #[async_trait]
 impl Sleeper for TrackingSleeper {
     async fn sleep(&self, duration: Duration) {
+        // Records immediately; does not yield to the scheduler. For a yielding variant, wrap
+        // this in `tokio::task::yield_now().await` or use `TokioSleeper`.
         self.calls.lock().unwrap_or_else(|e| e.into_inner()).push(duration);
     }
 }

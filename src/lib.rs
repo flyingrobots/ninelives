@@ -135,7 +135,7 @@ pub use circuit_breaker::{
 pub use clock::{Clock, MonotonicClock};
 pub use error::ResilienceError;
 pub use jitter::Jitter;
-pub use retry::{BuildError, RetryLayer, RetryPolicy, RetryPolicyBuilder};
+pub use retry::{BuildError, RetryLayer, RetryPolicy, RetryPolicyBuilder, RetryService};
 pub use sleeper::{InstantSleeper, Sleeper, TokioSleeper, TrackingSleeper};
 pub use timeout::{TimeoutError, TimeoutPolicy, MAX_TIMEOUT};
 

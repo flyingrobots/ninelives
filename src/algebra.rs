@@ -471,8 +471,9 @@ where
         let left_ready = self.left.poll_ready(cx);
         let right_ready = self.right.poll_ready(cx);
         match (left_ready, right_ready) {
-            (std::task::Poll::Ready(Ok(_)), _) => std::task::Poll::Ready(Ok(())),
-            (_, std::task::Poll::Ready(Ok(_))) => std::task::Poll::Ready(Ok(())),
+            (std::task::Poll::Ready(Ok(_)), std::task::Poll::Ready(Ok(_))) => {
+                std::task::Poll::Ready(Ok(()))
+            }
             (std::task::Poll::Ready(Err(e)), _) => std::task::Poll::Ready(Err(e)),
             (_, std::task::Poll::Ready(Err(e))) => std::task::Poll::Ready(Err(e)),
             _ => std::task::Poll::Pending,
@@ -645,5 +646,22 @@ mod tests {
         let mut svc = ForkJoinService { left: LeftErr, right: RightErr };
         let err = svc.call(()).await.unwrap_err();
         assert_eq!(err, "left");
+    }
+
+    #[test]
+    fn fork_join_poll_ready_waits_for_both() {
+        let left = GateService::new();
+        let right = GateService::new();
+
+        let mut svc = ForkJoinService { left: left.clone(), right: right.clone() };
+
+        left.set_ready(true);
+        right.set_ready(false);
+        let waker = noop_waker();
+        let mut cx = Context::from_waker(&waker);
+        assert!(matches!(Service::<()>::poll_ready(&mut svc, &mut cx), Poll::Pending));
+
+        right.set_ready(true);
+        assert!(matches!(Service::<()>::poll_ready(&mut svc, &mut cx), Poll::Ready(Ok(()))));
     }
 }
