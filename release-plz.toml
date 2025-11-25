@@ -5,3 +5,36 @@ pr_labels = ["release", "release-ready"]
 [[package]]
 name = "ninelives"
 release = true
+
+# Adapters are not published yet; mark them non-releasing so release-plz doesn't attempt crates.io publish.
+[[package]]
+name = "ninelives-nats"
+release = false
+
+[[package]]
+name = "ninelives-kafka"
+release = false
+
+[[package]]
+name = "ninelives-otlp"
+release = false
+
+[[package]]
+name = "ninelives-prometheus"
+release = false
+
+[[package]]
+name = "ninelives-jsonl"
+release = false
+
+[[package]]
+name = "ninelives-elastic"
+release = false
+
+[[package]]
+name = "ninelives-etcd"
+release = false
+
+[[package]]
+name = "ninelives-cookbook"
+release = false

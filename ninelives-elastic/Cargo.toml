@@ -5,7 +5,7 @@ edition = "2021"
 authors = ["James Ross <james@flyingrobots.dev>"]
 description = "Optional Elasticsearch telemetry sink for ninelives"
 license = "Apache-2.0"
-publish = true
+publish = false
 repository = "https://github.com/flyingrobots/ninelives"
 
 [dependencies]
