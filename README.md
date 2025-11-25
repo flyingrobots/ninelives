@@ -358,14 +358,14 @@ Benchmarks coming soon.
 
 See the [`examples/`](examples/) directory for runnable examples:
 
-- `retry_only.rs` - Basic retry with backoff
+- `timeout_fallback.rs` - Timeout with fallback policy
 - `decorrelated_jitter.rs` - AWS-style decorrelated jitter
 - `algebra_composition.rs` - Complex algebraic composition patterns
 
 Run with:
 
 ```bash
-cargo run --example retry_only
+cargo run --example timeout_fallback
 ```
 
 ## License
