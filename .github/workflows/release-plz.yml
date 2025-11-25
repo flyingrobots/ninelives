@@ -52,6 +52,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write
+      contents: read
     concurrency:
       group: release-plz-${{ github.ref }}-${{ github.job }}
       cancel-in-progress: true
@@ -67,10 +68,6 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
           git config --global url."https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
-      - name: Validate required secrets
-        run: |
-          [ -n "${{ secrets.GITHUB_TOKEN }}" ] || { echo "GITHUB_TOKEN missing"; exit 1; }
-          [ -n "${{ secrets.CARGO_REGISTRY_TOKEN }}" ] || { echo "CARGO_REGISTRY_TOKEN missing"; exit 1; }
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
         with:
@@ -81,4 +78,3 @@ jobs:
           command: release-pr
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
