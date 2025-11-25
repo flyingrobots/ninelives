@@ -103,9 +103,9 @@
 **Goal:** Enable runtime policy tuning and command execution.
 
 ### Adaptive Handles
-- [ ] Design `Adaptive<T>` wrapper:
-  - [ ] Arc<RwLock<T>> or Arc<ArcSwap<T>> for lock-free reads
-  - [ ] Methods: `get()`, `set()`, `update()`
+- [x] Design `Adaptive<T>` wrapper:
+  - [x] Arc<RwLock<T>> or Arc<ArcSwap<T>> for lock-free reads
+  - [x] Methods: `get()`, `set()`, `update()`
 - [ ] Integrate Adaptive into policy configs:
   - [ ] RetryPolicy: max_attempts, backoff parameters
   - [ ] CircuitBreaker: failure_threshold, timeout_duration
