@@ -12,7 +12,7 @@ repository = "https://github.com/flyingrobots/ninelives"
 ninelives = { version = "0.2.0", path = ".." }
 tower-service = "0.3"
 tracing = "0.1"
-prometheus = { version = "0.13", optional = true }
+prometheus = { version = "0.14", optional = true }
 
 [features]
 client = ["prometheus"]
