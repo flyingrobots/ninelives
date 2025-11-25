@@ -5,7 +5,7 @@ In-process Prometheus metrics sink for `ninelives`.
 ## Usage
 
 ```toml
-ninelives = "0.1"
+ninelives = "0.2"
 ninelives-prometheus = { path = "../ninelives-prometheus", features = ["client"] }
 ```
 

@@ -4,7 +4,7 @@ Ready-to-use policy recipes and runnable examples for the `ninelives` resilience
 
 ## Install
 ```toml
-ninelives = "0.1"
+ninelives = "0.2"
 ninelives-cookbook = { path = "../ninelives-cookbook" }
 ```
 

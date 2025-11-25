@@ -7,7 +7,7 @@ Send `PolicyEvent`s to your existing OTLP collector so you can view Nine Lives t
 
 ## Add to Cargo.toml
 ```toml
-ninelives = "0.1"
+ninelives = "0.2"
 ninelives-otlp = { path = "../ninelives-otlp", features = ["client"] }
 ```
 

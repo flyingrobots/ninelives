@@ -5,7 +5,7 @@ Optional Kafka telemetry sink for `ninelives`.
 ## Usage
 
 ```toml
-ninelives = "0.1"
+ninelives = "0.2"
 ninelives-kafka = { path = "../ninelives-kafka", features = ["client"] }
 ```
 

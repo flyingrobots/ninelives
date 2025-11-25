@@ -5,7 +5,7 @@ JSONL telemetry sink for `ninelives` (optional).
 ## Usage
 
 ```toml
-ninelives = "0.1"
+ninelives = "0.2"
 ninelives-jsonl = { path = "../ninelives-jsonl", features = ["async-fs"] }
 ```
 

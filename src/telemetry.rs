@@ -875,7 +875,11 @@ mod tests {
 
     #[test]
     fn test_bulkhead_event_display() {
-        let event = BulkheadEvent::Rejected { active_count: 10, max_concurrency: 10 };
+        let event = BulkheadEvent::Rejected {
+            active_count: 10,
+            max_concurrency: 10,
+            reason: BulkheadRejectReason::Saturated,
+        };
         assert!(event.to_string().contains("Rejected"));
         assert!(event.to_string().contains("10/10"));
     }
@@ -949,6 +953,7 @@ mod tests {
         tx.call(PolicyEvent::Bulkhead(BulkheadEvent::Rejected {
             active_count: 1,
             max_concurrency: 1,
+            reason: BulkheadRejectReason::Saturated,
         }))
         .await
         .unwrap();

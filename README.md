@@ -352,16 +352,16 @@ let sleeps = tracker.get_sleeps();
 assert_eq!(sleeps.len(), 2); // Slept twice before success
 ```
 
-## Roadmap
+## Roadmap (snapshot)
 
-Nine Lives is evolving toward a **fractal resilience framework** with autonomous operation:
+Nine Lives is marching toward autonomous, fractal resilience. Current focus:
 
-- **v1.0** (Current Phase): Tower-native layers with algebraic composition ✅
-- **v1.5**: Telemetry events, control plane for runtime tuning 🚧
-- **v2.0**: Autonomous Sentinel with meta-policies, shadow evaluation 🔮
-- **v3.0**: Rich adapter ecosystem (Redis, OTLP, Prometheus) 🌐
+- ✅ Phase 0–1: Tower-native algebra + telemetry sinks (done)
+- 🚧 Phase 2: Control plane & adaptive configs (in progress)
+- 🧭 Phase 3: Observer for aggregated state (planned)
+- 🔮 Phase 5: Sentinel meta-policies + shadow eval (planned)
 
-See [ROADMAP.md](ROADMAP.md) for the full vision.
+Full detail and milestones live in [ROADMAP.md](ROADMAP.md).
 
 ## Performance
 

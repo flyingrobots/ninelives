@@ -576,7 +576,7 @@ mod tests {
     #[tokio::test]
     async fn service_fails_fast_when_permits_exhausted() {
         let (tx, rx) = oneshot::channel();
-        let mut svc = BulkheadService::new(HoldService::with_block(rx), 1);
+        let mut svc = BulkheadService::new(HoldService::with_block(rx), 1, NullSink);
 
         // First call acquires the single permit and blocks until `tx` fires
         let first = tokio::spawn({

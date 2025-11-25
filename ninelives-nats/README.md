@@ -5,7 +5,7 @@ Optional NATS telemetry sink for the `ninelives` resilience library.
 ## Usage
 
 ```toml
-ninelives = "0.1"
+ninelives = "0.2"
 ninelives-nats = { path = "../ninelives-nats", features = ["client"] }
 ```
 
