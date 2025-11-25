@@ -2,8 +2,7 @@
 /target
 /.cargo/
 
-# Cargo lockfile: library crate keeps it untracked
-/Cargo.lock
+# Cargo lockfile is committed
 
 # macOS noise
 .DS_Store
