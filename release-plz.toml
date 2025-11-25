@@ -1,9 +1,7 @@
 [workspace]
 semver_check = true
-
-# Labels used to signal release readiness on PRs.
 pr_labels = ["release", "release-ready"]
 
-[[packages]]
+[package]
 name = "ninelives"
 release = true
