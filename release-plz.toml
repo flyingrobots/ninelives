@@ -1,6 +1,7 @@
 [workspace]
 semver_check = true
+pr_labels = ["release", "release-ready"]
 
-[package]
+[[package]]
 name = "ninelives"
 release = true
