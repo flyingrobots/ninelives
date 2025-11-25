@@ -7,6 +7,7 @@
 //! - Intermediate: [`api_guardrail`]
 //! - Advanced: [`reliable_read`]
 //! - Tricky: [`hedged_read`]
+//! - God tier: [`hedged_then_fallback`]
 //! - Starter pack: [`sensible_defaults`]
 
 use std::time::Duration;
@@ -117,3 +118,27 @@ where
 }
 
 type SensibleStack<E> = CombinedLayer<CombinedLayer<TimeoutLayer, RetryLayer<E>>, BulkheadLayer>;
+
+/// Hedged first, then fall back to a sturdier stack.
+/// Layout: (fast hedge of two stacks) | (slow but sturdy stack)
+pub fn hedged_then_fallback<E>() -> Result<Policy<FallbackLayer<Hedge<E>, Sturdy<E>>>, Box<dyn std::error::Error>>
+where
+    E: std::error::Error + Send + Sync + 'static,
+{
+    let hedge = hedged_read::<E>()?; // fast twin paths
+
+    let sturdy = Policy(TimeoutLayer::new(Duration::from_secs(2))?)
+        + Policy(CircuitBreakerLayer::new(CircuitBreakerConfig::new(8, Duration::from_secs(10), 3)?)?)
+        + Policy(RetryLayer::new(
+            4,
+            Backoff::exponential(Duration::from_millis(120)).into(),
+            Jitter::full(),
+            std::sync::Arc::new(|_e: &E| true),
+            std::sync::Arc::new(crate::TokioSleeper::default()),
+        )?);
+
+    Ok(hedge | sturdy)
+}
+
+type Hedge<E> = ForkJoinLayer<CombinedLayer<TimeoutLayer, RetryLayer<E>>, CombinedLayer<TimeoutLayer, RetryLayer<E>>>;
+type Sturdy<E> = CombinedLayer<CombinedLayer<TimeoutLayer, CircuitBreakerLayer>, RetryLayer<E>>;

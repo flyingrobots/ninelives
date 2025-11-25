@@ -171,6 +171,7 @@ See recipes in `src/cookbook.rs` and companion cookbooks:
 - **API guardrail (intermediate):** `api_guardrail` — timeout + breaker + bulkhead.
 - **Reliable read (advanced):** `reliable_read` — fast path then fallback stack.
 - **Hedged read (tricky):** `hedged_read` — fork-join two differently-tuned stacks.
+- **Hedge + fallback (god tier):** `hedged_then_fallback` — race two fast paths, then fall back to a sturdy stack.
 - **Sensible defaults:** `sensible_defaults` — timeout + retry + bulkhead starter pack.
 
 All live in `src/cookbook.rs`.
