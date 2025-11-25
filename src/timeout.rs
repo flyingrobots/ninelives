@@ -44,7 +44,8 @@
 use crate::ResilienceError;
 use futures::future::BoxFuture;
 use std::future::Future;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use tokio::time::Instant;
 use tower_service::Service;
 
 /// Maximum allowed timeout duration (30 days) to avoid runaway timers while permitting long jobs.
