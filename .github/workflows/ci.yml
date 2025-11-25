@@ -81,7 +81,7 @@ jobs:
       - name: Run coverage (all features)
         run: |
           mkdir -p coverage
-          cargo llvm-cov --workspace --all-features --lcov --output-path coverage/lcov.info
+          cargo llvm-cov --package ninelives --all-features --lcov --output-path coverage/lcov.info
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v4
         with:
