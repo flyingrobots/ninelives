@@ -146,18 +146,21 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn tokio_sleeper_actually_sleeps() {
+        use std::future::Future;
+
         let start = tokio::time::Instant::now();
         let sleep = TokioSleeper.sleep(Duration::from_millis(50));
         tokio::pin!(sleep);
+        // Poll once to register the timer before advancing the mocked clock
+        let waker = futures::task::noop_waker();
+        let mut cx = std::task::Context::from_waker(&waker);
+        assert!(sleep.as_mut().poll(&mut cx).is_pending());
         tokio::time::advance(Duration::from_millis(50)).await;
         let elapsed = start.elapsed();
-        assert!(elapsed == Duration::from_millis(50) || elapsed == Duration::from_millis(100));
+        assert_eq!(elapsed, Duration::from_millis(50));
         sleep.await;
         let elapsed_after = start.elapsed();
-        assert!(
-            elapsed_after == Duration::from_millis(50)
-                || elapsed_after == Duration::from_millis(100)
-        );
+        assert_eq!(elapsed_after, Duration::from_millis(50));
     }
 
     #[tokio::test]

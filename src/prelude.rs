@@ -9,7 +9,6 @@ pub use crate::{
     circuit_breaker::{CircuitBreakerConfig, CircuitBreakerError, CircuitBreakerLayer},
     jitter::Jitter,
     retry::{BuildError, RetryLayer, RetryPolicy, RetryPolicyBuilder},
-    timeout::TimeoutLayer,
-    timeout::{TimeoutError, TimeoutPolicy, MAX_TIMEOUT},
+    timeout::{TimeoutError, TimeoutLayer, TimeoutPolicy, MAX_TIMEOUT},
     BulkheadPolicy, ResilienceError,
 };
