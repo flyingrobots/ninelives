@@ -448,6 +448,256 @@ impl TelemetrySink for MemorySink {
     type SinkError = Infallible;
 }
 
+/// A streaming telemetry sink that broadcasts events to multiple subscribers.
+///
+/// Uses `tokio::sync::broadcast` to publish events to all active receivers.
+/// Receivers that fall behind will miss events (the channel has bounded capacity).
+///
+/// # Example
+///
+/// ```rust
+/// use ninelives::telemetry::{StreamingSink, PolicyEvent, RetryEvent};
+/// use tower::Service;
+/// use std::time::Duration;
+///
+/// # #[tokio::main]
+/// # async fn main() {
+/// let sink = StreamingSink::new(100); // 100 event buffer
+/// let mut receiver = sink.subscribe();
+///
+/// let mut sink_clone = sink.clone();
+/// let event = PolicyEvent::Retry(RetryEvent::Attempt {
+///     attempt: 1,
+///     delay: Duration::from_millis(100),
+/// });
+///
+/// // Send event through sink
+/// sink_clone.call(event.clone()).await.unwrap();
+///
+/// // Receive from subscriber
+/// let received = receiver.recv().await.unwrap();
+/// assert_eq!(received, event);
+/// # }
+/// ```
+#[derive(Clone, Debug)]
+pub struct StreamingSink {
+    sender: Arc<tokio::sync::broadcast::Sender<PolicyEvent>>,
+}
+
+impl StreamingSink {
+    /// Creates a new streaming sink with the specified buffer capacity.
+    ///
+    /// When the buffer is full, the oldest events will be dropped for slow receivers.
+    pub fn new(capacity: usize) -> Self {
+        let (sender, _) = tokio::sync::broadcast::channel(capacity);
+        Self {
+            sender: Arc::new(sender),
+        }
+    }
+
+    /// Subscribe to receive events from this sink.
+    ///
+    /// Returns a receiver that will get all future events sent through this sink.
+    /// Multiple receivers can subscribe simultaneously.
+    pub fn subscribe(&self) -> tokio::sync::broadcast::Receiver<PolicyEvent> {
+        self.sender.subscribe()
+    }
+
+    /// Returns the number of active subscribers.
+    pub fn receiver_count(&self) -> usize {
+        self.sender.receiver_count()
+    }
+}
+
+impl Service<PolicyEvent> for StreamingSink {
+    type Response = ();
+    type Error = Infallible;
+    type Future = Pin<Box<dyn std::future::Future<Output = Result<(), Self::Error>> + Send>>;
+
+    fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn call(&mut self, event: PolicyEvent) -> Self::Future {
+        // Send is best-effort - ignore if no receivers
+        let _ = self.sender.send(event);
+        Box::pin(async { Ok(()) })
+    }
+}
+
+impl TelemetrySink for StreamingSink {
+    type SinkError = Infallible;
+}
+
+// ============================================================================
+// Telemetry Sink Composition
+// ============================================================================
+
+/// Error type for composed telemetry sinks.
+#[derive(Debug)]
+pub struct ComposedSinkError(Box<dyn std::error::Error + Send + Sync>);
+
+impl std::fmt::Display for ComposedSinkError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "telemetry sink error: {}", self.0)
+    }
+}
+
+impl std::error::Error for ComposedSinkError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&*self.0)
+    }
+}
+
+/// Multicasts events to two sinks in parallel (operator `+`).
+///
+/// Both sinks receive all events. If either sink fails, the error is propagated.
+///
+/// # Example
+///
+/// ```rust
+/// use ninelives::telemetry::{LogSink, MemorySink, MulticastSink};
+/// use tower::Service;
+///
+/// let log = LogSink;
+/// let memory = MemorySink::new();
+/// let combined = MulticastSink::new(log, memory);
+/// // Both sinks will receive all events
+/// ```
+#[derive(Clone)]
+pub struct MulticastSink<A, B> {
+    sink_a: A,
+    sink_b: B,
+}
+
+impl<A, B> MulticastSink<A, B> {
+    /// Create a new multicast sink that sends events to both `sink_a` and `sink_b`.
+    pub fn new(sink_a: A, sink_b: B) -> Self {
+        Self { sink_a, sink_b }
+    }
+}
+
+impl<A, B> Service<PolicyEvent> for MulticastSink<A, B>
+where
+    A: tower::Service<PolicyEvent, Response = ()> + Clone + Send + 'static,
+    A::Error: std::error::Error + Send + Sync + 'static,
+    A::Future: Send + 'static,
+    B: tower::Service<PolicyEvent, Response = ()> + Clone + Send + 'static,
+    B::Error: std::error::Error + Send + Sync + 'static,
+    B::Future: Send + 'static,
+{
+    type Response = ();
+    type Error = ComposedSinkError;
+    type Future = Pin<Box<dyn std::future::Future<Output = Result<(), Self::Error>> + Send>>;
+
+    fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn call(&mut self, event: PolicyEvent) -> Self::Future {
+        let mut sink_a = self.sink_a.clone();
+        let mut sink_b = self.sink_b.clone();
+        let event_clone = event.clone();
+
+        Box::pin(async move {
+            // Call both sinks concurrently
+            let (res_a, res_b) = tokio::join!(sink_a.call(event), sink_b.call(event_clone));
+
+            res_a.map_err(|e| ComposedSinkError(Box::new(e)))?;
+            res_b.map_err(|e| ComposedSinkError(Box::new(e)))?;
+
+            Ok(())
+        })
+    }
+}
+
+impl<A, B> TelemetrySink for MulticastSink<A, B>
+where
+    A: tower::Service<PolicyEvent, Response = ()> + Clone + Send + 'static,
+    A::Error: std::error::Error + Send + Sync + 'static,
+    A::Future: Send + 'static,
+    B: tower::Service<PolicyEvent, Response = ()> + Clone + Send + 'static,
+    B::Error: std::error::Error + Send + Sync + 'static,
+    B::Future: Send + 'static,
+{
+    type SinkError = ComposedSinkError;
+}
+
+/// Sends events to primary sink, falling back to secondary on error (operator `|`).
+///
+/// # Example
+///
+/// ```rust
+/// use ninelives::telemetry::{LogSink, MemorySink, FallbackSink};
+/// use tower::Service;
+///
+/// let primary = LogSink;
+/// let fallback = MemorySink::new();
+/// let combined = FallbackSink::new(primary, fallback);
+/// // Try primary, use fallback if it fails
+/// ```
+#[derive(Clone)]
+pub struct FallbackSink<A, B> {
+    primary: A,
+    fallback: B,
+}
+
+impl<A, B> FallbackSink<A, B> {
+    /// Create a new fallback sink that tries `primary` first, then `fallback` on error.
+    pub fn new(primary: A, fallback: B) -> Self {
+        Self { primary, fallback }
+    }
+}
+
+impl<A, B> Service<PolicyEvent> for FallbackSink<A, B>
+where
+    A: tower::Service<PolicyEvent, Response = ()> + Clone + Send + 'static,
+    A::Error: std::error::Error + Send + Sync + 'static,
+    A::Future: Send + 'static,
+    B: tower::Service<PolicyEvent, Response = ()> + Clone + Send + 'static,
+    B::Error: std::error::Error + Send + Sync + 'static,
+    B::Future: Send + 'static,
+{
+    type Response = ();
+    type Error = ComposedSinkError;
+    type Future = Pin<Box<dyn std::future::Future<Output = Result<(), Self::Error>> + Send>>;
+
+    fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn call(&mut self, event: PolicyEvent) -> Self::Future {
+        let mut primary = self.primary.clone();
+        let mut fallback = self.fallback.clone();
+        let event_clone = event.clone();
+
+        Box::pin(async move {
+            match primary.call(event).await {
+                Ok(()) => Ok(()),
+                Err(_) => {
+                    // Primary failed, try fallback
+                    fallback
+                        .call(event_clone)
+                        .await
+                        .map_err(|e| ComposedSinkError(Box::new(e)))
+                }
+            }
+        })
+    }
+}
+
+impl<A, B> TelemetrySink for FallbackSink<A, B>
+where
+    A: tower::Service<PolicyEvent, Response = ()> + Clone + Send + 'static,
+    A::Error: std::error::Error + Send + Sync + 'static,
+    A::Future: Send + 'static,
+    B: tower::Service<PolicyEvent, Response = ()> + Clone + Send + 'static,
+    B::Error: std::error::Error + Send + Sync + 'static,
+    B::Future: Send + 'static,
+{
+    type SinkError = ComposedSinkError;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

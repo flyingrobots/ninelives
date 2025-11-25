@@ -143,15 +143,19 @@ impl CircuitBreakerState {
     }
 }
 
-/// Tower-native circuit breaker layer.
+use crate::telemetry::{CircuitBreakerEvent, NullSink, PolicyEvent, RequestOutcome};
+use std::time::Instant as StdInstant;
+
+/// Tower-native circuit breaker layer with optional telemetry.
 #[derive(Debug, Clone)]
-pub struct CircuitBreakerLayer {
+pub struct CircuitBreakerLayer<Sink = NullSink> {
     config: CircuitBreakerConfig,
     clock: Arc<dyn Clock>,
+    sink: Sink,
 }
 
-impl CircuitBreakerLayer {
-    /// Create a new circuit breaker layer with the given configuration.
+impl CircuitBreakerLayer<NullSink> {
+    /// Create a new circuit breaker layer with the given configuration and no telemetry.
     ///
     /// Uses the default monotonic clock for timing.
     ///
@@ -160,10 +164,14 @@ impl CircuitBreakerLayer {
     /// Returns error if the configuration is invalid.
     pub fn new(config: CircuitBreakerConfig) -> Result<Self, CircuitBreakerError> {
         config.validate()?;
-        Ok(Self { config, clock: Arc::new(MonotonicClock::default()) })
+        Ok(Self {
+            config,
+            clock: Arc::new(MonotonicClock::default()),
+            sink: NullSink,
+        })
     }
 
-    /// Create a circuit breaker layer with a custom clock implementation.
+    /// Create a circuit breaker layer with a custom clock implementation and no telemetry.
     ///
     /// Useful for testing with controllable time.
     ///
@@ -175,32 +183,63 @@ impl CircuitBreakerLayer {
         clock: C,
     ) -> Result<Self, CircuitBreakerError> {
         config.validate()?;
-        Ok(Self { config, clock: Arc::new(clock) })
+        Ok(Self {
+            config,
+            clock: Arc::new(clock),
+            sink: NullSink,
+        })
+    }
+}
+
+impl<Sink> CircuitBreakerLayer<Sink>
+where
+    Sink: Clone,
+{
+    /// Attach a telemetry sink to this circuit breaker layer.
+    pub fn with_sink<NewSink>(self, sink: NewSink) -> CircuitBreakerLayer<NewSink>
+    where
+        NewSink: Clone,
+    {
+        CircuitBreakerLayer {
+            config: self.config,
+            clock: self.clock,
+            sink,
+        }
     }
 }
 
 /// Service produced by [`CircuitBreakerLayer`].
 #[derive(Debug, Clone)]
-pub struct CircuitBreakerService<S> {
+pub struct CircuitBreakerService<S, Sink = NullSink> {
     inner: S,
     state: Arc<CircuitBreakerState>,
     config: CircuitBreakerConfig,
     clock: Arc<dyn Clock>,
+    sink: Sink,
 }
 
-impl<S> CircuitBreakerService<S> {
-    fn new(inner: S, config: CircuitBreakerConfig, clock: Arc<dyn Clock>) -> Self {
-        Self { inner, state: Arc::new(CircuitBreakerState::new()), config, clock }
+impl<S, Sink> CircuitBreakerService<S, Sink> {
+    fn new(inner: S, config: CircuitBreakerConfig, clock: Arc<dyn Clock>, sink: Sink) -> Self {
+        Self {
+            inner,
+            state: Arc::new(CircuitBreakerState::new()),
+            config,
+            clock,
+            sink,
+        }
     }
 }
 
-impl<S, Request> Service<Request> for CircuitBreakerService<S>
+impl<S, Request, Sink> Service<Request> for CircuitBreakerService<S, Sink>
 where
     S: Service<Request> + Clone + Send + 'static,
     Request: Clone + Send + 'static,
     S::Future: Send + 'static,
     S::Response: Send + 'static,
     S::Error: std::error::Error + Send + Sync + 'static,
+    Sink: tower::Service<PolicyEvent, Response = ()> + Clone + Send + 'static,
+    Sink::Error: std::error::Error + Send + 'static,
+    Sink::Future: Send + 'static,
 {
     type Response = S::Response;
     type Error = ResilienceError<S::Error>;
@@ -218,8 +257,10 @@ where
         let state = self.state.clone();
         let config = self.config.clone();
         let clock = self.clock.clone();
+        let mut sink = self.sink.clone();
 
         Box::pin(async move {
+            let start = StdInstant::now();
             let now = clock.now_millis();
             let current = CircuitState::from_u8(state.state.load(Ordering::Acquire));
 
@@ -232,12 +273,16 @@ where
                             open_duration: Duration::from_millis(now.saturating_sub(opened_at)),
                         });
                     }
-                    let _ = state.state.compare_exchange(
+                    // Transition Open -> HalfOpen
+                    let prev = state.state.compare_exchange(
                         CircuitState::Open.to_u8(),
                         CircuitState::HalfOpen.to_u8(),
                         Ordering::AcqRel,
                         Ordering::Acquire,
                     );
+                    if prev.is_ok() {
+                        let _ = sink.call(PolicyEvent::CircuitBreaker(CircuitBreakerEvent::HalfOpen)).await;
+                    }
                     state.half_open_calls.store(0, Ordering::Release);
                 }
                 CircuitState::HalfOpen => {
@@ -254,8 +299,19 @@ where
 
             match inner.call(req).await {
                 Ok(resp) => {
+                    let prev_state = CircuitState::from_u8(state.state.load(Ordering::Acquire));
                     state.state.store(CircuitState::Closed.to_u8(), Ordering::Release);
                     state.failure_count.store(0, Ordering::Release);
+
+                    // Emit closed event if transitioning from non-closed state
+                    if prev_state != CircuitState::Closed {
+                        let _ = sink.call(PolicyEvent::CircuitBreaker(CircuitBreakerEvent::Closed)).await;
+                    }
+
+                    // Emit success outcome
+                    let duration = start.elapsed();
+                    let _ = sink.call(PolicyEvent::Request(RequestOutcome::Success { duration })).await;
+
                     Ok(resp)
                 }
                 Err(err) => {
@@ -263,12 +319,20 @@ where
                     match CircuitState::from_u8(state.state.load(Ordering::Acquire)) {
                         CircuitState::Closed => {
                             if failures >= config.failure_threshold {
-                                let _ = state.state.compare_exchange(
+                                // Transition Closed -> Open
+                                let prev = state.state.compare_exchange(
                                     CircuitState::Closed.to_u8(),
                                     CircuitState::Open.to_u8(),
                                     Ordering::AcqRel,
                                     Ordering::Acquire,
                                 );
+                                if prev.is_ok() {
+                                    let _ = sink.call(PolicyEvent::CircuitBreaker(
+                                        CircuitBreakerEvent::Opened {
+                                            failure_count: failures,
+                                        }
+                                    )).await;
+                                }
                                 state.half_open_calls.store(0, Ordering::Release);
                                 state.opened_at_millis.store(clock.now_millis(), Ordering::Release);
                             }
@@ -292,9 +356,12 @@ where
     }
 }
 
-impl<S> Layer<S> for CircuitBreakerLayer {
-    type Service = CircuitBreakerService<S>;
+impl<S, Sink> Layer<S> for CircuitBreakerLayer<Sink>
+where
+    Sink: Clone,
+{
+    type Service = CircuitBreakerService<S, Sink>;
     fn layer(&self, service: S) -> Self::Service {
-        CircuitBreakerService::new(service, self.config.clone(), self.clock.clone())
+        CircuitBreakerService::new(service, self.config.clone(), self.clock.clone(), self.sink.clone())
     }
 }

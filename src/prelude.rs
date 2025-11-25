@@ -9,6 +9,11 @@ pub use crate::{
     circuit_breaker::{CircuitBreakerConfig, CircuitBreakerError, CircuitBreakerLayer},
     jitter::Jitter,
     retry::{BuildError, RetryLayer, RetryPolicy, RetryPolicyBuilder},
+    telemetry::{
+        BulkheadEvent, CircuitBreakerEvent, FallbackSink, LogSink, MemorySink, MulticastSink,
+        NullSink, PolicyEvent, RequestOutcome, RetryEvent, StreamingSink, TelemetrySink,
+        TimeoutEvent,
+    },
     timeout::TimeoutLayer,
     timeout::{TimeoutError, TimeoutPolicy, MAX_TIMEOUT},
     BulkheadPolicy, ResilienceError,

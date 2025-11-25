@@ -82,6 +82,18 @@ where
         RetryPolicyBuilder::new()
     }
 
+    /// Convert this policy into a tower Layer.
+    pub fn into_layer(self) -> RetryLayer<E, NullSink> {
+        RetryLayer {
+            max_attempts: self.max_attempts,
+            backoff: self.backoff,
+            jitter: self.jitter,
+            should_retry: self.should_retry,
+            sleeper: self.sleeper,
+            sink: NullSink,
+        }
+    }
+
     /// Execute an async operation with retry semantics.
     pub async fn execute<T, Fut, Op>(&self, mut operation: Op) -> Result<T, ResilienceError<E>>
     where
