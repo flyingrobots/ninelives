@@ -37,7 +37,10 @@
 use crate::{ResilienceError, adaptive::Adaptive};
 use futures::future::BoxFuture;
 use std::future::Future;
-use std::sync::Arc;
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc,
+};
 use tokio::sync::Semaphore;
 use tower_layer::Layer;
 use tower_service::Service;
@@ -49,6 +52,7 @@ pub struct BulkheadPolicy {
     semaphore: Arc<Semaphore>,
     /// Mirrors the initial semaphore capacity; used only for reporting and adaptation.
     max_concurrent: Adaptive<usize>,
+    capacity: Arc<AtomicUsize>,
 }
 
 #[non_exhaustive]
@@ -85,7 +89,11 @@ impl BulkheadPolicy {
             return Err(BulkheadError::InvalidMaxConcurrent { provided: max_concurrent });
         }
 
-        Ok(Self { semaphore: Arc::new(Semaphore::new(max_concurrent)), max_concurrent: Adaptive::new(max_concurrent) })
+        Ok(Self {
+            semaphore: Arc::new(Semaphore::new(max_concurrent)),
+            max_concurrent: Adaptive::new(max_concurrent),
+            capacity: Arc::new(AtomicUsize::new(max_concurrent)),
+        })
     }
 
     /// Construct an effectively unlimited bulkhead using `UNLIMITED_PERMITS` (derived from
@@ -120,13 +128,14 @@ impl BulkheadPolicy {
         Fut: Future<Output = Result<T, ResilienceError<E>>> + Send,
         Op: FnOnce() -> Fut + Send,
     {
+        self.sync_capacity();
         let _permit = match self.semaphore.try_acquire() {
             Ok(p) => p,
             Err(tokio::sync::TryAcquireError::NoPermits) => {
+                let desired = *self.max_concurrent.get();
                 let available = self.semaphore.available_permits(); // best-effort snapshot
-                let max = *self.max_concurrent.get();
-                let in_flight = max.saturating_sub(available);
-                return Err(ResilienceError::Bulkhead { in_flight, max });
+                let in_flight = desired.saturating_sub(available.min(desired));
+                return Err(ResilienceError::Bulkhead { in_flight, max: desired });
             }
             Err(tokio::sync::TryAcquireError::Closed) => {
                 let max = *self.max_concurrent.get();
@@ -140,6 +149,19 @@ impl BulkheadPolicy {
         // permit released on scope exit
         operation().await
     }
+
+    fn sync_capacity(&self) {
+        let desired = *self.max_concurrent.get();
+        let current = self.capacity.load(Ordering::Acquire);
+        if desired > current {
+            let add = desired - current;
+            self.semaphore.add_permits(add);
+            self.capacity.store(desired, Ordering::Release);
+        } else if desired == 0 {
+            // prevent deadlock: keep at least 1
+            self.capacity.store(1, Ordering::Release);
+        }
+    }
 }
 
 use crate::telemetry::{emit_best_effort, BulkheadEvent, NullSink, PolicyEvent, RequestOutcome};
@@ -148,7 +170,7 @@ use std::time::Instant as StdInstant;
 /// Tower-native bulkhead layer with optional telemetry.
 #[derive(Clone)]
 pub struct BulkheadLayer<Sink = NullSink> {
-    max_concurrent: usize,
+    max_concurrent: Adaptive<usize>,
     sink: Sink,
 }
 
@@ -156,7 +178,7 @@ impl BulkheadLayer<NullSink> {
     /// Create a bulkhead layer with no telemetry; returns error if `max_concurrent` is zero.
     pub fn new(max_concurrent: usize) -> Result<Self, BulkheadError> {
         BulkheadPolicy::new(max_concurrent)?;
-        Ok(Self { max_concurrent, sink: NullSink })
+        Ok(Self { max_concurrent: Adaptive::new(max_concurrent), sink: NullSink })
     }
 }
 
@@ -170,7 +192,7 @@ where
         NewSink: Clone,
     {
         BulkheadLayer {
-            max_concurrent: self.max_concurrent,
+            max_concurrent: self.max_concurrent.clone(),
             sink,
         }
     }
@@ -180,7 +202,8 @@ where
 #[derive(Clone)]
 pub struct BulkheadService<S, Sink = NullSink> {
     semaphore: Arc<Semaphore>,
-    max_concurrent: usize,
+    max_concurrent: Adaptive<usize>,
+    capacity: Arc<AtomicUsize>,
     inner: S,
     sink: Sink,
 }
@@ -189,7 +212,8 @@ impl<S, Sink> BulkheadService<S, Sink> {
     fn new(inner: S, max_concurrent: usize, sink: Sink) -> Self {
         Self {
             semaphore: Arc::new(Semaphore::new(max_concurrent)),
-            max_concurrent,
+            max_concurrent: Adaptive::new(max_concurrent),
+            capacity: Arc::new(AtomicUsize::new(max_concurrent)),
             inner,
             sink,
         }
@@ -222,42 +246,53 @@ where
         let start = StdInstant::now();
         let semaphore = self.semaphore.clone();
         let mut inner = self.inner.clone();
-        let max = self.max_concurrent;
+        let max = self.max_concurrent.clone();
+        let capacity = self.capacity.clone();
         let sink = self.sink.clone();
 
         Box::pin(async move {
+            // Sync capacity upward if desired increased
+            let desired = *max.get();
+            let current_cap = capacity.load(Ordering::Acquire);
+            if desired > current_cap {
+                semaphore.add_permits(desired - current_cap);
+                capacity.store(desired, Ordering::Release);
+            }
+
             // Check available permits before acquiring
             let available_before = semaphore.available_permits();
 
             // Try to acquire permit
             let permit = match semaphore.clone().try_acquire_owned() {
                 Ok(p) => {
-                    let active_count = max - available_before + 1;
+                    let max_cfg = *max.get();
+                    let active_count = max_cfg.saturating_sub(available_before.min(max_cfg)) + 1;
                     // Emit acquired event
                     emit_best_effort(
                         sink.clone(),
                         PolicyEvent::Bulkhead(BulkheadEvent::Acquired {
                             active_count,
-                            max_concurrency: max,
+                            max_concurrency: max_cfg,
                         }),
                     )
                     .await;
                     p
                 }
                 Err(_) => {
-                    let active_count = max;
+                    let max_cfg = *max.get();
+                    let active_count = max_cfg;
                     // Emit rejected event
                     emit_best_effort(
                         sink.clone(),
                         PolicyEvent::Bulkhead(BulkheadEvent::Rejected {
                             active_count,
-                            max_concurrency: max,
+                            max_concurrency: max_cfg,
                         }),
                     )
                     .await;
                     return Err(ResilienceError::Bulkhead {
                         in_flight: active_count,
-                        max,
+                        max: max_cfg,
                     });
                 }
             };
@@ -298,7 +333,7 @@ where
 {
     type Service = BulkheadService<S, Sink>;
     fn layer(&self, service: S) -> Self::Service {
-        BulkheadService::new(service, self.max_concurrent, self.sink.clone())
+        BulkheadService::new(service, *self.max_concurrent.get(), self.sink.clone())
     }
 }
 
