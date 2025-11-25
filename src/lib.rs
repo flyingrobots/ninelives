@@ -117,6 +117,7 @@ mod circuit_breaker;
 mod clock;
 mod error;
 mod jitter;
+pub mod control;
 mod retry;
 mod sleeper;
 // stack module removed in favor of tower-native algebra
