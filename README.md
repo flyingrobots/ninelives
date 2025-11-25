@@ -174,6 +174,8 @@ See recipes in `src/cookbook.rs` and companion cookbooks:
 - **Hedge + fallback (god tier):** `hedged_then_fallback` — race two fast paths, then fall back to a sturdy stack.
 - **Sensible defaults:** `sensible_defaults` — timeout + retry + bulkhead starter pack.
 
+Most recipes are adaptive: retry/timeout/circuit/bulkhead knobs can be updated live via the `Adaptive<T>` handles (see cookbook for details).
+
 All live in `src/cookbook.rs`.
 Moved to the `ninelives-cookbook` crate (see its README/examples).
 

@@ -21,6 +21,11 @@ ninelives-cookbook = { path = "../ninelives-cookbook" }
 | `hedged_then_fallback` | “God tier” safety: race, then fall back | Hedge two fast paths, fallback to sturdy stack | High availability under variance and failure |
 | `sensible_defaults(max)` | General I/O starter pack | Timeout + Retry + Bulkhead | Safe defaults; pass your concurrency budget |
 
+### Adaptive knobs
+- `retry_fast`: adjust max_attempts/backoff/jitter live via `policy.adaptive_max_attempts()` and friends.
+- `timeout_p95`: adjust duration with `adaptive_duration()`.
+- `api_guardrail` / `hedged_then_fallback`: underlying layers are adaptive-capable; expose handles if you plumb them through your builder.
+
 Use them like:
 ```rust
 use ninelives_cookbook::api_guardrail;
