@@ -330,11 +330,13 @@ where
     ) -> std::task::Poll<Result<(), Self::Error>> {
         let primary_ready = self.primary.poll_ready(cx);
         let secondary_ready = self.secondary.poll_ready(cx);
+
         match (primary_ready, secondary_ready) {
-            (std::task::Poll::Ready(Ok(_)), _) => std::task::Poll::Ready(Ok(())),
-            (_, std::task::Poll::Ready(Ok(_))) => std::task::Poll::Ready(Ok(())),
             (std::task::Poll::Ready(Err(e)), _) => std::task::Poll::Ready(Err(e)),
             (_, std::task::Poll::Ready(Err(e))) => std::task::Poll::Ready(Err(e)),
+            (std::task::Poll::Ready(Ok(_)), std::task::Poll::Ready(Ok(_))) => {
+                std::task::Poll::Ready(Ok(()))
+            }
             _ => std::task::Poll::Pending,
         }
     }
@@ -508,5 +510,79 @@ where
                 }
             }
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use futures::task::noop_waker;
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use std::sync::Arc;
+    use std::task::{Context, Poll};
+    use tower_service::Service;
+
+    #[derive(Clone, Debug)]
+    struct GateService {
+        ready: Arc<AtomicBool>,
+        calls: Arc<AtomicUsize>,
+    }
+
+    impl GateService {
+        fn new() -> Self {
+            Self { ready: Arc::new(AtomicBool::new(false)), calls: Arc::new(AtomicUsize::new(0)) }
+        }
+
+        fn set_ready(&self, ready: bool) {
+            self.ready.store(ready, Ordering::SeqCst);
+        }
+
+        #[allow(dead_code)]
+        fn calls(&self) -> usize {
+            self.calls.load(Ordering::SeqCst)
+        }
+    }
+
+    impl<Request> tower_service::Service<Request> for GateService
+    where
+        Request: Clone + Send + 'static,
+    {
+        type Response = ();
+        type Error = &'static str;
+        type Future = futures::future::Ready<Result<Self::Response, Self::Error>>;
+
+        fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+            if self.ready.load(Ordering::SeqCst) {
+                Poll::Ready(Ok(()))
+            } else {
+                // wake to allow external state change to be observed
+                cx.waker().wake_by_ref();
+                Poll::Pending
+            }
+        }
+
+        fn call(&mut self, _req: Request) -> Self::Future {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            futures::future::ready(Ok(()))
+        }
+    }
+
+    #[test]
+    fn fallback_poll_ready_waits_for_both() {
+        let primary = GateService::new();
+        let secondary = GateService::new();
+
+        let mut svc = FallbackService { primary: primary.clone(), secondary: secondary.clone() };
+
+        // Primary ready, secondary not ready => still Pending
+        primary.set_ready(true);
+        secondary.set_ready(false);
+        let waker = noop_waker();
+        let mut cx = Context::from_waker(&waker);
+        assert!(matches!(Service::<()>::poll_ready(&mut svc, &mut cx), Poll::Pending));
+
+        // Both ready => Ready
+        secondary.set_ready(true);
+        assert!(matches!(Service::<()>::poll_ready(&mut svc, &mut cx), Poll::Ready(Ok(()))));
     }
 }
