@@ -623,7 +623,7 @@ mod tests {
 
 // end of file
 
-use crate::telemetry::{NullSink, PolicyEvent, RetryEvent};
+use crate::telemetry::{emit_best_effort, NullSink, PolicyEvent, RetryEvent};
 use std::time::Instant;
 
 /// Tower-native retry layer with optional telemetry.
@@ -743,7 +743,7 @@ where
     fn call(&mut self, req: Request) -> Self::Future {
         let layer = self.layer.clone();
         let mut inner = self.inner.clone();
-        let mut sink = layer.sink.clone();
+        let sink = layer.sink.clone();
 
         Box::pin(async move {
             let start = Instant::now();
@@ -752,9 +752,9 @@ where
             for attempt in 0..layer.max_attempts {
                 match inner.call(req.clone()).await {
                     Ok(resp) => {
-                        // Emit success event (best effort - ignore sink errors)
+                        // Emit success event (best effort - honor readiness)
                         let duration = start.elapsed();
-                        let _ = sink.call(PolicyEvent::Request(
+                        emit_best_effort(sink.clone(), PolicyEvent::Request(
                             crate::telemetry::RequestOutcome::Success { duration }
                         )).await;
                         return Ok(resp);
@@ -763,7 +763,7 @@ where
                         let e: E = err;
                         if !(layer.should_retry)(&e) {
                             let duration = start.elapsed();
-                            let _ = sink.call(PolicyEvent::Request(
+                            emit_best_effort(sink.clone(), PolicyEvent::Request(
                                 crate::telemetry::RequestOutcome::Failure { duration }
                             )).await;
                             return Err(ResilienceError::Inner(e));
@@ -772,12 +772,12 @@ where
                         if attempt + 1 >= layer.max_attempts {
                             // Emit exhausted event
                             let total_duration = start.elapsed();
-                            let _ = sink.call(PolicyEvent::Retry(RetryEvent::Exhausted {
+                            emit_best_effort(sink.clone(), PolicyEvent::Retry(RetryEvent::Exhausted {
                                 total_attempts: layer.max_attempts,
                                 total_duration,
                             })).await;
                             let duration = start.elapsed();
-                            let _ = sink.call(PolicyEvent::Request(
+                            emit_best_effort(sink.clone(), PolicyEvent::Request(
                                 crate::telemetry::RequestOutcome::Failure { duration }
                             )).await;
                             return Err(ResilienceError::retry_exhausted(
@@ -792,7 +792,7 @@ where
                         };
 
                         // Emit retry attempt event
-                        let _ = sink.call(PolicyEvent::Retry(RetryEvent::Attempt {
+                        emit_best_effort(sink.clone(), PolicyEvent::Retry(RetryEvent::Attempt {
                             attempt: attempt + 1,
                             delay,
                         })).await;

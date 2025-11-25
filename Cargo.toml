@@ -11,6 +11,18 @@ keywords = ["resilience", "retry", "circuit-breaker", "bulkhead", "timeout"]
 categories = ["asynchronous", "network-programming"]
 rust-version = "1.70"
 
+[workspace]
+members = [
+    "ninelives-nats",
+    "ninelives-kafka",
+    "ninelives-elastic",
+    "ninelives-etcd",
+    "ninelives-prometheus",
+    "ninelives-jsonl",
+    "ninelives-otlp",
+]
+resolver = "2"
+
 [dependencies]
 tokio = { version = "~1.48.0", features = ["time", "sync", "macros"] }
 tracing = "~0.1.40"

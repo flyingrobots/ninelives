@@ -136,7 +136,7 @@ impl BulkheadPolicy {
     }
 }
 
-use crate::telemetry::{BulkheadEvent, NullSink, PolicyEvent, RequestOutcome};
+use crate::telemetry::{emit_best_effort, BulkheadEvent, NullSink, PolicyEvent, RequestOutcome};
 use std::time::Instant as StdInstant;
 
 /// Tower-native bulkhead layer with optional telemetry.
@@ -217,7 +217,7 @@ where
         let semaphore = self.semaphore.clone();
         let mut inner = self.inner.clone();
         let max = self.max_concurrent;
-        let mut sink = self.sink.clone();
+        let sink = self.sink.clone();
 
         Box::pin(async move {
             // Check available permits before acquiring
@@ -228,23 +228,27 @@ where
                 Ok(p) => {
                     let active_count = max - available_before + 1;
                     // Emit acquired event
-                    let _ = sink
-                        .call(PolicyEvent::Bulkhead(BulkheadEvent::Acquired {
+                    emit_best_effort(
+                        sink.clone(),
+                        PolicyEvent::Bulkhead(BulkheadEvent::Acquired {
                             active_count,
                             max_concurrency: max,
-                        }))
-                        .await;
+                        }),
+                    )
+                    .await;
                     p
                 }
                 Err(_) => {
                     let active_count = max;
                     // Emit rejected event
-                    let _ = sink
-                        .call(PolicyEvent::Bulkhead(BulkheadEvent::Rejected {
+                    emit_best_effort(
+                        sink.clone(),
+                        PolicyEvent::Bulkhead(BulkheadEvent::Rejected {
                             active_count,
                             max_concurrency: max,
-                        }))
-                        .await;
+                        }),
+                    )
+                    .await;
                     return Err(ResilienceError::Bulkhead {
                         in_flight: active_count,
                         max,
@@ -262,14 +266,18 @@ where
             let duration = start.elapsed();
             match &result {
                 Ok(_) => {
-                    let _ = sink
-                        .call(PolicyEvent::Request(RequestOutcome::Success { duration }))
-                        .await;
+                    emit_best_effort(
+                        sink.clone(),
+                        PolicyEvent::Request(RequestOutcome::Success { duration }),
+                    )
+                    .await;
                 }
                 Err(_) => {
-                    let _ = sink
-                        .call(PolicyEvent::Request(RequestOutcome::Failure { duration }))
-                        .await;
+                    emit_best_effort(
+                        sink.clone(),
+                        PolicyEvent::Request(RequestOutcome::Failure { duration }),
+                    )
+                    .await;
                 }
             }
 

@@ -143,7 +143,7 @@ impl CircuitBreakerState {
     }
 }
 
-use crate::telemetry::{CircuitBreakerEvent, NullSink, PolicyEvent, RequestOutcome};
+use crate::telemetry::{emit_best_effort, CircuitBreakerEvent, NullSink, PolicyEvent, RequestOutcome};
 use std::time::Instant as StdInstant;
 
 /// Tower-native circuit breaker layer with optional telemetry.
@@ -257,7 +257,7 @@ where
         let state = self.state.clone();
         let config = self.config.clone();
         let clock = self.clock.clone();
-        let mut sink = self.sink.clone();
+        let sink = self.sink.clone();
 
         Box::pin(async move {
             let start = StdInstant::now();
@@ -281,7 +281,11 @@ where
                         Ordering::Acquire,
                     );
                     if prev.is_ok() {
-                        let _ = sink.call(PolicyEvent::CircuitBreaker(CircuitBreakerEvent::HalfOpen)).await;
+                        emit_best_effort(
+                            sink.clone(),
+                            PolicyEvent::CircuitBreaker(CircuitBreakerEvent::HalfOpen),
+                        )
+                        .await;
                     }
                     state.half_open_calls.store(0, Ordering::Release);
                 }
@@ -305,12 +309,20 @@ where
 
                     // Emit closed event if transitioning from non-closed state
                     if prev_state != CircuitState::Closed {
-                        let _ = sink.call(PolicyEvent::CircuitBreaker(CircuitBreakerEvent::Closed)).await;
+                        emit_best_effort(
+                            sink.clone(),
+                            PolicyEvent::CircuitBreaker(CircuitBreakerEvent::Closed),
+                        )
+                        .await;
                     }
 
                     // Emit success outcome
                     let duration = start.elapsed();
-                    let _ = sink.call(PolicyEvent::Request(RequestOutcome::Success { duration })).await;
+                    emit_best_effort(
+                        sink.clone(),
+                        PolicyEvent::Request(RequestOutcome::Success { duration }),
+                    )
+                    .await;
 
                     Ok(resp)
                 }
@@ -327,11 +339,13 @@ where
                                     Ordering::Acquire,
                                 );
                                 if prev.is_ok() {
-                                    let _ = sink.call(PolicyEvent::CircuitBreaker(
-                                        CircuitBreakerEvent::Opened {
+                                    emit_best_effort(
+                                        sink.clone(),
+                                        PolicyEvent::CircuitBreaker(CircuitBreakerEvent::Opened {
                                             failure_count: failures,
-                                        }
-                                    )).await;
+                                        }),
+                                    )
+                                    .await;
                                 }
                                 state.half_open_calls.store(0, Ordering::Release);
                                 state.opened_at_millis.store(clock.now_millis(), Ordering::Release);

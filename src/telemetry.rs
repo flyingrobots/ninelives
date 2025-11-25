@@ -35,7 +35,8 @@
 //! ```
 
 use std::fmt;
-use std::time::Duration;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 /// A telemetry sink that consumes policy events.
 ///
@@ -75,6 +76,23 @@ pub trait TelemetrySink:
 {
     /// The error type for this sink.
     type SinkError: std::error::Error + Send + 'static;
+}
+
+/// Best-effort emit helper that honors `poll_ready` and swallows errors.
+///
+/// We keep telemetry non-blocking for policy hot paths: if a sink is not ready
+/// or returns an error, we simply drop the event.
+pub async fn emit_best_effort<S>(sink: S, event: PolicyEvent)
+where
+    S: tower::Service<PolicyEvent, Response = ()> + Send + Clone + 'static,
+    S::Error: std::error::Error + Send + 'static,
+    S::Future: Send + 'static,
+{
+    use tower::ServiceExt;
+
+    if let Ok(mut ready_sink) = sink.ready_oneshot().await {
+        let _ = ready_sink.call(event).await;
+    }
 }
 
 /// Policy events emitted during execution.
@@ -392,13 +410,32 @@ impl TelemetrySink for LogSink {
 #[derive(Clone, Debug)]
 pub struct MemorySink {
     events: Arc<Mutex<Vec<PolicyEvent>>>,
+    capacity: usize,
+    evicted: Arc<AtomicU64>,
 }
 
 impl MemorySink {
-    /// Creates a new empty memory sink.
+    /// Creates a bounded memory sink (default cap: 10,000).
+    /// Oldest events are evicted when capacity is exceeded.
     pub fn new() -> Self {
+        Self::with_capacity(10_000)
+    }
+
+    /// Creates a bounded memory sink with explicit capacity.
+    pub fn with_capacity(capacity: usize) -> Self {
         Self {
             events: Arc::new(Mutex::new(Vec::new())),
+            capacity: capacity.max(1),
+            evicted: Arc::new(AtomicU64::new(0)),
+        }
+    }
+
+    /// Creates an unbounded memory sink. Dangerous in production.
+    pub fn unbounded() -> Self {
+        Self {
+            events: Arc::new(Mutex::new(Vec::new())),
+            capacity: usize::MAX,
+            evicted: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -421,6 +458,16 @@ impl MemorySink {
     pub fn is_empty(&self) -> bool {
         self.events.lock().unwrap().is_empty()
     }
+
+    /// Returns the configured capacity.
+    pub fn capacity(&self) -> usize {
+        self.capacity
+    }
+
+    /// Returns the number of evicted events.
+    pub fn evicted(&self) -> u64 {
+        self.evicted.load(Ordering::Relaxed)
+    }
 }
 
 impl Default for MemorySink {
@@ -439,7 +486,12 @@ impl Service<PolicyEvent> for MemorySink {
     }
 
     fn call(&mut self, event: PolicyEvent) -> Self::Future {
-        self.events.lock().unwrap().push(event);
+        let mut guard = self.events.lock().unwrap();
+        if guard.len() >= self.capacity {
+            guard.remove(0);
+            self.evicted.fetch_add(1, Ordering::Relaxed);
+        }
+        guard.push(event);
         Box::pin(async { Ok(()) })
     }
 }
@@ -482,6 +534,8 @@ impl TelemetrySink for MemorySink {
 #[derive(Clone, Debug)]
 pub struct StreamingSink {
     sender: Arc<tokio::sync::broadcast::Sender<PolicyEvent>>,
+    dropped: Arc<AtomicU64>,
+    last_drop_ns: Arc<AtomicU64>,
 }
 
 impl StreamingSink {
@@ -492,6 +546,8 @@ impl StreamingSink {
         let (sender, _) = tokio::sync::broadcast::channel(capacity);
         Self {
             sender: Arc::new(sender),
+            dropped: Arc::new(AtomicU64::new(0)),
+            last_drop_ns: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -507,6 +563,19 @@ impl StreamingSink {
     pub fn receiver_count(&self) -> usize {
         self.sender.receiver_count()
     }
+
+    /// Returns number of events dropped due to slow subscribers.
+    pub fn dropped_count(&self) -> u64 {
+        self.dropped.load(Ordering::Relaxed)
+    }
+
+    /// Timestamp of last drop, if any.
+    pub fn last_drop(&self) -> Option<SystemTime> {
+        match self.last_drop_ns.load(Ordering::Relaxed) {
+            0 => None,
+            ns => UNIX_EPOCH.checked_add(Duration::from_nanos(ns)),
+        }
+    }
 }
 
 impl Service<PolicyEvent> for StreamingSink {
@@ -520,12 +589,103 @@ impl Service<PolicyEvent> for StreamingSink {
 
     fn call(&mut self, event: PolicyEvent) -> Self::Future {
         // Send is best-effort - ignore if no receivers
-        let _ = self.sender.send(event);
+        if let Err(_e) = self.sender.send(event) {
+            // Receiver lagged or none connected
+            self.dropped.fetch_add(1, Ordering::Relaxed);
+            let _ = self.last_drop_ns.store(
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_nanos() as u64,
+                Ordering::Relaxed,
+            );
+        }
         Box::pin(async { Ok(()) })
     }
 }
 
 impl TelemetrySink for StreamingSink {
+    type SinkError = Infallible;
+}
+
+// ============================================================================
+// Non-blocking sink wrapper
+// ============================================================================
+
+/// Offloads telemetry emission to a bounded channel and worker task.
+/// Keeps policy hot paths from awaiting slow sinks.
+#[derive(Clone)]
+pub struct NonBlockingSink<S> {
+    tx: tokio::sync::mpsc::Sender<PolicyEvent>,
+    dropped: Arc<AtomicU64>,
+    _sink: Arc<tokio::sync::Mutex<S>>, // keep sink alive
+}
+
+impl<S> NonBlockingSink<S>
+where
+    S: tower::Service<PolicyEvent, Response = ()> + Send + Clone + 'static,
+    S::Error: std::error::Error + Send + 'static,
+    S::Future: Send + 'static,
+{
+    /// Create a new non-blocking wrapper with bounded queue and background worker.
+    pub fn with_capacity(sink: S, capacity: usize) -> Self {
+        let (tx, mut rx) = tokio::sync::mpsc::channel(capacity);
+        let dropped = Arc::new(AtomicU64::new(0));
+        let dropped_clone = dropped.clone();
+        let sink_arc = Arc::new(tokio::sync::Mutex::new(sink));
+        let sink_worker = sink_arc.clone();
+
+        tokio::spawn(async move {
+            while let Some(event) = rx.recv().await {
+                use tower::ServiceExt;
+                let mut guard = sink_worker.lock().await;
+                if let Ok(ready) = guard.ready().await {
+                    let _ = ready.call(event).await;
+                }
+            }
+        });
+
+        Self {
+            tx,
+            dropped: dropped_clone,
+            _sink: sink_arc,
+        }
+    }
+
+    /// How many events were dropped because the queue was full.
+    pub fn dropped(&self) -> u64 {
+        self.dropped.load(Ordering::Relaxed)
+    }
+}
+
+impl<S> tower::Service<PolicyEvent> for NonBlockingSink<S>
+where
+    S: tower::Service<PolicyEvent, Response = ()> + Send + Clone + 'static,
+    S::Error: std::error::Error + Send + 'static,
+    S::Future: Send + 'static,
+{
+    type Response = ();
+    type Error = Infallible;
+    type Future = Pin<Box<dyn std::future::Future<Output = Result<(), Self::Error>> + Send>>;
+
+    fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn call(&mut self, event: PolicyEvent) -> Self::Future {
+        if self.tx.try_send(event).is_err() {
+            self.dropped.fetch_add(1, Ordering::Relaxed);
+        }
+        Box::pin(async { Ok(()) })
+    }
+}
+
+impl<S> TelemetrySink for NonBlockingSink<S>
+where
+    S: tower::Service<PolicyEvent, Response = ()> + Send + Clone + 'static,
+    S::Error: std::error::Error + Send + 'static,
+    S::Future: Send + 'static,
+{
     type SinkError = Infallible;
 }
 
@@ -757,7 +917,7 @@ mod tests {
     async fn test_memory_sink() {
         use tower::Service;
 
-        let mut sink = MemorySink::new();
+        let mut sink = MemorySink::with_capacity(2);
         assert!(sink.is_empty());
         assert_eq!(sink.len(), 0);
 
@@ -768,20 +928,44 @@ mod tests {
         let event2 = PolicyEvent::CircuitBreaker(CircuitBreakerEvent::Opened {
             failure_count: 5,
         });
+        let event3 = PolicyEvent::Timeout(TimeoutEvent::Occurred {
+            timeout: Duration::from_secs(1),
+        });
 
         sink.call(event1.clone()).await.unwrap();
         sink.call(event2.clone()).await.unwrap();
+        sink.call(event3.clone()).await.unwrap(); // should evict oldest
 
         assert_eq!(sink.len(), 2);
         assert!(!sink.is_empty());
 
+        assert_eq!(sink.evicted(), 1);
+
         let events = sink.events();
         assert_eq!(events.len(), 2);
-        assert_eq!(events[0], event1);
-        assert_eq!(events[1], event2);
+        assert_eq!(events[0], event2);
+        assert_eq!(events[1], event3);
 
         sink.clear();
         assert!(sink.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_streaming_sink_drop_counts() {
+        use tower::Service;
+
+        let sink = StreamingSink::new(1);
+        let mut tx = sink.clone();
+
+        // No subscriber; first send drops
+        tx.call(PolicyEvent::Bulkhead(BulkheadEvent::Rejected {
+            active_count: 1,
+            max_concurrency: 1,
+        }))
+        .await
+        .unwrap();
+
+        assert!(sink.dropped_count() >= 1);
     }
 
     #[tokio::test]

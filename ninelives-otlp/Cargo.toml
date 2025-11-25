@@ -1,0 +1,19 @@
+[package]
+name = "ninelives-otlp"
+version = "0.1.0"
+edition = "2021"
+authors = ["James Ross <james@flyingrobots.dev>"]
+description = "OTLP telemetry sink for ninelives"
+license = "Apache-2.0"
+publish = false
+
+[dependencies]
+ninelives = { path = ".." }
+tracing = "0.1"
+
+opentelemetry = { version = "0.21", optional = true }
+opentelemetry-otlp = { version = "0.14", optional = true, default-features = true, features = ["grpc-tonic"] }
+tokio = { version = "1", features = ["rt", "macros"], optional = true }
+
+[features]
+client = ["opentelemetry", "opentelemetry-otlp", "tokio"]

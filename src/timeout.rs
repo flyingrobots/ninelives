@@ -157,7 +157,7 @@ impl TimeoutPolicy {
     }
 }
 
-use crate::telemetry::{NullSink, PolicyEvent, RequestOutcome, TimeoutEvent};
+use crate::telemetry::{emit_best_effort, NullSink, PolicyEvent, RequestOutcome, TimeoutEvent};
 
 /// Tower-native timeout layer with optional telemetry.
 #[derive(Clone)]
@@ -229,7 +229,7 @@ where
     fn call(&mut self, req: Request) -> Self::Future {
         let duration = self.duration;
         let fut = self.inner.call(req);
-        let mut sink = self.sink.clone();
+        let sink = self.sink.clone();
 
         Box::pin(async move {
             let start = Instant::now();
@@ -237,25 +237,31 @@ where
                 Ok(Ok(r)) => {
                     // Emit success event
                     let elapsed = start.elapsed();
-                    let _ = sink
-                        .call(PolicyEvent::Request(RequestOutcome::Success { duration: elapsed }))
-                        .await;
+                    emit_best_effort(
+                        sink.clone(),
+                        PolicyEvent::Request(RequestOutcome::Success { duration: elapsed }),
+                    )
+                    .await;
                     Ok(r)
                 }
                 Ok(Err(e)) => {
                     // Emit failure event
                     let elapsed = start.elapsed();
-                    let _ = sink
-                        .call(PolicyEvent::Request(RequestOutcome::Failure { duration: elapsed }))
-                        .await;
+                    emit_best_effort(
+                        sink.clone(),
+                        PolicyEvent::Request(RequestOutcome::Failure { duration: elapsed }),
+                    )
+                    .await;
                     Err(ResilienceError::Inner(e))
                 }
                 Err(_) => {
                     let elapsed = start.elapsed();
                     // Emit timeout event
-                    let _ = sink
-                        .call(PolicyEvent::Timeout(TimeoutEvent::Occurred { timeout: duration }))
-                        .await;
+                    emit_best_effort(
+                        sink.clone(),
+                        PolicyEvent::Timeout(TimeoutEvent::Occurred { timeout: duration }),
+                    )
+                    .await;
                     Err(ResilienceError::Timeout { elapsed, timeout: duration })
                 }
             }

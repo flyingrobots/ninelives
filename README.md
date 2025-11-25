@@ -18,6 +18,7 @@ Nine Lives provides battle-tested resilience patterns (retry, circuit breaker, b
 - 🏎️ **Fork-join** for concurrent racing (Happy Eyeballs pattern)
 - 🔒 **Lock-free implementations** using atomics
 - 🏗️ **Tower-native** - works with any tower `Service`
+- 🌐 **Companion sinks** (OTLP, NATS, Kafka, Elastic, etcd, Prometheus, JSONL) via optional crates
 
 ## Quick Start
 
@@ -143,6 +144,22 @@ let circuit_breaker = CircuitBreakerLayer::new(
 // Compose: circuit breaker wraps retry
 let policy = Policy(circuit_breaker) + Policy(retry.into_layer());
 ```
+
+## Telemetry Sink Ladder
+
+- **Baby mode:** `MemorySink::with_capacity(1_000)` for local inspection.
+- **Intermediate:** `NonBlockingSink(LogSink)` to keep request paths non-blocking while logging.
+- **Advanced:** `NonBlockingSink(OtlpSink)` + `StreamingSink` fan-out for in-cluster consumers.
+- **GOD MODE:** `StreamingSink` → NATS/Kafka/Elastic via companion crates, with Observer + Sentinel auto-tuning when drop/evict metrics spike.
+
+See recipes in `src/cookbook.rs` and companion cookbooks:
+- `ninelives-otlp/README.md`
+- `ninelives-nats/README.md`
+- `ninelives-kafka/README.md`
+- `ninelives-elastic/README.md`
+- `ninelives-etcd/README.md`
+- `ninelives-prometheus/README.md`
+- `ninelives-jsonl/README.md`
 
 ## Tower Integration
 

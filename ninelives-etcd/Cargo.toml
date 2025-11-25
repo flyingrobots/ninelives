@@ -1,0 +1,19 @@
+[package]
+name = "ninelives-etcd"
+version = "0.1.0"
+edition = "2021"
+authors = ["James Ross <james@flyingrobots.dev>"]
+description = "Optional etcd telemetry sink for ninelives"
+license = "Apache-2.0"
+publish = false
+
+[dependencies]
+ninelives = { path = ".." }
+tracing = "0.1"
+chrono = { version = "0.4", default-features = false, features = ["clock"], optional = true }
+
+etcd-client = { version = "0.11", features = ["tls"], optional = true }
+tokio = { version = "1", features = ["rt", "macros"], optional = true }
+
+[features]
+client = ["etcd-client", "tokio", "chrono"]

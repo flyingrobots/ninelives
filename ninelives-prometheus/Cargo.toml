@@ -1,0 +1,16 @@
+[package]
+name = "ninelives-prometheus"
+version = "0.1.0"
+edition = "2021"
+authors = ["James Ross <james@flyingrobots.dev>"]
+description = "In-process Prometheus metrics sink for ninelives"
+license = "Apache-2.0"
+publish = false
+
+[dependencies]
+ninelives = { path = ".." }
+tracing = "0.1"
+prometheus = { version = "0.13", optional = true }
+
+[features]
+client = ["prometheus"]
