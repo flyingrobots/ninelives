@@ -5,3 +5,4 @@ pr_labels = ["release", "release-ready"]
 [[package]]
 name = "ninelives"
 release = true
+github_release = true
