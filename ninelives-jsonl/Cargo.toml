@@ -1,6 +1,6 @@
 [package]
 name = "ninelives-jsonl"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 authors = ["James Ross <james@flyingrobots.dev>"]
 description = "JSONL file sink for ninelives telemetry"
@@ -9,7 +9,7 @@ publish = false
 repository = "https://github.com/flyingrobots/ninelives"
 
 [dependencies]
-ninelives = { version = "0.1.0", path = ".." }
+ninelives = { version = "0.2.0", path = ".." }
 tower-service = "0.3"
 tracing = "0.1"
 serde_json = { version = "1", optional = true }

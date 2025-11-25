@@ -1438,7 +1438,7 @@ dependencies = [
 
 [[package]]
 name = "ninelives"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "futures",
@@ -1453,14 +1453,14 @@ dependencies = [
 
 [[package]]
 name = "ninelives-cookbook"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "ninelives",
 ]
 
 [[package]]
 name = "ninelives-elastic"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "elasticsearch",
  "ninelives",
@@ -1472,7 +1472,7 @@ dependencies = [
 
 [[package]]
 name = "ninelives-etcd"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "chrono",
  "etcd-client",
@@ -1484,7 +1484,7 @@ dependencies = [
 
 [[package]]
 name = "ninelives-jsonl"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "ninelives",
  "serde_json",
@@ -1495,7 +1495,7 @@ dependencies = [
 
 [[package]]
 name = "ninelives-kafka"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "ninelives",
  "rdkafka",
@@ -1505,7 +1505,7 @@ dependencies = [
 
 [[package]]
 name = "ninelives-nats"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "nats",
  "ninelives",
@@ -1516,7 +1516,7 @@ dependencies = [
 
 [[package]]
 name = "ninelives-otlp"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "ninelives",
  "opentelemetry",
@@ -1528,7 +1528,7 @@ dependencies = [
 
 [[package]]
 name = "ninelives-prometheus"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "ninelives",
  "prometheus",
