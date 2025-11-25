@@ -4,9 +4,10 @@ Thanks for wanting to improve Nine Lives! This document provides guidelines for 
 
 ## 🚀 Quick Start
 
-1. Install the latest stable Rust (see https://rustup.rs/).
+1. Install the latest stable Rust (see <https://rustup.rs/>).
 2. Clone and Branch: git checkout -b feature/your-idea.
 3. Run Checks Locally:
+
 ```bash
 cargo fmt -- --check
 cargo clippy --all-targets --all-features -- -D warnings

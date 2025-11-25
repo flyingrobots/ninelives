@@ -710,19 +710,14 @@ where
                     ));
                 }
 
-                let mut delay = backoff.delay(attempt_idx + 1);
-                delay = match jitter {
-                    Jitter::Decorrelated(_) => jitter.apply_stateful(),
-                    _ => jitter.apply(delay),
-                };
+                let delay = jitter.apply_with_state(backoff.delay(attempt_idx + 1));
                 sleeper.sleep(delay).await;
             }
             Err(e) => return Err(e),
         }
     }
 
-    debug_assert!(false, "Retry loop should have returned; logic bug");
-    unreachable!()
+    unreachable!("Retry loop should have returned; this indicates a logic bug");
 }
 
 impl<S, E> Layer<S> for RetryLayer<E>

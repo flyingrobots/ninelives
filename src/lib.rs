@@ -123,7 +123,9 @@ mod sleeper;
 mod timeout;
 
 // Re-exports
-pub use algebra::{CombinedLayer, FallbackLayer, ForkJoinLayer, Policy};
+pub use algebra::{
+    CombinedLayer, FallbackLayer, FallbackService, ForkJoinLayer, ForkJoinService, Policy,
+};
 pub use backoff::{
     Backoff, BackoffError, BackoffStrategy, ConstantBackoff, ExponentialBackoff, LinearBackoff,
     MAX_BACKOFF,

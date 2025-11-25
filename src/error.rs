@@ -97,7 +97,8 @@ impl<E> ResilienceError<E> {
     /// Construct a `RetryExhausted` variant while enforcing the `MAX_RETRY_FAILURES` cap by keeping the most recent failures.
     pub fn retry_exhausted(attempts: usize, failures: Vec<E>) -> Self {
         let trimmed = if failures.len() > MAX_RETRY_FAILURES {
-            failures.into_iter().rev().take(MAX_RETRY_FAILURES).rev().collect()
+            let len = failures.len();
+            failures.into_iter().skip(len - MAX_RETRY_FAILURES).collect()
         } else {
             failures
         };
