@@ -1,0 +1,36 @@
+# Build artifacts
+/target
+/.cargo/
+
+# Cargo lockfile: library crate keeps it untracked
+/Cargo.lock
+
+# macOS noise
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# Windows noise
+ehthumbs.db
+Thumbs.db
+
+# IDE/editor settings
+.idea/
+.vscode/
+*.iml
+.fleet/
+
+# Editor backups & swap files
+**/*.rs.bk
+*.swp
+*.swo
+*~
+.#*
+*.tmp
+
+# Misc project-local
+.env
+.env.local

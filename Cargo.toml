@@ -1,0 +1,27 @@
+[package]
+name = "ninelives"
+version = "0.1.0"
+edition = "2021"
+authors = ["James Ross <james@flyingrobots.dev>"]
+license = "Apache-2.0"
+description = "Resilience primitives for async Rust: retry, circuit breaker, bulkhead, timeout, and composable stacks."
+repository = "https://github.com/flyingrobots/ninelives"
+readme = "README.md"
+keywords = ["resilience", "retry", "circuit-breaker", "bulkhead", "timeout"]
+categories = ["asynchronous", "network-programming"]
+rust-version = "1.70"
+
+[dependencies]
+tokio = { version = "~1.48.0", features = ["time", "sync", "macros"] }
+tracing = "~0.1.40"
+rand = "~0.9.0"
+async-trait = "~0.1.86"
+tower-service = "0.3"
+tower-layer = "0.3"
+futures = "~0.3.31"
+tower = { version = "0.5.2", features = ["full"] }
+
+[dev-dependencies]
+tokio = { version = "~1.48.0", features = ["full", "test-util"] }
+tracing-subscriber = "~0.3.20"
+futures = "~0.3.31"

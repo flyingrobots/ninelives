@@ -1,0 +1,4 @@
+[toolchain]
+# Pin to stable to track latest toolchain; update if MSRV changes.
+channel = "stable"
+components = ["rustfmt", "clippy"]
