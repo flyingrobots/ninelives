@@ -34,7 +34,7 @@
 //! # });
 //! ```
 
-use crate::ResilienceError;
+use crate::{ResilienceError, adaptive::Adaptive};
 use futures::future::BoxFuture;
 use std::future::Future;
 use std::sync::Arc;
@@ -47,8 +47,8 @@ use tower_service::Service;
 /// observe and affect the same in-flight count. `max_concurrent` is the configured permit ceiling.
 pub struct BulkheadPolicy {
     semaphore: Arc<Semaphore>,
-    /// Mirrors the initial semaphore capacity; used only for reporting.
-    max_concurrent: usize,
+    /// Mirrors the initial semaphore capacity; used only for reporting and adaptation.
+    max_concurrent: Adaptive<usize>,
 }
 
 #[non_exhaustive]
@@ -85,7 +85,7 @@ impl BulkheadPolicy {
             return Err(BulkheadError::InvalidMaxConcurrent { provided: max_concurrent });
         }
 
-        Ok(Self { semaphore: Arc::new(Semaphore::new(max_concurrent)), max_concurrent })
+        Ok(Self { semaphore: Arc::new(Semaphore::new(max_concurrent)), max_concurrent: Adaptive::new(max_concurrent) })
     }
 
     /// Construct an effectively unlimited bulkhead using `UNLIMITED_PERMITS` (derived from
@@ -97,7 +97,11 @@ impl BulkheadPolicy {
 
     /// Maximum configured concurrent permits.
     pub fn max_concurrent(&self) -> usize {
-        self.max_concurrent
+        *self.max_concurrent.get()
+    }
+
+    pub fn adaptive_max_concurrent(&self) -> Adaptive<usize> {
+        self.max_concurrent.clone()
     }
 
     /// Best-effort current available permits (may be stale due to races).
@@ -120,13 +124,15 @@ impl BulkheadPolicy {
             Ok(p) => p,
             Err(tokio::sync::TryAcquireError::NoPermits) => {
                 let available = self.semaphore.available_permits(); // best-effort snapshot
-                let in_flight = self.max_concurrent.saturating_sub(available);
-                return Err(ResilienceError::Bulkhead { in_flight, max: self.max_concurrent });
+                let max = *self.max_concurrent.get();
+                let in_flight = max.saturating_sub(available);
+                return Err(ResilienceError::Bulkhead { in_flight, max });
             }
             Err(tokio::sync::TryAcquireError::Closed) => {
+                let max = *self.max_concurrent.get();
                 return Err(ResilienceError::Bulkhead {
-                    in_flight: self.max_concurrent,
-                    max: self.max_concurrent,
+                    in_flight: max,
+                    max,
                 });
             }
         };
