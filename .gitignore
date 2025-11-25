@@ -32,3 +32,5 @@ Thumbs.db
 *.tmp
 
 # Misc project-local
+.env
+.env.local

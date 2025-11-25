@@ -348,7 +348,10 @@ where
         Box::pin(async move {
             match primary.call(req).await {
                 Ok(resp) => Ok(resp),
-                Err(_) => secondary.call(req_clone).await,
+                Err(primary_err) => match secondary.call(req_clone).await {
+                    Ok(resp) => Ok(resp),
+                    Err(_) => Err(primary_err), // preserve first failure for diagnostics
+                },
             }
         })
     }
@@ -501,11 +504,11 @@ where
                         Err(_) => Err(left_err), // Both failed, return left error
                     }
                 }
-                Either::Right((Err(right_err), left_fut)) => {
+                Either::Right((Err(_right_err), left_fut)) => {
                     // Right failed, try left
                     match left_fut.await {
                         Ok(resp) => Ok(resp),
-                        Err(_) => Err(right_err), // Both failed, return right error
+                        Err(left_err) => Err(left_err), // Both failed, return deterministic left error
                     }
                 }
             }
@@ -584,5 +587,63 @@ mod tests {
         // Both ready => Ready
         secondary.set_ready(true);
         assert!(matches!(Service::<()>::poll_ready(&mut svc, &mut cx), Poll::Ready(Ok(()))));
+    }
+
+    #[tokio::test]
+    async fn fallback_returns_primary_error_when_both_fail() {
+        #[derive(Clone, Debug)]
+        struct ErrSvc;
+
+        impl tower_service::Service<()> for ErrSvc {
+            type Response = ();
+            type Error = &'static str;
+            type Future = futures::future::Ready<Result<Self::Response, Self::Error>>;
+            fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+                Poll::Ready(Ok(()))
+            }
+            fn call(&mut self, _req: ()) -> Self::Future {
+                futures::future::ready(Err("primary failed"))
+            }
+        }
+
+        let mut svc = FallbackService { primary: ErrSvc, secondary: ErrSvc };
+        let err = svc.call(()).await.unwrap_err();
+        assert_eq!(err, "primary failed");
+    }
+
+    #[tokio::test]
+    async fn fork_join_returns_left_error_if_both_fail() {
+        #[derive(Clone, Debug)]
+        struct LeftErr;
+        #[derive(Clone, Debug)]
+        struct RightErr;
+
+        impl tower_service::Service<()> for LeftErr {
+            type Response = ();
+            type Error = &'static str;
+            type Future = futures::future::Ready<Result<Self::Response, Self::Error>>;
+            fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+                Poll::Ready(Ok(()))
+            }
+            fn call(&mut self, _req: ()) -> Self::Future {
+                futures::future::ready(Err("left"))
+            }
+        }
+
+        impl tower_service::Service<()> for RightErr {
+            type Response = ();
+            type Error = &'static str;
+            type Future = futures::future::Ready<Result<Self::Response, Self::Error>>;
+            fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+                Poll::Ready(Ok(()))
+            }
+            fn call(&mut self, _req: ()) -> Self::Future {
+                futures::future::ready(Err("right"))
+            }
+        }
+
+        let mut svc = ForkJoinService { left: LeftErr, right: RightErr };
+        let err = svc.call(()).await.unwrap_err();
+        assert_eq!(err, "left");
     }
 }
