@@ -40,3 +40,6 @@ tokio = { version = "~1.48.0", features = ["full", "test-util"] }
 tracing-subscriber = "~0.3.20"
 futures = "~0.3.31"
 hdrhistogram = { version = "7", default-features = false }
+
+[features]
+bench-telemetry = []
