@@ -6,6 +6,7 @@
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use std::fmt::Display;
 
 use async_trait::async_trait;
 
@@ -163,6 +164,7 @@ pub enum CommandResult {
     Value(String),
     List(Vec<String>),
     Reset,
+    Error(String),
 }
 
 /// Command history interface (pluggable storage).
@@ -228,6 +230,8 @@ pub enum BuiltInCommand {
     Get { key: String },
     List,
     Reset,
+    ReadConfig { path: String },
+    WriteConfig { path: String, value: String },
 }
 
 pub trait CommandLabel {
@@ -241,13 +245,142 @@ impl CommandLabel for BuiltInCommand {
             BuiltInCommand::Get { .. } => "get",
             BuiltInCommand::List => "list",
             BuiltInCommand::Reset => "reset",
+            BuiltInCommand::ReadConfig { .. } => "read_config",
+            BuiltInCommand::WriteConfig { .. } => "write_config",
         }
+    }
+}
+
+/// Registry of live config bindings (Adaptive values).
+pub struct ConfigRegistry {
+    entries: HashMap<String, Box<dyn ConfigEntry>>,
+}
+
+impl ConfigRegistry {
+    pub fn new() -> Self {
+        Self { entries: HashMap::new() }
+    }
+
+    /// Register a value using FromStr/Display for parsing/formatting.
+    pub fn register_fromstr<T>(&mut self, path: impl Into<String>, handle: crate::adaptive::Adaptive<T>)
+    where
+        T: Clone + Send + Sync + 'static,
+        T: std::str::FromStr,
+        <T as std::str::FromStr>::Err: Display,
+        T: Display,
+    {
+        self.register(
+            path,
+            handle,
+            |raw| raw.parse::<T>().map_err(|e| format!("{}", e)),
+            |v| format!("{}", v),
+        );
+    }
+
+    /// Register with custom parse/render functions.
+    pub fn register<T, P, R>(&mut self, path: impl Into<String>, handle: crate::adaptive::Adaptive<T>, parse: P, render: R)
+    where
+        T: Clone + Send + Sync + 'static,
+        P: Fn(&str) -> Result<T, String> + Send + Sync + 'static,
+        R: Fn(&T) -> String + Send + Sync + 'static,
+    {
+        self.entries.insert(
+            path.into(),
+            Box::new(GenericConfig {
+                handle,
+                parse: Arc::new(parse),
+                render: Arc::new(render),
+            }),
+        );
+    }
+
+    pub fn write(&self, path: &str, raw: &str) -> Result<(), String> {
+        let entry = self.entries.get(path).ok_or_else(|| format!("unknown config path: {path}"))?;
+        entry.write(raw)
+    }
+
+    pub fn read(&self, path: &str) -> Result<String, String> {
+        let entry = self.entries.get(path).ok_or_else(|| format!("unknown config path: {path}"))?;
+        entry.read()
+    }
+
+    pub fn contains(&self, path: &str) -> bool {
+        self.entries.contains_key(path)
+    }
+}
+
+trait ConfigEntry: Send + Sync {
+    fn write(&self, raw: &str) -> Result<(), String>;
+    fn read(&self) -> Result<String, String>;
+}
+
+struct GenericConfig<T> {
+    handle: crate::adaptive::Adaptive<T>,
+    parse: Arc<dyn Fn(&str) -> Result<T, String> + Send + Sync>,
+    render: Arc<dyn Fn(&T) -> String + Send + Sync>,
+}
+
+impl<T> ConfigEntry for GenericConfig<T>
+where
+    T: Clone + Send + Sync + 'static,
+{
+    fn write(&self, raw: &str) -> Result<(), String> {
+        let val = (self.parse)(raw)?;
+        self.handle.set(val);
+        Ok(())
+    }
+
+    fn read(&self) -> Result<String, String> {
+        let val = self.handle.get();
+        Ok((self.render)(&val))
     }
 }
 
 #[derive(Default)]
 pub struct BuiltInHandler {
     store: Arc<Mutex<HashMap<String, String>>>,
+    config_registry: Option<ConfigRegistry>,
+}
+
+impl BuiltInHandler {
+    pub fn with_config_registry(mut self, registry: ConfigRegistry) -> Self {
+        self.config_registry = Some(registry);
+        self
+    }
+
+    pub fn set_config_registry(&mut self, registry: ConfigRegistry) {
+        self.config_registry = Some(registry);
+    }
+
+    fn config_registry(&self) -> Option<&ConfigRegistry> {
+        self.config_registry.as_ref()
+    }
+
+    fn set_or_store(&self, key: String, value: String) -> Result<CommandResult, CommandError> {
+        if let Some(reg) = self.config_registry() {
+            if reg.contains(&key) {
+                return match reg.write(&key, &value) {
+                    Ok(()) => Ok(CommandResult::Ack),
+                    Err(e) => Ok(CommandResult::Error(e)),
+                };
+            }
+        }
+        self.store.lock().unwrap().insert(key, value);
+        Ok(CommandResult::Ack)
+    }
+
+    fn get_from_store_or_config(&self, key: &str) -> CommandResult {
+        if let Some(reg) = self.config_registry() {
+            if reg.contains(key) {
+                return match reg.read(key) {
+                    Ok(v) => CommandResult::Value(v),
+                    Err(e) => CommandResult::Error(e),
+                };
+            }
+        }
+        let val = self.store.lock().unwrap().get(key).cloned().unwrap_or_default();
+        CommandResult::Value(val)
+    }
 }
 
 #[async_trait]
@@ -255,12 +388,10 @@ impl CommandHandler<BuiltInCommand> for BuiltInHandler {
     async fn handle(&self, cmd: CommandEnvelope<BuiltInCommand>, _ctx: AuthContext) -> Result<CommandResult, CommandError> {
         match cmd.cmd {
             BuiltInCommand::Set { key, value } => {
-                self.store.lock().unwrap().insert(key, value);
-                Ok(CommandResult::Ack)
+                self.set_or_store(key, value)
             }
             BuiltInCommand::Get { key } => {
-                let val = self.store.lock().unwrap().get(&key).cloned().unwrap_or_default();
-                Ok(CommandResult::Value(val))
+                Ok(self.get_from_store_or_config(&key))
             }
             BuiltInCommand::List => {
                 let keys = self.store.lock().unwrap().keys().cloned().collect();
@@ -269,6 +400,26 @@ impl CommandHandler<BuiltInCommand> for BuiltInHandler {
             BuiltInCommand::Reset => {
                 self.store.lock().unwrap().clear();
                 Ok(CommandResult::Reset)
+            }
+            BuiltInCommand::WriteConfig { path, value } => {
+                if let Some(reg) = self.config_registry() {
+                    match reg.write(&path, &value) {
+                        Ok(()) => Ok(CommandResult::Ack),
+                        Err(e) => Ok(CommandResult::Error(e)),
+                    }
+                } else {
+                    Ok(CommandResult::Error("config registry not set".into()))
+                }
+            }
+            BuiltInCommand::ReadConfig { path } => {
+                if let Some(reg) = self.config_registry() {
+                    Ok(match reg.read(&path) {
+                        Ok(val) => CommandResult::Value(val),
+                        Err(e) => CommandResult::Error(e),
+                    })
+                } else {
+                    Ok(CommandResult::Error("config registry not set".into()))
+                }
             }
         }
     }
