@@ -179,6 +179,45 @@ Most recipes are adaptive: retry/timeout/circuit/bulkhead knobs can be updated l
 All live in `src/cookbook.rs`.
 Moved to the `ninelives-cookbook` crate (see its README/examples).
 
+## Control Plane: Live Config
+
+Nine Lives ships a lightweight, transport-agnostic control nucleus. You register live knobs with a `ConfigRegistry`, wire it into the built-in handler, then speak commands (over any transport you like) to read/write values at runtime.
+
+```rust
+use ninelives::control::*;
+use ninelives::{Backoff, Jitter, RetryPolicy};
+use std::time::Duration;
+
+let policy = RetryPolicy::<std::io::Error>::builder()
+    .max_attempts(3)
+    .backoff(Backoff::exponential(Duration::from_millis(50)))
+    .with_jitter(Jitter::full())
+    .build()
+    .unwrap();
+
+let adaptive = policy.adaptive_max_attempts();
+let mut cfg = ConfigRegistry::new();
+cfg.register_fromstr("retry.max_attempts", adaptive);
+
+let handler = BuiltInHandler::default().with_config_registry(cfg);
+let mut auth = AuthRegistry::new(AuthMode::First);
+auth.register(Arc::new(PassthroughAuth));
+let router = CommandRouter::new(auth, Arc::new(handler), Arc::new(InMemoryHistory::default()));
+
+// Write a new value at runtime
+let cmd = CommandEnvelope {
+    cmd: BuiltInCommand::WriteConfig { path: "retry.max_attempts".into(), value: "5".into() },
+    auth: Some(AuthPayload::Opaque(vec![])),
+    meta: CommandMeta { id: "cmd-1".into(), correlation_id: None, timestamp_millis: None },
+};
+let _ = router.execute(cmd).await?;
+```
+
+Commands:
+- `WriteConfig { path, value }` — parse and set a registered adaptive.
+- `ReadConfig { path }` — fetch the current value.
+- `Set/Get/List/Reset` — simple in-memory K/V for quick experiments (Set will also update a registered config path if it matches).
+
 ## Tower Integration
 
 Nine Lives layers work seamlessly with tower's `ServiceBuilder`:
