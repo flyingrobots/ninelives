@@ -125,8 +125,8 @@
   - [ ] Error handling and response routing
 
 ### Built-in Command Handlers
-- [ ] `SetParameterHandler` (update Adaptive values)
-- [ ] `GetParameterHandler` (read current config)
+- [x] `SetParameterHandler` (update Adaptive values)
+- [x] `GetParameterHandler` (read current config)
 - [ ] `GetStateHandler` (query policy state)
 - [ ] `ResetCircuitBreakerHandler`
 - [ ] `ListPoliciesHandler`
