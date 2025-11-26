@@ -1,4 +1,4 @@
-//! Adaptive handles for live-updatable config.
+//! DynamicConfig handles for live-updatable config.
 //!
 //! Default uses `ArcSwap` for lock-free reads; feature `adaptive-rwlock` can
 //! switch to RwLock if desired.
@@ -11,16 +11,19 @@ use std::sync::RwLock;
 #[cfg(not(feature = "adaptive-rwlock"))]
 use arc_swap::ArcSwap;
 
-/// Adaptive<T> gives cheap reads and controlled updates for shared config.
+/// DynamicConfig<T> gives cheap reads and controlled updates for shared config.
 #[derive(Debug)]
-pub struct Adaptive<T> {
+pub struct DynamicConfig<T> {
     #[cfg(not(feature = "adaptive-rwlock"))]
     inner: Arc<ArcSwap<T>>,
     #[cfg(feature = "adaptive-rwlock")]
     inner: Arc<RwLock<T>>,
 }
 
-impl<T> Clone for Adaptive<T> {
+// Back-compat alias for existing code/tests referencing Adaptive.
+pub type Adaptive<T> = DynamicConfig<T>;
+
+impl<T> Clone for DynamicConfig<T> {
     fn clone(&self) -> Self {
         Self {
             inner: self.inner.clone(),
@@ -28,7 +31,7 @@ impl<T> Clone for Adaptive<T> {
     }
 }
 
-impl<T> Adaptive<T> {
+impl<T> DynamicConfig<T> {
     pub fn new(value: T) -> Self {
         #[cfg(not(feature = "adaptive-rwlock"))]
         {
@@ -91,11 +94,11 @@ impl<T> Adaptive<T> {
 
 #[cfg(test)]
 mod tests {
-    use super::Adaptive;
+    use super::DynamicConfig;
 
     #[test]
     fn get_set_update() {
-        let a = Adaptive::new(1);
+        let a = DynamicConfig::new(1);
         assert_eq!(*a.get(), 1);
         a.set(2);
         assert_eq!(*a.get(), 2);

@@ -1,4 +1,4 @@
-use ninelives::bulkhead::BulkheadPolicy;
+use ninelives::BulkheadPolicy;
 use ninelives::ResilienceError;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};

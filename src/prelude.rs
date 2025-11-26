@@ -5,7 +5,7 @@ pub use crate::{
         Backoff, BackoffError, BackoffStrategy, ConstantBackoff, ExponentialBackoff, LinearBackoff,
         MAX_BACKOFF,
     },
-    adaptive::Adaptive,
+    adaptive::DynamicConfig,
     control::{AuthMode, AuthPayload, AuthProvider, AuthRegistry, CommandEnvelope, CommandMeta},
     bulkhead::BulkheadLayer,
     circuit_breaker::{CircuitBreakerConfig, CircuitBreakerError, CircuitBreakerLayer},
