@@ -8,3 +8,6 @@ publish = false
 anyhow = "1"
 walkdir = "2"
 regex = "1"
+gray_matter = { version = "0.2", features = ["yaml"] }
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.9"

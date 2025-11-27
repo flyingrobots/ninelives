@@ -1,15 +1,24 @@
 use anyhow::{anyhow, Context, Result};
+use gray_matter::{engine::YAML, Matter};
 use regex::Regex;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 enum Status {
     Open,
     Blocked,
     Closed,
+}
+
+impl Default for Status {
+    fn default() -> Self {
+        Status::Open
+    }
 }
 
 impl Status {
@@ -37,16 +46,24 @@ impl Status {
     }
 }
 
-#[derive(Debug, Clone)]
-struct Task {
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+struct Frontmatter {
     id: String,
     title: String,
-    estimate: String,
+    estimate: Option<String>,
+    #[serde(default)]
     status: Status,
+    #[serde(default)]
     blocked_by: Vec<String>,
+    #[serde(default)]
     blocks: Vec<String>,
-    path: PathBuf,
+}
+
+#[derive(Debug, Clone)]
+struct Task {
+    front: Frontmatter,
     body: String,
+    path: PathBuf,
 }
 
 fn find_task_file(task_id: &str) -> Result<PathBuf> {
@@ -62,100 +79,23 @@ fn find_task_file(task_id: &str) -> Result<PathBuf> {
 
 fn parse_task(path: &Path) -> Result<Task> {
     let content = fs::read_to_string(path)?;
-    let mut lines = content.lines();
-    if lines.next() != Some("---") {
-        return Err(anyhow!("missing frontmatter"));
+    let matter = Matter::<YAML>::new();
+    let parsed = matter.parse(&content);
+    let mut front: Frontmatter =
+        parsed.data.as_ref().map(|d| d.deserialize()).transpose()?.unwrap_or_default();
+    if front.id.is_empty() {
+        front.id = path.file_stem().and_then(|s| s.to_str()).unwrap_or_default().to_string();
     }
-    let mut id = String::new();
-    let mut title = String::new();
-    let mut estimate = String::from("");
-    let mut status = Status::Open;
-    let mut blocked_by: Vec<String> = Vec::new();
-    let mut blocks: Vec<String> = Vec::new();
-    let mut in_frontmatter = true;
-    while let Some(line) = lines.next() {
-        if in_frontmatter && line.trim() == "---" {
-            break;
-        }
-        if let Some((k, v)) = line.split_once(':') {
-            let key = k.trim();
-            let val = v.trim();
-            match key {
-                "id" => id = val.to_string(),
-                "title" => title = val.to_string(),
-                "estimate" => estimate = val.to_string(),
-                "status" => status = Status::from_str(val).unwrap_or(Status::Open),
-                "blocked_by" => {
-                    // next lines processed below when seeing list items
-                }
-                "blocks" => {}
-                _ => {}
-            }
-        } else if line.trim_start().starts_with("- ") {
-            let item = line.trim_start().trim_start_matches('-').trim().to_string();
-            // We don't know if it's blocked_by or blocks; infer from previous key not tracked; fallback to blocked_by
-            // Simpler: collect all list items after blocked_by: or blocks:
-        }
+    if front.title.is_empty() {
+        front.title = front.id.clone();
     }
-    // Simpler re-parse lists with regex
-    let re_blocked = Regex::new(r"blocked_by:\n(?P<items>(?:\s*-\s*id:\s*.*\n?)+)").unwrap();
-    if let Some(cap) = re_blocked.captures(&content) {
-        let items = cap.name("items").unwrap().as_str();
-        let item_re = Regex::new(r"id:\s*([^\n\r]+)").unwrap();
-        blocked_by = item_re.captures_iter(items).map(|c| c[1].trim().to_string()).collect();
-    }
-    let re_blocks = Regex::new(r"blocks:\n(?P<items>(?:\s*-\s*id:\s*.*\n?)+)").unwrap();
-    if let Some(cap) = re_blocks.captures(&content) {
-        let items = cap.name("items").unwrap().as_str();
-        let item_re = Regex::new(r"id:\s*([^\n\r]+)").unwrap();
-        blocks = item_re.captures_iter(items).map(|c| c[1].trim().to_string()).collect();
-    }
-
-    // Remaining body after frontmatter
-    let body_start = content.find("---\n").ok_or_else(|| anyhow!("bad fm"))?;
-    let body = content[body_start + 4..].splitn(2, "---\n").nth(1).unwrap_or("").to_string();
-
-    if id.is_empty() {
-        id = path.file_stem().and_then(|s| s.to_str()).unwrap_or_default().to_string();
-    }
-    if title.is_empty() {
-        title = id.clone();
-    }
-
-    Ok(Task { id, title, estimate, status, blocked_by, blocks, path: path.to_path_buf(), body })
+    Ok(Task { front, body: parsed.content, path: path.to_path_buf() })
 }
 
 fn write_task(task: &Task) -> Result<()> {
-    let mut out = String::new();
-    out.push_str("---\n");
-    out.push_str(&format!("id: {}\n", task.id));
-    out.push_str(&format!("title: {}\n", task.title));
-    if !task.estimate.is_empty() {
-        out.push_str(&format!("estimate: {}\n", task.estimate));
-    }
-    out.push_str(&format!("status: {}\n", task.status.to_str()));
-    out.push_str("blocked_by:\n");
-    if task.blocked_by.is_empty() {
-        out.push_str("  -\n");
-    } else {
-        for id in &task.blocked_by {
-            out.push_str(&format!("  - id: {}\n", id));
-        }
-    }
-    out.push_str("blocks:\n");
-    if task.blocks.is_empty() {
-        out.push_str("  -\n");
-    } else {
-        for id in &task.blocks {
-            out.push_str(&format!("  - id: {}\n", id));
-        }
-    }
-    out.push_str("---\n");
-    out.push_str(&task.body);
-    if !out.ends_with('\n') {
-        out.push('\n');
-    }
-    fs::write(&task.path, out)?;
+    let matter = Matter::<YAML>::new();
+    let rendered = matter.stringify(&task.front, &task.body);
+    fs::write(&task.path, rendered)?;
     Ok(())
 }
 
@@ -167,7 +107,7 @@ fn load_tasks() -> Result<HashMap<String, Task>> {
             if let Some(name) = entry.file_name().to_str() {
                 if name.starts_with('P') && name.ends_with(".md") && name != "README.md" {
                     let task = parse_task(entry.path())?;
-                    map.insert(task.id.clone(), task);
+                    map.insert(task.front.id.clone(), task);
                 }
             }
         }
@@ -176,7 +116,7 @@ fn load_tasks() -> Result<HashMap<String, Task>> {
 }
 
 fn update_checklist(task: &Task) -> Result<()> {
-    let phase = task.id.split('.').next().unwrap();
+    let phase = task.front.id.split('.').next().unwrap();
     let readme_path = Path::new("docs/ROADMAP").join(phase).join("README.md");
     let data = fs::read_to_string(&readme_path)?;
     let re = Regex::new(r"^- \[[ x/]\] \[(P\d+\.\d+)\]\(([^)]+)\) (.*)$").unwrap();
@@ -186,8 +126,14 @@ fn update_checklist(task: &Task) -> Result<()> {
             let id = &caps[1];
             let link = &caps[2];
             let title = &caps[3];
-            if id == task.id {
-                out.push_str(&format!("- [{}] [{}]({}) {}\n", task.status.mark(), id, link, title));
+            if id == task.front.id {
+                out.push_str(&format!(
+                    "- [{}] [{}]({}) {}\n",
+                    task.front.status.mark(),
+                    id,
+                    link,
+                    title
+                ));
                 continue;
             }
         }
@@ -199,41 +145,31 @@ fn update_checklist(task: &Task) -> Result<()> {
 }
 
 fn recompute_blocked(tasks: &mut HashMap<String, Task>) {
-    // ensure blocks lists are consistent with blocked_by
-    // rebuild blocks from blocked_by for safety
+    // rebuild blocks from blocked_by
     for t in tasks.values_mut() {
-        t.blocks.clear();
+        t.front.blocks.clear();
     }
-    let ids: Vec<String> = tasks.keys().cloned().collect();
-    for id in &ids {
-        let deps = tasks[id].blocked_by.clone();
-        for dep in deps {
-            if let Some(dep_task) = tasks.get_mut(&dep) {
-                if !dep_task.blocks.contains(id) {
-                    dep_task.blocks.push(id.to_string());
-                }
-            }
-        }
-    }
-    // propagate: if any blocked_by not closed -> blocked, else open (unless closed)
     let snapshot = tasks.clone();
     for t in tasks.values_mut() {
-        if t.status == Status::Closed {
-            continue;
-        }
-        let mut blocked = false;
-        for dep in &t.blocked_by {
-            if let Some(dep_task) = snapshot.get(dep) {
-                if dep_task.status != Status::Closed {
-                    blocked = true;
-                    break;
+        for dep in &t.front.blocked_by {
+            if let Some(dep_task) = tasks.get_mut(dep) {
+                if !dep_task.front.blocks.contains(&t.front.id) {
+                    dep_task.front.blocks.push(t.front.id.clone());
                 }
             }
         }
-        if blocked {
-            t.status = Status::Blocked;
-        } else if t.status == Status::Blocked {
-            t.status = Status::Open;
+        // recompute status if not closed
+        if t.front.status != Status::Closed {
+            let mut blocked = false;
+            for dep in &t.front.blocked_by {
+                if let Some(dep_task) = snapshot.get(dep) {
+                    if dep_task.front.status != Status::Closed {
+                        blocked = true;
+                        break;
+                    }
+                }
+            }
+            t.front.status = if blocked { Status::Blocked } else { Status::Open };
         }
     }
 }
@@ -248,7 +184,7 @@ fn save_all(tasks: &HashMap<String, Task>) -> Result<()> {
 
 fn cmd_set(tasks: &mut HashMap<String, Task>, id: &str, status: Status) -> Result<()> {
     let task = tasks.get_mut(id).ok_or_else(|| anyhow!("task not found"))?;
-    task.status = status;
+    task.front.status = status;
     recompute_blocked(tasks);
     save_all(tasks)
 }
@@ -256,11 +192,11 @@ fn cmd_set(tasks: &mut HashMap<String, Task>, id: &str, status: Status) -> Resul
 fn cmd_block(tasks: &mut HashMap<String, Task>, from: &str, to: &str) -> Result<()> {
     let from_task = tasks.get_mut(from).ok_or_else(|| anyhow!("from task not found"))?;
     let to_task = tasks.get_mut(to).ok_or_else(|| anyhow!("to task not found"))?;
-    if !to_task.blocked_by.contains(&from.to_string()) {
-        to_task.blocked_by.push(from.to_string());
+    if !to_task.front.blocked_by.contains(&from.to_string()) {
+        to_task.front.blocked_by.push(from.to_string());
     }
-    if !from_task.blocks.contains(&to.to_string()) {
-        from_task.blocks.push(to.to_string());
+    if !from_task.front.blocks.contains(&to.to_string()) {
+        from_task.front.blocks.push(to.to_string());
     }
     recompute_blocked(tasks);
     save_all(tasks)
