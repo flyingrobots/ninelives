@@ -17,4 +17,8 @@ jobs:
       - name: Run sync-dag
         run: cargo run -p xtask --bin xtask sync-dag all
       - name: Verify no roadmap drift
-        run: git diff --exit-code docs/ROADMAP || (echo "Roadmap drift: run 'cargo run -p xtask --bin xtask sync-dag all' and commit" && exit 1)
+        run: |
+          git diff --exit-code docs/ROADMAP || {
+            echo "Roadmap drift: run 'cargo run -p xtask --bin xtask sync-dag all' and commit";
+            exit 1;
+          }
