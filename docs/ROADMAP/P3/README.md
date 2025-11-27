@@ -17,7 +17,7 @@
 - [ ] [P3.04b](P3.04b.md) AIMD Integration
 - [ ] [P3.05a](P3.05a.md) Retry Budget Logic
 - [ ] [P3.05b](P3.05b.md) Retry Budget Integration
-- [ ] [P3.06](P3.06.md) System State Query Interface
+- [/] [P3.06](P3.06.md) System State Query Interface
 - [ ] [P3.07a](P3.07a.md) RateLimitLayer Struct
 - [ ] [P3.07b](P3.07b.md) Adaptive Quota Integration
 - [ ] [P3.07c](P3.07c.md) Rate Limiting Recipe
