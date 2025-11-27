@@ -24,6 +24,11 @@ A scratchpad for cool recipes, architectural patterns, and library enhancements 
 **Concept**: Expose the internal control plane of a CLI tool via a local HTTP port, allowing another tool (or a web dashboard) to inspect/tune it while it runs.
 **Use Case**: Debugging long-running data processing jobs.
 
+### "Distributed Rate Limiting"
+**Stack**: `DistributedBulkheadLayer` (Redis-backed)
+**Concept**: Use a shared Redis/Etcd backend with Lua scripts to maintain a cluster-wide semaphore, enforcing concurrency limits across multiple instances.
+**Use Case**: Global API rate limiting.
+
 ## Library Enhancements
 
 ### `Policy::from_str` (Declarative Configuration)
@@ -42,3 +47,15 @@ A scratchpad for cool recipes, architectural patterns, and library enhancements 
 ### `tower::Service` for `std::process::Command`
 **Idea**: Wrap executing a shell command in a `Service`.
 **Benefit**: Apply retries, timeouts, and circuit breakers to shell scripts or external subprocesses. "Resilient Shell Scripting" in Rust.
+
+### `no_std` Core Support
+**Idea**: Refactor `ninelives-core` to support `no_std` environments by isolating alloc/std dependencies.
+**Benefit**: Enables resilience patterns in embedded firmware or WASM environments.
+
+### Zero-Copy Telemetry Pipeline
+**Idea**: Use a pre-allocated ring buffer (e.g., LMAX Disruptor pattern) for `PolicyEvent`s to eliminate allocation on the hot path.
+**Benefit**: Ultra-low latency telemetry for high-frequency trading or real-time systems.
+
+### Sentinel "Dry Run" Mode
+**Idea**: Replay a historical metrics log against a Sentinel meta-policy script to verify its behavior without affecting live traffic.
+**Benefit**: Safe testing/backtesting of complex auto-scaling or promotion logic.
