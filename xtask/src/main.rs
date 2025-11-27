@@ -160,6 +160,12 @@ fn recompute_blocked(tasks: &mut HashMap<String, Task>) {
         }
     }
 
+    // enforce deterministic ordering for stable diffs
+    for t in tasks.values_mut() {
+        t.front.blocked_by.sort();
+        t.front.blocks.sort();
+    }
+
     // recompute blocked/open based on snapshot
     for t in tasks.values_mut() {
         if t.front.status == Status::Closed {
