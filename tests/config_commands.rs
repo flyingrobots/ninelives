@@ -1,15 +1,15 @@
 use ninelives::circuit_breaker_registry::register_new;
-use ninelives::{CircuitBreakerConfig, CircuitBreakerLayer, CircuitState};
 use ninelives::control::{
     AuthMode, AuthPayload, AuthRegistry, CommandEnvelope, CommandMeta, CommandResult,
     ConfigRegistry, InMemoryHistory,
 };
 use ninelives::control::{BuiltInCommand, BuiltInHandler, CommandRouter, PassthroughAuth};
 use ninelives::{Backoff, Jitter, RetryPolicy};
+use ninelives::{CircuitBreakerConfig, CircuitBreakerLayer, CircuitState};
 use std::future::Ready;
 use std::sync::Arc;
-use std::time::Duration;
 use std::task::{Context, Poll};
+use std::time::Duration;
 use tower::{Layer, Service, ServiceExt};
 
 #[tokio::test]
@@ -80,9 +80,8 @@ impl Service<()> for FailingSvc {
 
 #[tokio::test]
 async fn reset_command_closes_open_breaker() {
-    let cfg = CircuitBreakerConfig::new(1, Duration::from_millis(1), 1)
-        .unwrap()
-        .with_id("cb_reset");
+    let cfg =
+        CircuitBreakerConfig::new(1, Duration::from_millis(1), 1).unwrap().with_id("cb_reset");
     let layer = CircuitBreakerLayer::new(cfg).unwrap();
     let mut svc = layer.layer(FailingSvc);
 
