@@ -20,7 +20,7 @@
 - [ ] [P2.11](P2.11.md) System State Query (Debug)
 - [x] [P2.12](P2.12.md) ResetCircuitBreaker handler
 - [x] [P2.121](P2.121.md) Circuit breaker registry + ids
-- [ ] [P2.13](P2.13.md) ListConfig handler
+- [x] [P2.13](P2.13.md) ListConfig handler
 - [ ] [P2.14a](P2.14a.md) Transport Trait & Envelope
 - [ ] [P2.14b](P2.14b.md) TransportRouter Wrapper
 - [/] [P2.15](P2.15.md) In-process transport adapter

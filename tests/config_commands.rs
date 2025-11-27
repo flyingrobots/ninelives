@@ -1,6 +1,7 @@
 #![allow(missing_docs)]
 
 use ninelives::circuit_breaker_registry::register_new;
+use ninelives::adaptive::Adaptive;
 use ninelives::control::{
     AuthMode, AuthPayload, AuthRegistry, CommandEnvelope, CommandMeta, CommandResult,
     ConfigRegistry, InMemoryHistory,
@@ -42,6 +43,27 @@ async fn config_commands_update_retry_adaptive() {
     let res = router.execute(env).await.unwrap();
     assert_eq!(res, CommandResult::Ack);
     assert_eq!(*adapt.get(), 3);
+}
+
+#[tokio::test]
+async fn list_config_returns_registered_keys() {
+    let mut registry = ConfigRegistry::new();
+    registry.register_fromstr("max_attempts", Adaptive::new(1usize));
+    registry.register_fromstr("timeout_ms", Adaptive::new(100usize));
+
+    let handler = BuiltInHandler::default().with_config_registry(registry);
+    let mut auth = AuthRegistry::new(AuthMode::First);
+    auth.register(std::sync::Arc::new(PassthroughAuth));
+    let history = std::sync::Arc::new(InMemoryHistory::default());
+    let router = CommandRouter::new(auth, std::sync::Arc::new(handler), history);
+
+    let env = CommandEnvelope {
+        cmd: BuiltInCommand::ListConfig,
+        auth: Some(AuthPayload::Opaque(vec![])),
+        meta: CommandMeta { id: "lc".into(), correlation_id: None, timestamp_millis: None },
+    };
+    let res = router.execute(env).await.unwrap();
+    assert_eq!(res, CommandResult::List(vec!["max_attempts".into(), "timeout_ms".into()]));
 }
 
 #[tokio::test]

@@ -393,6 +393,7 @@ pub enum BuiltInCommand {
     ReadConfig { path: String },
     WriteConfig { path: String, value: String },
     ResetCircuitBreaker { id: String },
+    ListConfig,
 }
 
 pub trait CommandLabel {
@@ -409,6 +410,7 @@ impl CommandLabel for BuiltInCommand {
             BuiltInCommand::ReadConfig { .. } => "read_config",
             BuiltInCommand::WriteConfig { .. } => "write_config",
             BuiltInCommand::ResetCircuitBreaker { .. } => "reset_circuit_breaker",
+            BuiltInCommand::ListConfig => "list_config",
         }
     }
 }
@@ -478,6 +480,13 @@ impl ConfigRegistry {
 
     pub fn contains(&self, path: &str) -> bool {
         self.entries.contains_key(path)
+    }
+
+    /// List registered config keys (sorted).
+    pub fn keys(&self) -> Vec<String> {
+        let mut keys: Vec<String> = self.entries.keys().cloned().collect();
+        keys.sort();
+        keys
     }
 }
 
@@ -582,6 +591,13 @@ impl CommandHandler<BuiltInCommand> for BuiltInHandler {
                         Ok(()) => Ok(CommandResult::Ack),
                         Err(e) => Ok(CommandResult::Error(e)),
                     }
+                } else {
+                    Ok(CommandResult::Error("config registry not set".into()))
+                }
+            }
+            BuiltInCommand::ListConfig => {
+                if let Some(reg) = self.config_registry() {
+                    Ok(CommandResult::List(reg.keys()))
                 } else {
                     Ok(CommandResult::Error("config registry not set".into()))
                 }
@@ -692,5 +708,13 @@ mod tests {
             }
         }
         let _svc: Box<dyn CommandService> = Box::new(EchoSvc);
+    }
+
+    #[test]
+    fn config_registry_keys_sorted() {
+        let mut reg = ConfigRegistry::new();
+        reg.register_fromstr("b", crate::adaptive::Adaptive::new(1usize));
+        reg.register_fromstr("a", crate::adaptive::Adaptive::new(2usize));
+        assert_eq!(reg.keys(), vec!["a".to_string(), "b".to_string()]);
     }
 }
