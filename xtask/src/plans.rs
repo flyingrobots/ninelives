@@ -7,6 +7,7 @@ pub struct Plan {
     pub ready: &'static [&'static str],
     pub unit: &'static [&'static str],
     pub integ: &'static [&'static str],
+    pub value: Option<&'static str>,
 }
 
 pub fn p2_plans() -> HashMap<&'static str, Plan> {
@@ -20,6 +21,7 @@ pub fn p2_plans() -> HashMap<&'static str, Plan> {
             ready: &["Unit tests cover growth and shrink behavior", "Docs describe tuning and shrink limitations"],
             unit: &["Increase max_concurrent at runtime adds permits for subsequent requests", "Decreasing max_concurrent does not deadlock; either no-op or documented behavior", "Concurrent acquire under update does not panic"],
             integ: &["Control-plane write updates max_concurrent and is respected on next calls"],
+            value: Some("M"),
         },
     );
     m.insert(
@@ -30,6 +32,7 @@ pub fn p2_plans() -> HashMap<&'static str, Plan> {
             ready: &["Serde roundtrips succeed", "Docs show sample context payload"],
             unit: &["Serde roundtrip preserves id/args/identity", "Missing required fields errors as expected"],
             integ: &["Router accepts CommandContext constructed via serde_json from sample payload"],
+            value: Some("H"),
         },
     );
     m.insert(
@@ -50,6 +53,7 @@ pub fn p2_plans() -> HashMap<&'static str, Plan> {
                 "ServiceBuilder with CommandHandler trait object type-checks",
             ],
             integ: &["Router can be built with a mock CommandHandler service"],
+            value: Some("M"),
         },
     );
     m.insert(
@@ -69,6 +73,7 @@ pub fn p2_plans() -> HashMap<&'static str, Plan> {
                 "Handler error propagates as CommandError::Handler",
             ],
             integ: &["End-to-end with PassthroughAuth + mock handler records meta in history"],
+            value: Some("H"),
         },
     );
     m.insert(
@@ -90,6 +95,7 @@ pub fn p2_plans() -> HashMap<&'static str, Plan> {
                 "Unknown path returns error",
             ],
             integ: &["Router executes WriteConfig then ReadConfig reflecting new value"],
+            value: Some("H"),
         },
     );
     m.insert(
@@ -107,6 +113,7 @@ pub fn p2_plans() -> HashMap<&'static str, Plan> {
             ],
             unit: &["Handler returns NotImplemented or stub state without panic"],
             integ: &["Router dispatches GetState and surfaces response"],
+            value: Some("M"),
         },
     );
     m.insert(
@@ -120,6 +127,7 @@ pub fn p2_plans() -> HashMap<&'static str, Plan> {
                 "Reset when already closed is idempotent",
             ],
             integ: &["Router invokes ResetCircuitBreaker and state handler reflects closed"],
+            value: Some("M"),
         },
     );
     m.insert(
@@ -133,6 +141,7 @@ pub fn p2_plans() -> HashMap<&'static str, Plan> {
                 "Empty registry returns empty list",
             ],
             integ: &["Router returns list after registering mock policies"],
+            value: Some("L"),
         },
     );
     m.insert(
@@ -147,6 +156,7 @@ pub fn p2_plans() -> HashMap<&'static str, Plan> {
             ready: &["Design doc/traits checked in", "Examples show mapping to HTTP JSON"],
             unit: &["Trait compiles with router types", "Serde models for payload compile"],
             integ: &["Mock transport adapter compiles against trait"],
+            value: Some("H"),
         },
     );
     m.insert(
@@ -164,6 +174,7 @@ pub fn p2_plans() -> HashMap<&'static str, Plan> {
                 "Shutdown/close does not panic",
             ],
             integ: &["Use channel transport to update adaptive and observe effect"],
+            value: Some("M"),
         },
     );
     m.insert(
@@ -181,6 +192,7 @@ pub fn p2_plans() -> HashMap<&'static str, Plan> {
                 "Authorized passes through",
             ],
             integ: &["Router wrapped with AuthZ layer blocks disallowed command"],
+            value: Some("H"),
         },
     );
     m.insert(
@@ -195,6 +207,7 @@ pub fn p2_plans() -> HashMap<&'static str, Plan> {
             ready: &["Audit records command metadata", "Docs note PII/redaction"],
             unit: &["Audit layer logs command id/label", "Errors still emit audit record"],
             integ: &["Audit layer + router emits record when command executed"],
+            value: Some("M"),
         },
     );
     m.insert(
@@ -212,6 +225,7 @@ pub fn p2_plans() -> HashMap<&'static str, Plan> {
                 "Successful command audited",
             ],
             integ: &["End-to-end wrapper with passthrough authz and audit sink"],
+            value: Some("H"),
         },
     );
     m.insert(
@@ -222,6 +236,7 @@ pub fn p2_plans() -> HashMap<&'static str, Plan> {
             ready: &["Crate builds and exports router/handlers", "Docs list features"],
             unit: &["crate::prelude reexports compile in doctest"],
             integ: &["cargo test -p ninelives-control succeeds"],
+            value: Some("H"),
         },
     );
     m.insert(
@@ -232,6 +247,7 @@ pub fn p2_plans() -> HashMap<&'static str, Plan> {
             ready: &["README with quickstart present", "Example runs (cargo run --example)"],
             unit: &[],
             integ: &["Examples compile and run under cargo test --examples"],
+            value: Some("M"),
         },
     );
     m

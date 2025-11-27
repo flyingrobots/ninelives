@@ -59,6 +59,8 @@ struct Frontmatter {
     blocked_by: Vec<String>,
     #[serde(default)]
     blocks: Vec<String>,
+    #[serde(default)]
+    value: Option<String>, // e.g., H/M/L or numeric
 }
 
 #[derive(Debug, Clone)]
