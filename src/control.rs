@@ -366,6 +366,12 @@ pub struct ConfigRegistry {
     entries: HashMap<String, Box<dyn ConfigEntry>>,
 }
 
+impl Default for ConfigRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ConfigRegistry {
     pub fn new() -> Self {
         Self { entries: HashMap::new() }
@@ -428,10 +434,13 @@ trait ConfigEntry: Send + Sync {
     fn read(&self) -> Result<String, String>;
 }
 
+type ParseFn<T> = Arc<dyn Fn(&str) -> Result<T, String> + Send + Sync>;
+type RenderFn<T> = Arc<dyn Fn(&T) -> String + Send + Sync>;
+
 struct GenericConfig<T> {
     handle: crate::adaptive::Adaptive<T>,
-    parse: Arc<dyn Fn(&str) -> Result<T, String> + Send + Sync>,
-    render: Arc<dyn Fn(&T) -> String + Send + Sync>,
+    parse: ParseFn<T>,
+    render: RenderFn<T>,
 }
 
 impl<T> ConfigEntry for GenericConfig<T>

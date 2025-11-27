@@ -42,15 +42,18 @@ impl<T> DynamicConfig<T> {
     }
 
     /// Snapshot the current value (cheap clone of Arc).
+    #[cfg(not(feature = "adaptive-rwlock"))]
     pub fn get(&self) -> Arc<T> {
-        #[cfg(not(feature = "adaptive-rwlock"))]
-        {
-            self.inner.load_full()
-        }
-        #[cfg(feature = "adaptive-rwlock")]
-        {
-            Arc::new(self.inner.read().unwrap().clone())
-        }
+        self.inner.load_full()
+    }
+
+    /// Snapshot the current value (Clone under RwLock backend).
+    #[cfg(feature = "adaptive-rwlock")]
+    pub fn get(&self) -> Arc<T>
+    where
+        T: Clone,
+    {
+        Arc::new(self.inner.read().unwrap().clone())
     }
 
     /// Replace the value entirely.

@@ -20,7 +20,7 @@ async fn telemetry_overhead_nonblocking_log() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore]
 async fn telemetry_overhead_streaming_drop_visibility() {
-    let mut sink = StreamingSink::new(64);
+    let sink = StreamingSink::new(64);
     let mut handles = Vec::new();
     for _ in 0..4 {
         let mut clone = sink.clone();
@@ -34,7 +34,7 @@ async fn telemetry_overhead_streaming_drop_visibility() {
         h.await.unwrap();
     }
     // Should drop some when overdriven; just assert the counter is surfaced.
-    assert!(sink.dropped_count() >= 0);
+    let _ = sink.dropped_count();
 }
 
 async fn run_bench_null(iter: usize, concurrency: usize, p99_budget: Duration) {
@@ -63,7 +63,7 @@ async fn run_bench_null(iter: usize, concurrency: usize, p99_budget: Duration) {
 async fn run_bench_nonblocking(iter: usize, concurrency: usize, p99_budget: Duration) {
     let mut hist: Histogram<u64> = Histogram::new(3).unwrap();
     let raw = NullSink; // stand-in for slow sink; still exercises channel path
-    let mut sink = NonBlockingSink::with_capacity(raw, 1024);
+    let sink = NonBlockingSink::with_capacity(raw, 1024);
 
     let mut tasks = Vec::new();
     for _ in 0..concurrency {
@@ -85,7 +85,7 @@ async fn run_bench_nonblocking(iter: usize, concurrency: usize, p99_budget: Dura
     let p99 = Duration::from_nanos(hist.value_at_quantile(0.99));
     assert!(p99 <= p99_budget, "p99 {:?} > budget {:?}", p99, p99_budget);
     // Channel drops allowed but should be visible
-    assert!(sink.dropped() >= 0);
+    let _ = sink.dropped();
 }
 
 fn sample_event() -> PolicyEvent {
