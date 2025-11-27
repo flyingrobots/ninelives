@@ -9,6 +9,8 @@ use std::sync::{Arc, Mutex};
 use std::fmt::Display;
 
 use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
+use serde_json::Value as JsonValue;
 
 /// Opaque command identifier.
 pub type CommandId = String;
@@ -50,6 +52,18 @@ pub struct CommandEnvelope<C: Clone> {
     pub cmd: C,
     pub auth: Option<AuthPayload>,
     pub meta: CommandMeta,
+}
+
+/// Command payload schema used by transports and handlers.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct CommandContext {
+    pub id: String,
+    #[serde(default)]
+    pub args: JsonValue,
+    #[serde(default)]
+    pub identity: Option<String>,
+    #[serde(default)]
+    pub response_channel: Option<String>,
 }
 
 /// Result of authentication.

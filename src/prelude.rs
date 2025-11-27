@@ -6,7 +6,10 @@ pub use crate::{
         MAX_BACKOFF,
     },
     adaptive::DynamicConfig,
-    control::{AuthMode, AuthPayload, AuthProvider, AuthRegistry, CommandEnvelope, CommandMeta},
+    control::{
+        AuthMode, AuthPayload, AuthProvider, AuthRegistry, CommandContext, CommandEnvelope,
+        CommandMeta,
+    },
     bulkhead::BulkheadLayer,
     circuit_breaker::{CircuitBreakerConfig, CircuitBreakerError, CircuitBreakerLayer},
     jitter::Jitter,
