@@ -264,10 +264,10 @@ fn cmd_enrich(tasks: &mut HashMap<String, Task>, phase: &str) -> Result<()> {
 }
 
 fn cmd_sync_dag(tasks: &mut HashMap<String, Task>, phase: &str) -> Result<()> {
-    if phase != "P2" {
-        return Err(anyhow!("sync-dag currently supports only P2"));
-    }
     let dag_path = Path::new("docs/ROADMAP").join(phase).join("DAG.csv");
+    if !dag_path.exists() {
+        return Ok(()); // nothing to do
+    }
     let data = fs::read_to_string(&dag_path).context("read DAG.csv")?;
     let mut rdr = csv::Reader::from_reader(data.as_bytes());
     // reset relationships
@@ -342,13 +342,28 @@ fn main() -> Result<()> {
             println!("Enriched tasks for {phase}");
         }
         "sync-dag" => {
-            if args.len() != 1 {
+            if args.is_empty() || args.len() > 1 {
                 usage();
                 std::process::exit(1);
             }
             let phase = &args[0];
-            cmd_sync_dag(&mut tasks, phase)?;
-            println!("Synced DAG for {phase}");
+            if phase == "all" {
+                // iterate all phase directories
+                for entry in WalkDir::new("docs/ROADMAP") {
+                    let entry = entry?;
+                    if entry.file_type().is_dir() {
+                        if let Some(name) = entry.file_name().to_str() {
+                            if name.starts_with('P') && name.len() <= 3 {
+                                cmd_sync_dag(&mut tasks, name)?;
+                            }
+                        }
+                    }
+                }
+                println!("Synced DAG for all phases");
+            } else {
+                cmd_sync_dag(&mut tasks, phase)?;
+                println!("Synced DAG for {phase}");
+            }
         }
         _ => {
             usage();
