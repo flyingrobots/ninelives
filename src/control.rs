@@ -4,6 +4,8 @@
 //! `CommandEnvelope` with an `AuthPayload`; the router dispatches to handlers
 //! after auth. History storage is pluggable.
 
+pub mod transport;
+
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::sync::{Arc, Mutex};
@@ -27,7 +29,7 @@ pub struct CommandMeta {
 }
 
 /// Auth payload sent alongside a command. Transports set this; providers verify it.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum AuthPayload {
     Jwt { token: String },
     Signatures { payload_hash: [u8; 32], signatures: Vec<DetachedSig> },
@@ -36,7 +38,7 @@ pub enum AuthPayload {
 }
 
 /// Detached signature placeholder (payload-agnostic). Extend as needed.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct DetachedSig {
     pub algorithm: String,
     pub signature: Vec<u8>,
