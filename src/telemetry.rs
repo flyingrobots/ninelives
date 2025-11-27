@@ -228,14 +228,9 @@ impl fmt::Display for RetryEvent {
             RetryEvent::Attempt { attempt, delay } => {
                 write!(f, "Attempt(#{}, delay={:?})", attempt, delay)
             }
-            RetryEvent::Exhausted {
-                total_attempts,
-                total_duration,
-            } => write!(
-                f,
-                "Exhausted(attempts={}, duration={:?})",
-                total_attempts, total_duration
-            ),
+            RetryEvent::Exhausted { total_attempts, total_duration } => {
+                write!(f, "Exhausted(attempts={}, duration={:?})", total_attempts, total_duration)
+            }
         }
     }
 }
@@ -255,14 +250,12 @@ impl fmt::Display for CircuitBreakerEvent {
 impl fmt::Display for BulkheadEvent {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            BulkheadEvent::Acquired {
-                active_count,
-                max_concurrency,
-            } => write!(f, "Acquired({}/{})", active_count, max_concurrency),
-            BulkheadEvent::Rejected {
-                active_count,
-                max_concurrency,
-            } => write!(f, "Rejected({}/{})", active_count, max_concurrency),
+            BulkheadEvent::Acquired { active_count, max_concurrency } => {
+                write!(f, "Acquired({}/{})", active_count, max_concurrency)
+            }
+            BulkheadEvent::Rejected { active_count, max_concurrency } => {
+                write!(f, "Rejected({}/{})", active_count, max_concurrency)
+            }
         }
     }
 }
@@ -593,10 +586,7 @@ impl Service<PolicyEvent> for StreamingSink {
             // Receiver lagged or none connected
             self.dropped.fetch_add(1, Ordering::Relaxed);
             let _ = self.last_drop_ns.store(
-                SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_nanos() as u64,
+                SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos() as u64,
                 Ordering::Relaxed,
             );
         }
@@ -645,11 +635,7 @@ where
             }
         });
 
-        Self {
-            tx,
-            dropped: dropped_clone,
-            _sink: sink_arc,
-        }
+        Self { tx, dropped: dropped_clone, _sink: sink_arc }
     }
 
     /// How many events were dropped because the queue was full.
@@ -836,10 +822,7 @@ where
                 Ok(()) => Ok(()),
                 Err(_) => {
                     // Primary failed, try fallback
-                    fallback
-                        .call(event_clone)
-                        .await
-                        .map_err(|e| ComposedSinkError(Box::new(e)))
+                    fallback.call(event_clone).await.map_err(|e| ComposedSinkError(Box::new(e)))
                 }
             }
         })
@@ -864,10 +847,7 @@ mod tests {
 
     #[test]
     fn test_retry_event_display() {
-        let event = RetryEvent::Attempt {
-            attempt: 2,
-            delay: Duration::from_millis(100),
-        };
+        let event = RetryEvent::Attempt { attempt: 2, delay: Duration::from_millis(100) };
         assert!(event.to_string().contains("Attempt"));
         assert!(event.to_string().contains("#2"));
     }
@@ -881,10 +861,7 @@ mod tests {
 
     #[test]
     fn test_bulkhead_event_display() {
-        let event = BulkheadEvent::Rejected {
-            active_count: 10,
-            max_concurrency: 10,
-        };
+        let event = BulkheadEvent::Rejected { active_count: 10, max_concurrency: 10 };
         assert!(event.to_string().contains("Rejected"));
         assert!(event.to_string().contains("10/10"));
     }
@@ -925,12 +902,9 @@ mod tests {
             attempt: 1,
             delay: Duration::from_millis(100),
         });
-        let event2 = PolicyEvent::CircuitBreaker(CircuitBreakerEvent::Opened {
-            failure_count: 5,
-        });
-        let event3 = PolicyEvent::Timeout(TimeoutEvent::Occurred {
-            timeout: Duration::from_secs(1),
-        });
+        let event2 = PolicyEvent::CircuitBreaker(CircuitBreakerEvent::Opened { failure_count: 5 });
+        let event3 =
+            PolicyEvent::Timeout(TimeoutEvent::Occurred { timeout: Duration::from_secs(1) });
 
         sink.call(event1.clone()).await.unwrap();
         sink.call(event2.clone()).await.unwrap();
@@ -973,9 +947,8 @@ mod tests {
         use tower::Service;
 
         let mut sink = LogSink;
-        let event = PolicyEvent::Timeout(TimeoutEvent::Occurred {
-            timeout: Duration::from_secs(1),
-        });
+        let event =
+            PolicyEvent::Timeout(TimeoutEvent::Occurred { timeout: Duration::from_secs(1) });
 
         // Should succeed without error
         sink.call(event).await.unwrap();

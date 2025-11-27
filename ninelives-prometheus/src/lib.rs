@@ -22,10 +22,7 @@ impl PrometheusSink {
             let registry = prometheus::Registry::new();
             let counter = prometheus::IntCounterVec::new(
                 prometheus::Opts::new("ninelives_events_total", "Policy events"),
-                &[
-                    "policy",
-                    "event",
-                ],
+                &["policy", "event"],
             )
             .expect("create counter");
             registry.register(Box::new(counter.clone())).ok();

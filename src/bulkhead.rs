@@ -34,7 +34,7 @@
 //! # });
 //! ```
 
-use crate::{ResilienceError, adaptive::Adaptive};
+use crate::{adaptive::Adaptive, ResilienceError};
 use futures::future::BoxFuture;
 use std::future::Future;
 use std::sync::{
@@ -139,10 +139,7 @@ impl BulkheadPolicy {
             }
             Err(tokio::sync::TryAcquireError::Closed) => {
                 let max = *self.max_concurrent.get();
-                return Err(ResilienceError::Bulkhead {
-                    in_flight: max,
-                    max,
-                });
+                return Err(ResilienceError::Bulkhead { in_flight: max, max });
             }
         };
 
@@ -191,10 +188,7 @@ where
     where
         NewSink: Clone,
     {
-        BulkheadLayer {
-            max_concurrent: self.max_concurrent.clone(),
-            sink,
-        }
+        BulkheadLayer { max_concurrent: self.max_concurrent.clone(), sink }
     }
 }
 

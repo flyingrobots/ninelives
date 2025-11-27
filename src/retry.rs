@@ -760,36 +760,49 @@ where
                     Ok(resp) => {
                         // Emit success event (best effort - honor readiness)
                         let duration = start.elapsed();
-                        emit_best_effort(sink.clone(), PolicyEvent::Request(
-                            crate::telemetry::RequestOutcome::Success { duration }
-                        )).await;
+                        emit_best_effort(
+                            sink.clone(),
+                            PolicyEvent::Request(crate::telemetry::RequestOutcome::Success {
+                                duration,
+                            }),
+                        )
+                        .await;
                         return Ok(resp);
                     }
                     Err(err) => {
                         let e: E = err;
                         if !(layer.should_retry)(&e) {
                             let duration = start.elapsed();
-                            emit_best_effort(sink.clone(), PolicyEvent::Request(
-                                crate::telemetry::RequestOutcome::Failure { duration }
-                            )).await;
+                            emit_best_effort(
+                                sink.clone(),
+                                PolicyEvent::Request(crate::telemetry::RequestOutcome::Failure {
+                                    duration,
+                                }),
+                            )
+                            .await;
                             return Err(ResilienceError::Inner(e));
                         }
                         failures.push(e);
                         if attempt + 1 >= max_attempts {
                             // Emit exhausted event
                             let total_duration = start.elapsed();
-                            emit_best_effort(sink.clone(), PolicyEvent::Retry(RetryEvent::Exhausted {
-                                total_attempts: max_attempts,
-                                total_duration,
-                            })).await;
+                            emit_best_effort(
+                                sink.clone(),
+                                PolicyEvent::Retry(RetryEvent::Exhausted {
+                                    total_attempts: max_attempts,
+                                    total_duration,
+                                }),
+                            )
+                            .await;
                             let duration = start.elapsed();
-                            emit_best_effort(sink.clone(), PolicyEvent::Request(
-                                crate::telemetry::RequestOutcome::Failure { duration }
-                            )).await;
-                            return Err(ResilienceError::retry_exhausted(
-                                max_attempts,
-                                failures,
-                            ));
+                            emit_best_effort(
+                                sink.clone(),
+                                PolicyEvent::Request(crate::telemetry::RequestOutcome::Failure {
+                                    duration,
+                                }),
+                            )
+                            .await;
+                            return Err(ResilienceError::retry_exhausted(max_attempts, failures));
                         }
                         let mut delay = backoff.delay(attempt + 1);
                         delay = match &*jitter {
@@ -798,10 +811,11 @@ where
                         };
 
                         // Emit retry attempt event
-                        emit_best_effort(sink.clone(), PolicyEvent::Retry(RetryEvent::Attempt {
-                            attempt: attempt + 1,
-                            delay,
-                        })).await;
+                        emit_best_effort(
+                            sink.clone(),
+                            PolicyEvent::Retry(RetryEvent::Attempt { attempt: attempt + 1, delay }),
+                        )
+                        .await;
 
                         layer.sleeper.sleep(delay).await;
                     }

@@ -1,5 +1,5 @@
 //! NATS telemetry sink for `ninelives` (optional companion crate).
-//! 
+//!
 //! Default build is a no-op sink to keep dependencies light. Enable the `client`
 //! feature to publish `PolicyEvent`s to a NATS subject.
 //!

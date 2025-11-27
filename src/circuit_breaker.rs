@@ -45,6 +45,7 @@ impl CircuitState {
 /// Validated configuration for the circuit breaker.
 #[derive(Debug, Clone)]
 pub struct CircuitBreakerConfig {
+    id: Option<String>,
     failure_threshold: Adaptive<usize>,
     recovery_timeout: Adaptive<Duration>,
     half_open_max_calls: Adaptive<usize>,
@@ -97,6 +98,7 @@ impl CircuitBreakerConfig {
         half_open_max_calls: usize,
     ) -> Result<Self, CircuitBreakerError> {
         let cfg = Self {
+            id: None,
             failure_threshold: Adaptive::new(failure_threshold),
             recovery_timeout: Adaptive::new(recovery_timeout),
             half_open_max_calls: Adaptive::new(half_open_max_calls),
@@ -108,10 +110,21 @@ impl CircuitBreakerConfig {
     /// Create a disabled circuit breaker (never opens).
     pub fn disabled() -> Self {
         Self {
+            id: None,
             failure_threshold: Adaptive::new(usize::MAX),
             recovery_timeout: Adaptive::new(Duration::MAX),
             half_open_max_calls: Adaptive::new(usize::MAX),
         }
+    }
+
+    /// Attach an identifier used by the control-plane registry for remote reset/introspection.
+    pub fn with_id(mut self, id: impl Into<String>) -> Self {
+        self.id = Some(id.into());
+        self
+    }
+
+    pub fn id(&self) -> Option<&str> {
+        self.id.as_deref()
     }
 
     fn validate(&self) -> Result<(), CircuitBreakerError> {
@@ -129,7 +142,7 @@ impl CircuitBreakerConfig {
 }
 
 #[derive(Debug)]
-struct CircuitBreakerState {
+pub(crate) struct CircuitBreakerState {
     state: AtomicU8,
     failure_count: AtomicUsize,
     opened_at_millis: AtomicU64,
@@ -137,7 +150,7 @@ struct CircuitBreakerState {
 }
 
 impl CircuitBreakerState {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             state: AtomicU8::new(CircuitState::Closed.to_u8()),
             failure_count: AtomicUsize::new(0),
@@ -145,9 +158,22 @@ impl CircuitBreakerState {
             half_open_calls: AtomicUsize::new(0),
         }
     }
+
+    pub(crate) fn reset(&self) {
+        self.state.store(CircuitState::Closed.to_u8(), Ordering::SeqCst);
+        self.failure_count.store(0, Ordering::SeqCst);
+        self.opened_at_millis.store(0, Ordering::SeqCst);
+        self.half_open_calls.store(0, Ordering::SeqCst);
+    }
+
+    pub(crate) fn current_state(&self) -> CircuitState {
+        CircuitState::from_u8(self.state.load(Ordering::SeqCst))
+    }
 }
 
-use crate::telemetry::{emit_best_effort, CircuitBreakerEvent, NullSink, PolicyEvent, RequestOutcome};
+use crate::telemetry::{
+    emit_best_effort, CircuitBreakerEvent, NullSink, PolicyEvent, RequestOutcome,
+};
 use std::time::Instant as StdInstant;
 
 /// Tower-native circuit breaker layer with optional telemetry.
@@ -168,11 +194,7 @@ impl CircuitBreakerLayer<NullSink> {
     /// Returns error if the configuration is invalid.
     pub fn new(config: CircuitBreakerConfig) -> Result<Self, CircuitBreakerError> {
         config.validate()?;
-        Ok(Self {
-            config,
-            clock: Arc::new(MonotonicClock::default()),
-            sink: NullSink,
-        })
+        Ok(Self { config, clock: Arc::new(MonotonicClock::default()), sink: NullSink })
     }
 
     /// Create a circuit breaker layer with a custom clock implementation and no telemetry.
@@ -187,11 +209,7 @@ impl CircuitBreakerLayer<NullSink> {
         clock: C,
     ) -> Result<Self, CircuitBreakerError> {
         config.validate()?;
-        Ok(Self {
-            config,
-            clock: Arc::new(clock),
-            sink: NullSink,
-        })
+        Ok(Self { config, clock: Arc::new(clock), sink: NullSink })
     }
 }
 
@@ -204,11 +222,7 @@ where
     where
         NewSink: Clone,
     {
-        CircuitBreakerLayer {
-            config: self.config,
-            clock: self.clock,
-            sink,
-        }
+        CircuitBreakerLayer { config: self.config, clock: self.clock, sink }
     }
 }
 
@@ -224,13 +238,13 @@ pub struct CircuitBreakerService<S, Sink = NullSink> {
 
 impl<S, Sink> CircuitBreakerService<S, Sink> {
     fn new(inner: S, config: CircuitBreakerConfig, clock: Arc<dyn Clock>, sink: Sink) -> Self {
-        Self {
-            inner,
-            state: Arc::new(CircuitBreakerState::new()),
-            config,
-            clock,
-            sink,
+        let state = Arc::new(CircuitBreakerState::new());
+
+        if let Some(id) = config.id() {
+            crate::circuit_breaker_registry::register_global(id.to_string(), state.clone());
         }
+
+        Self { inner, state, config, clock, sink }
     }
 }
 
@@ -383,6 +397,11 @@ where
 {
     type Service = CircuitBreakerService<S, Sink>;
     fn layer(&self, service: S) -> Self::Service {
-        CircuitBreakerService::new(service, self.config.clone(), self.clock.clone(), self.sink.clone())
+        CircuitBreakerService::new(
+            service,
+            self.config.clone(),
+            self.clock.clone(),
+            self.sink.clone(),
+        )
     }
 }

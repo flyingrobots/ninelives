@@ -1,7 +1,7 @@
 use ninelives::BulkheadPolicy;
 use ninelives::ResilienceError;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 
 #[tokio::test]
@@ -33,18 +33,14 @@ async fn bulkhead_grows_when_adaptive_increases() {
     notify.notified().await;
 
     // Second task should be rejected with capacity=1
-    let res = policy
-        .execute(|| async { Ok::<_, ResilienceError<std::io::Error>>(()) })
-        .await;
+    let res = policy.execute(|| async { Ok::<_, ResilienceError<std::io::Error>>(()) }).await;
     assert!(matches!(res, Err(e) if e.is_bulkhead()));
 
     // Increase capacity live
     handle.set(2);
 
     // Third task should now succeed
-    let res = policy
-        .execute(|| async { Ok::<_, ResilienceError<std::io::Error>>(()) })
-        .await;
+    let res = policy.execute(|| async { Ok::<_, ResilienceError<std::io::Error>>(()) }).await;
     assert!(res.is_ok());
 
     let _ = holder.await;

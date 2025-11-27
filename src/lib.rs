@@ -110,15 +110,16 @@
 //!
 //! For more examples, see the algebra module documentation.
 
-mod algebra;
 pub mod adaptive;
+mod algebra;
 mod backoff;
 mod bulkhead;
 mod circuit_breaker;
+pub mod circuit_breaker_registry;
 mod clock;
+pub mod control;
 mod error;
 mod jitter;
-pub mod control;
 mod retry;
 mod sleeper;
 // stack module removed in favor of tower-native algebra

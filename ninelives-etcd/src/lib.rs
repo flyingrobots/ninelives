@@ -15,7 +15,10 @@ pub struct EtcdSink {
 
 impl EtcdSink {
     /// `endpoint` like "http://127.0.0.1:2379"; events stored under `prefix/<nanos>`
-    pub async fn new<S: Into<String>>(endpoint: S, prefix: S) -> Result<Self, Box<dyn std::error::Error>> {
+    pub async fn new<S: Into<String>>(
+        endpoint: S,
+        prefix: S,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         let prefix = prefix.into();
         #[cfg(feature = "client")]
         {

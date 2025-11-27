@@ -7,9 +7,9 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 
 #[cfg(feature = "client")]
-use opentelemetry::{global, KeyValue};
-#[cfg(feature = "client")]
 use opentelemetry::logs::{AnyValue, LogEmitterProvider, Logger, Severity};
+#[cfg(feature = "client")]
+use opentelemetry::{global, KeyValue};
 #[cfg(feature = "client")]
 use opentelemetry_otlp::WithExportConfig;
 
@@ -77,9 +77,12 @@ impl TelemetrySink for OtlpSink {
 
 #[cfg(feature = "client")]
 fn map_event(event: &PolicyEvent) -> (Severity, Vec<KeyValue>, String) {
-    use ninelives::telemetry::{BulkheadEvent, CircuitBreakerEvent, RequestOutcome, RetryEvent, TimeoutEvent};
+    use ninelives::telemetry::{
+        BulkheadEvent, CircuitBreakerEvent, RequestOutcome, RetryEvent, TimeoutEvent,
+    };
 
-    let mut attrs = vec![KeyValue::new("component", "ninelives"), KeyValue::new("event_kind", kind(event))];
+    let mut attrs =
+        vec![KeyValue::new("component", "ninelives"), KeyValue::new("event_kind", kind(event))];
 
     match event {
         PolicyEvent::Retry(RetryEvent::Attempt { attempt, delay }) => {
@@ -96,8 +99,12 @@ fn map_event(event: &PolicyEvent) -> (Severity, Vec<KeyValue>, String) {
             attrs.push(KeyValue::new("failure_count", (*failure_count as i64).into()));
             (Severity::Warn, attrs, "circuit_opened".to_string())
         }
-        PolicyEvent::CircuitBreaker(CircuitBreakerEvent::HalfOpen) => (Severity::Info, attrs, "circuit_half_open".to_string()),
-        PolicyEvent::CircuitBreaker(CircuitBreakerEvent::Closed) => (Severity::Info, attrs, "circuit_closed".to_string()),
+        PolicyEvent::CircuitBreaker(CircuitBreakerEvent::HalfOpen) => {
+            (Severity::Info, attrs, "circuit_half_open".to_string())
+        }
+        PolicyEvent::CircuitBreaker(CircuitBreakerEvent::Closed) => {
+            (Severity::Info, attrs, "circuit_closed".to_string())
+        }
         PolicyEvent::Bulkhead(BulkheadEvent::Acquired { active_count, max_concurrency }) => {
             attrs.push(KeyValue::new("active", (*active_count as i64).into()));
             attrs.push(KeyValue::new("max", (*max_concurrency as i64).into()));

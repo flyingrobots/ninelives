@@ -179,8 +179,7 @@ pub struct TimeoutLayer<Sink = NullSink> {
 impl TimeoutLayer<NullSink> {
     /// Build a timeout layer with the provided duration and no telemetry.
     pub fn new(duration: Duration) -> Result<Self, TimeoutError> {
-        TimeoutPolicy::new(duration)
-            .map(|p| TimeoutLayer { duration: p.duration, sink: NullSink })
+        TimeoutPolicy::new(duration).map(|p| TimeoutLayer { duration: p.duration, sink: NullSink })
     }
 }
 
@@ -193,10 +192,7 @@ where
     where
         NewSink: Clone,
     {
-        TimeoutLayer {
-            duration: self.duration.clone(),
-            sink,
-        }
+        TimeoutLayer { duration: self.duration.clone(), sink }
     }
 }
 

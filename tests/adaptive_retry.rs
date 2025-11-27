@@ -1,8 +1,11 @@
 use ninelives::adaptive::Adaptive;
-use ninelives::{RetryPolicy, Backoff, Jitter};
-use tower::{Service, ServiceBuilder, ServiceExt};
-use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
+use ninelives::{Backoff, Jitter, RetryPolicy};
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc,
+};
 use std::time::Duration;
+use tower::{Service, ServiceBuilder, ServiceExt};
 
 #[tokio::test]
 async fn retry_respects_live_max_attempts() {
@@ -53,7 +56,10 @@ impl Service<()> for TestService {
     type Error = TestError;
     type Future = futures::future::Ready<Result<(), TestError>>;
 
-    fn poll_ready(&mut self, _cx: &mut std::task::Context<'_>) -> std::task::Poll<Result<(), Self::Error>> {
+    fn poll_ready(
+        &mut self,
+        _cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Result<(), Self::Error>> {
         std::task::Poll::Ready(Ok(()))
     }
 

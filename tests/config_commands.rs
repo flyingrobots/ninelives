@@ -1,9 +1,16 @@
+use ninelives::circuit_breaker_registry::register_new;
+use ninelives::{CircuitBreakerConfig, CircuitBreakerLayer, CircuitState};
 use ninelives::control::{
-    AuthMode, AuthPayload, AuthRegistry, CommandEnvelope, CommandMeta, CommandResult, ConfigRegistry, InMemoryHistory,
+    AuthMode, AuthPayload, AuthRegistry, CommandEnvelope, CommandMeta, CommandResult,
+    ConfigRegistry, InMemoryHistory,
 };
 use ninelives::control::{BuiltInCommand, BuiltInHandler, CommandRouter, PassthroughAuth};
 use ninelives::{Backoff, Jitter, RetryPolicy};
+use std::future::Ready;
+use std::sync::Arc;
 use std::time::Duration;
+use std::task::{Context, Poll};
+use tower::{Layer, Service, ServiceExt};
 
 #[tokio::test]
 async fn config_commands_update_retry_adaptive() {
@@ -35,6 +42,75 @@ async fn config_commands_update_retry_adaptive() {
     assert_eq!(*adapt.get(), 3);
 }
 
+#[tokio::test]
+async fn reset_circuit_breaker_command() {
+    register_new("cb1".into());
+
+    let handler = BuiltInHandler::default();
+    let mut auth = AuthRegistry::new(AuthMode::First);
+    auth.register(std::sync::Arc::new(PassthroughAuth));
+    let history = Arc::new(InMemoryHistory::default());
+    let router = CommandRouter::new(auth, Arc::new(handler), history);
+
+    let env = CommandEnvelope {
+        cmd: BuiltInCommand::ResetCircuitBreaker { id: "cb1".into() },
+        auth: Some(AuthPayload::Opaque(vec![])),
+        meta: CommandMeta { id: "2".into(), correlation_id: None, timestamp_millis: None },
+    };
+    let res = router.execute(env).await.unwrap();
+    assert_eq!(res, CommandResult::Ack);
+}
+
+#[derive(Clone)]
+struct FailingSvc;
+
+impl Service<()> for FailingSvc {
+    type Response = ();
+    type Error = TestError;
+    type Future = Ready<Result<(), TestError>>;
+
+    fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn call(&mut self, _req: ()) -> Self::Future {
+        std::future::ready(Err(TestError))
+    }
+}
+
+#[tokio::test]
+async fn reset_command_closes_open_breaker() {
+    let cfg = CircuitBreakerConfig::new(1, Duration::from_millis(1), 1)
+        .unwrap()
+        .with_id("cb_reset");
+    let layer = CircuitBreakerLayer::new(cfg).unwrap();
+    let mut svc = layer.layer(FailingSvc);
+
+    // Trigger an error to open the breaker.
+    let _ = svc.ready().await.unwrap().call(()).await;
+    let state = ninelives::circuit_breaker_registry::state_of("cb_reset").unwrap();
+    assert_eq!(state, CircuitState::Open);
+
+    // Execute reset command and verify state closes.
+    let handler = BuiltInHandler::default();
+    let mut auth = AuthRegistry::new(AuthMode::First);
+    auth.register(std::sync::Arc::new(PassthroughAuth));
+    let history = Arc::new(InMemoryHistory::default());
+    let router = CommandRouter::new(auth, Arc::new(handler), history);
+
+    let env = CommandEnvelope {
+        cmd: BuiltInCommand::ResetCircuitBreaker { id: "cb_reset".into() },
+        auth: Some(AuthPayload::Opaque(vec![])),
+        meta: CommandMeta { id: "3".into(), correlation_id: None, timestamp_millis: None },
+    };
+
+    let res = router.execute(env).await.unwrap();
+    assert_eq!(res, CommandResult::Ack);
+
+    let state = ninelives::circuit_breaker_registry::state_of("cb_reset").unwrap();
+    assert_eq!(state, CircuitState::Closed);
+}
+
 #[derive(Debug, Clone, thiserror::Error)]
-#[error("test")] 
+#[error("test")]
 struct TestError;

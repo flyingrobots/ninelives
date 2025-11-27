@@ -22,7 +22,7 @@ See [DAG.csv](DAG.csv) for the edge list.
 ### Parameter/State Handlers
 - [x] [P2.10](P2.10.md) Parameter handlers: Set/Get adaptive values
 - [ ] [P2.11](P2.11.md) State handler: query policy state
-- [ ] [P2.12](P2.12.md) ResetCircuitBreaker handler
+- [x] [P2.12](P2.12.md) ResetCircuitBreaker handler
 - [ ] [P2.13](P2.13.md) ListPolicies handler
 
 ### Transport
@@ -50,7 +50,7 @@ See [DAG.csv](DAG.csv) for the edge list.
 - [x] [P2.09](P2.09.md) ControlPlaneRouter skeleton (auth, dispatch, history)
 - [x] [P2.10](P2.10.md) Parameter handlers: Set/Get adaptive values
 - [ ] [P2.11](P2.11.md) State handler: query policy state
-- [ ] [P2.12](P2.12.md) ResetCircuitBreaker handler
+- [x] [P2.12](P2.12.md) ResetCircuitBreaker handler
 - [ ] [P2.13](P2.13.md) ListPolicies handler
 - [ ] [P2.14](P2.14.md) Transport abstraction design (HTTP/gRPC friendly)
 - [ ] [P2.16](P2.16.md) Authorization layer

@@ -9,7 +9,7 @@ use std::fmt::Display;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use futures::future::{self, BoxFuture};
+use futures::future::BoxFuture;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use tower::Service;
@@ -340,6 +340,7 @@ pub enum BuiltInCommand {
     Reset,
     ReadConfig { path: String },
     WriteConfig { path: String, value: String },
+    ResetCircuitBreaker { id: String },
 }
 
 pub trait CommandLabel {
@@ -355,6 +356,7 @@ impl CommandLabel for BuiltInCommand {
             BuiltInCommand::Reset => "reset",
             BuiltInCommand::ReadConfig { .. } => "read_config",
             BuiltInCommand::WriteConfig { .. } => "write_config",
+            BuiltInCommand::ResetCircuitBreaker { .. } => "reset_circuit_breaker",
         }
     }
 }
@@ -531,6 +533,12 @@ impl CommandHandler<BuiltInCommand> for BuiltInHandler {
                     })
                 } else {
                     Ok(CommandResult::Error("config registry not set".into()))
+                }
+            }
+            BuiltInCommand::ResetCircuitBreaker { id } => {
+                match crate::circuit_breaker_registry::global().reset(&id) {
+                    Ok(()) => Ok(CommandResult::Ack),
+                    Err(e) => Ok(CommandResult::Error(e)),
                 }
             }
         }

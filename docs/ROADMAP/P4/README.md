@@ -17,7 +17,7 @@ Executive Summary: Implement the "happy eyeballs" parallel composition operator.
 - [ ] [P4.06.b](P4.06.b.md) Implement `BitAnd` trait for `Policy<L>` (tests & docs)
 - [ ] [P4.07.a](P4.07.a.md) Returns `Policy<ForkJoinLayer<A, B>>` (core implementation)
 - [ ] [P4.07.b](P4.07.b.md) Returns `Policy<ForkJoinLayer<A, B>>` (tests & docs)
-- [ ] [P4.08](P4.08.md) Test race conditions (doc tests cover both sides)
+- [/] [P4.08](P4.08.md) Test race conditions (doc tests cover both sides)
 - [ ] [P4.09.a](P4.09.a.md) Test both-fail scenarios (implemented in service logic) (core implementation)
 - [ ] [P4.09.b](P4.09.b.md) Test both-fail scenarios (implemented in service logic) (tests & docs)
 - [ ] [P4.10.a](P4.10.a.md) Test cancellation behavior (futures::select handles drop) (core implementation)
@@ -26,7 +26,7 @@ Executive Summary: Implement the "happy eyeballs" parallel composition operator.
 - [ ] [P4.11.b](P4.11.b.md) Benchmark overhead vs sequential (tests & docs)
 - [ ] [P4.12.a](P4.12.a.md) Add examples: IPv4/IPv6, cache strategies (core implementation)
 - [ ] [P4.12.b](P4.12.b.md) Add examples: IPv4/IPv6, cache strategies (tests & docs)
-- [ ] [P4.13](P4.13.md) Document operator precedence: `&` > `+` > `|`
+- [/] [P4.13](P4.13.md) Document operator precedence: `&` > `+` > `|`
 - [ ] [P4.14.a](P4.14.a.md) Add to algebra guide (README, lib.rs, examples) (core implementation)
 - [ ] [P4.14.b](P4.14.b.md) Add to algebra guide (README, lib.rs, examples) (tests & docs)
 

@@ -25,9 +25,7 @@ pub type Adaptive<T> = DynamicConfig<T>;
 
 impl<T> Clone for DynamicConfig<T> {
     fn clone(&self) -> Self {
-        Self {
-            inner: self.inner.clone(),
-        }
+        Self { inner: self.inner.clone() }
     }
 }
 
@@ -35,15 +33,11 @@ impl<T> DynamicConfig<T> {
     pub fn new(value: T) -> Self {
         #[cfg(not(feature = "adaptive-rwlock"))]
         {
-            Self {
-                inner: Arc::new(ArcSwap::from_pointee(value)),
-            }
+            Self { inner: Arc::new(ArcSwap::from_pointee(value)) }
         }
         #[cfg(feature = "adaptive-rwlock")]
         {
-            Self {
-                inner: Arc::new(RwLock::new(value)),
-            }
+            Self { inner: Arc::new(RwLock::new(value)) }
         }
     }
 
