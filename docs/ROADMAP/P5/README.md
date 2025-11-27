@@ -1,17 +1,22 @@
-# Phase 5: Self-Healing Brain (Sentinel)
+# Phase 5: The Sentinel (Self-Healing Brain)
 
-Executive Summary: Build `ninelives-sentinel`, a meta-policy engine capable of observing system state, evaluating scripts, and issuing commands to achieve autonomous self-healing capabilities. This is the "brain" of the entire `ninelives` ecosystem.
+**Status:** 📋 Planned
 
-## Context
-
-Phase 3 provides the observational capabilities (metrics aggregation). Phase 5 uses this observation as input for a decision-making engine that can then issue commands back into the system (via the control plane from Phase 2). The goal is to move from manual configuration to automated, adaptive resilience.
+## Executive Summary
+*   **Story:** Reflexes (Phase 3) handle immediate threats, but complex systems require intelligence. We need a "brain" that can observe long-term trends, execute sophisticated logic, and orchestrate coordinated responses. The Sentinel introduces a scriptable meta-policy engine that acts as an autonomous operator within the system.
+*   **Outcome:** A programmable self-healing engine where operators can define complex, high-level reliability rules (e.g., "if region A degrades, shift traffic to B") that run automatically, reducing the need for human intervention during incidents.
 
 ## Tasks
-- [ ] [P5.01](P5.01.md) **Sentinel Crate & Top-Level Coordinator**: Establish the `ninelives-sentinel` crate and its main orchestration logic.
-- [/] [P5.02](P5.02.md) **Scripting Engine Integration & API**: Integrate an embedded scripting language (e.g., Rhai) and define a safe, sandboxed API for scripts to interact with `ninelives` components.
-- [/] [P5.03](P5.03.md) **Meta-Policy Evaluation Loop & Management**: Implement the continuous loop for executing meta-policy scripts and provide dynamic script loading/reloading capabilities.
-- [/] [P5.04](P5.04.md) **Built-in Meta-Policies & Examples**: Translate P3's adaptive control laws into concrete example meta-policy scripts, demonstrating automated self-tuning.
-
-## Alignment with GATOS
-- **P5.01-P5.04** are critical for GATOS M6 (Explorer & Verification) and M7 (Proof-of-Experiment) by enabling verifiable autonomous operation.
-- The `Sentinel` will be the primary mechanism for GATOS to achieve self-tuning worker pools, adaptive policy gates, and automated incident response based on observed conditions.
+- [ ] [P5.01a](P5.01a.md) Sentinel Crate & Struct
+- [ ] [P5.01b](P5.01b.md) Sentinel Lifecycle
+- [ ] [P5.01c](P5.01c.md) Sentinel Tests
+- [ ] [P5.02a](P5.02a.md) Rhai Integration
+- [ ] [P5.02b](P5.02b.md) Sentinel Observe API
+- [ ] [P5.02c](P5.02c.md) Sentinel Act API
+- [ ] [P5.02d](P5.02d.md) Script Sandbox & Validation
+- [ ] [P5.03a](P5.03a.md) Meta-Policy Loop
+- [ ] [P5.03b](P5.03b.md) Script Loader
+- [ ] [P5.03c](P5.03c.md) Hot Reload
+- [ ] [P5.04a](P5.04a.md) AIMD Script
+- [ ] [P5.04b](P5.04b.md) Budget Script
+- [ ] [P5.04c](P5.04c.md) Sentinel Cookbook

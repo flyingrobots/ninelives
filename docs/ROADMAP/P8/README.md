@@ -1,18 +1,27 @@
-# Phase 8: Transport Protocols
+# Phase 8: Universal Access (Transports)
 
-Executive Summary: Expand the accessibility of the `ninelives-control` plane by implementing various network transport protocols. This allows external systems (CLIs, UIs, other services) to interact with and manage `ninelives` instances effectively.
+**Status:** 📋 Planned
 
-## Context
-
-The `ninelives-control` plane, developed in Phase 2, provides an internal API for managing resilience policies. This phase focuses on exposing that API over standard network protocols, leveraging the `Transport` abstraction designed in P2.14.
+## Executive Summary
+*   **Story:** A powerful control plane is useless if you can't reach it. We break down the walls around the `ninelives` control plane by implementing standard transport adapters. This opens the system to the world, allowing standard tools like `curl`, `grpcurl`, or custom dashboards to interact with our resilience policies.
+*   **Outcome:** Seamless interoperability. `ninelives` becomes a controllable citizen of the infrastructure, accessible via HTTP REST and gRPC, enabling rich integration with external orchestration and monitoring systems.
 
 ## Tasks
-- [ ] [P8.01](P8.01.md) **Command Serialization & Deserialization**: Define a canonical wire format (e.g., JSON) for `CommandEnvelope` and its components.
-- [/] [P8.02](P8.02.md) **HTTP REST Transport**: Implement a `ninelives-rest` crate for HTTP-based control plane access.
-- [/] [P8.03](P8.03.md) **gRPC Transport**: Implement a `ninelives-grpc` crate for high-performance, strongly-typed control plane access.
-- [/] [P8.04](P8.04.md) **Advanced/Future Transports (MCP/GraphQL)**: Placeholder for specialized or future transport protocols.
-
-## Alignment with GATOS
-- **P8.01 (Serialization)** is foundational for `gatos-cli` and `gatos-control-plane` to communicate with `ninelives` instances.
-- **P8.02 (HTTP REST)** directly enables GATOS M8 (Demos & Examples) by providing a user-friendly API for `gatos-cli` integration.
-- **P8.03 (gRPC)** supports GATOS M10 (Enterprise & Scale) by offering a high-performance control plane suitable for inter-service communication within the GATOS ecosystem.
+- [ ] [P8.01a](P8.01a.md) Wire Format Spec
+- [ ] [P8.01b](P8.01b.md) Envelope Serde
+- [ ] [P8.01c](P8.01c.md) Command Serde
+- [ ] [P8.02a](P8.02a.md) Rest Server Init
+- [ ] [P8.02b](P8.02b.md) Rest Auth Middleware
+- [ ] [P8.02c](P8.02c.md) Rest Handlers
+- [ ] [P8.02d](P8.02d.md) Rest Error Map
+- [ ] [P8.02e](P8.02e.md) Rest Example
+- [ ] [P8.03a](P8.03a.md) gRPC Protos
+- [ ] [P8.03b](P8.03b.md) Tonic Server
+- [ ] [P8.03c](P8.03c.md) gRPC Auth
+- [ ] [P8.03d](P8.03d.md) gRPC Client
+- [ ] [P8.03e](P8.03e.md) gRPC Integ
+- [ ] [P8.04a](P8.04a.md) GraphQL Research
+- [ ] [P8.04b](P8.04b.md) MCP Research
+- [ ] [P8.05a](P8.05a.md) DeadlineContext & Layer
+- [ ] [P8.05b](P8.05b.md) Header Extraction (Ingress)
+- [ ] [P8.05c](P8.05c.md) Header Injection (Egress)

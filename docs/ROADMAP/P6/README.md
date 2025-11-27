@@ -1,17 +1,24 @@
 # Phase 6: Shadow Evaluation
 
-Executive Summary: Implement a "shadow evaluation" system that allows new resilience policies and configurations to be tested in production with live traffic, without affecting the primary request path. This enables safe "what-if" analysis and automated, data-driven policy promotion.
+**Status:** 📋 Planned
 
-## Context
-
-Changing resilience policies in production is risky. Shadowing provides a mechanism to mitigate this risk by running a new policy in parallel with an existing one, observing its hypothetical behavior, and only promoting it to primary if it proves to be stable and beneficial.
+## Executive Summary
+*   **Story:** Change is the leading cause of outages. Rolling out a new resilience policy shouldn't be a leap of faith. We introduce "Shadow Mode"—the ability to run a new policy configuration alongside the live one, processing real traffic without affecting the result, to prove it works before it goes live.
+*   **Outcome:** Risk-free policy evolution. Operators can "what-if" test aggressive configurations (e.g., tighter timeouts, stricter rate limits) in production, verify their safety via shadow telemetry, and automatically promote them when proven stable.
 
 ## Tasks
-- [/] [P6.01](P6.01.md) **Shadow Layer & Adaptive Support**: Implement the core `ShadowLayer` and extend `Adaptive<T>` to manage shadow configurations.
-- [/] [P6.02](P6.02.md) **Shadow Telemetry & Observer Integration**: Define and emit `ShadowEvent`s, ensuring they are properly aggregated and queryable via the `TelemetryAggregator`.
-- [/] [P6.03](P6.03.md) **Shadow Promotion & Management**: Implement the logic within `ninelives-sentinel` to observe shadow performance and automatically promote stable shadow policies.
-- [/] [P6.04](P6.04.md) **Safety Guarantees & Documentation**: Document the safety guarantees, limitations, and operational best practices for shadow evaluation.
-
-## Alignment with GATOS
-- **P6.01-P6.04** are critical for GATOS M9 (Conformance Suite), enabling safe validation of new governance policies before deployment.
-- The ability to perform "what-if" analysis on resilience policies directly impacts the verifiability and auditability of the GATOS system, reducing operational risk.
+- [ ] [P6.01a](P6.01a.md) ShadowLayer Struct
+- [ ] [P6.01b](P6.01b.md) Adaptive Shadow Support
+- [ ] [P6.01c](P6.01c.md) Shadow Isolation
+- [ ] [P6.01d](P6.01d.md) ShadowLayer Unit Tests
+- [ ] [P6.01e](P6.01e.md) ShadowLayer Integration
+- [ ] [P6.02a](P6.02a.md) ShadowEvent Definition
+- [ ] [P6.02b](P6.02b.md) Shadow Emission
+- [ ] [P6.02c](P6.02c.md) Aggregator Shadow Support
+- [ ] [P6.02d](P6.02d.md) Metrics Separation Tests
+- [ ] [P6.03a](P6.03a.md) Atomic Swap Logic
+- [ ] [P6.03b](P6.03b.md) Promotion Command
+- [ ] [P6.03c](P6.03c.md) Promotion Meta-Policy
+- [ ] [P6.03d](P6.03d.md) End-to-End Promotion
+- [ ] [P6.04a](P6.04a.md) Safety ADR
+- [ ] [P6.04b](P6.04b.md) Shadow Cookbook

@@ -1,21 +1,16 @@
 # Phase 4: Happy Eyeballs (Fork-Join)
 
-Executive Summary: Implement the "Happy Eyeballs" parallel composition operator (`&`) to allow racing multiple services concurrently, returning the first successful result. This enables low-latency diversity and improved user experience.
+**Status:** 📋 Planned
 
-## Context
-
-The `&` operator (Bitwise AND) extends the `ninelives` policy algebra to support "Fork-Join" patterns, where two strategies are executed in parallel. This is useful for scenarios like:
-- Racing IPv4 and IPv6 connections (traditional "Happy Eyeballs").
-- Querying a local cache and a remote database simultaneously.
-- Trying multiple redundant upstream services to minimize latency or maximize success rate.
+## Executive Summary
+*   **Story:** In a distributed world, redundancy is common but often underutilized. Why wait for a primary to fail before trying a backup? This phase introduces the power of parallelism to the policy algebra, enabling "Happy Eyeballs" patterns where we race multiple paths simultaneously and take the winner.
+*   **Outcome:** A new `&` operator for the policy algebra that enables significant latency reductions and higher availability by masking tail latency and individual node failures through concurrent execution.
 
 ## Tasks
-- [/] [P4.01](P4.01.md) **ForkJoinLayer Core Implementation**: Build the fundamental layer for racing two services.
-- [/] [P4.02](P4.02.md) **Algebraic Operator Integration**: Integrate the `&` operator into the `Policy` algebra.
-- [/] [P4.03](P4.03.md) **Comprehensive Testing & Benchmarking**: Ensure correctness, performance, and resource management.
-- [/] [P4.04](P4.04.md) **Documentation & Examples**: Provide clear guidance and practical recipes for usage.
-
-## Alignment with GATOS
-- Critical for GATOS M2 (Policy Gate) for racing fast approximate policy evaluations against comprehensive ones.
-- Enhances GATOS M3 (Message Bus) for trying multiple Git remotes concurrently.
-- Essential for GATOS M5 (Privacy) for racing local cache vs. remote blob fetches.
+- [ ] [P4.01a](P4.01a.md) ForkJoinService Logic
+- [ ] [P4.01b](P4.01b.md) ForkJoin Cancellation
+- [ ] [P4.02a](P4.02a.md) BitAnd Operator
+- [ ] [P4.03a](P4.03a.md) Race Tests
+- [ ] [P4.03b](P4.03b.md) Cancellation Tests
+- [ ] [P4.04a](P4.04a.md) ForkJoin Docs
+- [ ] [P4.04b](P4.04b.md) ForkJoin Cookbook

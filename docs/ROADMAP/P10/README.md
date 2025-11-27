@@ -1,17 +1,26 @@
 # Phase 10: Production Hardening
 
-Executive Summary: Ensure `ninelives` is robust, performant, and observable for mission-critical production environments. This phase focuses on rigorous testing, optimization, and comprehensive monitoring capabilities.
+**Status:** 📋 Planned
 
-## Context
-
-A resilience library must itself be resilient, performant, and provide deep insights into its operation. This phase aims to make `ninelives` battle-hardened, capable of withstanding adverse conditions, and easily debuggable and monitorable in production.
+## Executive Summary
+*   **Story:** In high-throughput systems, speed is a feature and overhead is a bug. We rigorously benchmark, profile, and optimize every microsecond of the `ninelives` hot path. We then stress-test it with chaos and massive load to ensure it never cracks under pressure.
+*   **Outcome:** A library that is essentially invisible in terms of latency (< 10μs overhead) but invincible in terms of reliability—a zero-cost insurance policy for mission-critical infrastructure.
 
 ## Tasks
-- [/] [P10.01](P10.01.md) **Performance Benchmarking & Profiling**: Establish a comprehensive benchmark suite and profile hot paths to identify optimization opportunities.
-- [/] [P10.02](P10.02.md) **Low-Overhead Optimization**: Implement optimizations to minimize CPU, memory, and latency overhead, focusing on lock contention and zero-allocation.
-- [/] [P10.03](P10.03.md) **Advanced Reliability Testing**: Conduct chaos engineering, soak tests, load tests, and failure injection to validate robustness under extreme conditions.
-- [/] [P10.04](P10.04.md) **Production Observability**: Enhance tracing and integrate with standard metrics systems (e.g., Prometheus) for deep introspection.
-
-## Alignment with GATOS
-- **P10.01-P10.04** are essential for GATOS M9 (Conformance Suite) and M10+ (Enterprise & Scale) by providing a thoroughly validated, high-performance, and observable resilience foundation.
-- The optimizations and testing in this phase directly contribute to `ninelives` being a reliable and trustworthy component within the verifiable GATOS ecosystem.
+- [ ] [P10.01a](P10.01a.md) Benchmark Crate
+- [ ] [P10.01b](P10.01b.md) Microbenchmarks
+- [ ] [P10.01c](P10.01c.md) Profiling Setup
+- [ ] [P10.01d](P10.01d.md) Targets & Baseline
+- [ ] [P10.02a](P10.02a.md) Lock Review
+- [ ] [P10.02b](P10.02b.md) Lock-Free Refactor
+- [ ] [P10.02c](P10.02c.md) Alloc Review
+- [ ] [P10.02d](P10.02d.md) LTO/Codegen
+- [ ] [P10.03a](P10.03a.md) Chaos Tools
+- [ ] [P10.03b](P10.03b.md) Chaos Test
+- [ ] [P10.03c](P10.03c.md) Soak Harness
+- [ ] [P10.03d](P10.03d.md) Load Harness
+- [ ] [P10.03e](P10.03e.md) Failure Injection
+- [ ] [P10.04a](P10.04a.md) Tracing Spans
+- [ ] [P10.04b](P10.04b.md) Prometheus Sink
+- [ ] [P10.04c](P10.04c.md) Adaptive Metrics
+- [ ] [P10.04d](P10.04d.md) Flamegraph Docs
