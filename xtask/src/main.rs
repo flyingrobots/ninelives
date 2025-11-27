@@ -70,21 +70,6 @@ struct Task {
     path: PathBuf,
 }
 
-fn find_task_file(task_id: &str) -> Result<PathBuf> {
-    let pattern = format!("{task_id}.md");
-    for entry in WalkDir::new("docs/ROADMAP") {
-        let entry = entry?;
-        if entry.file_type().is_file() {
-            if let Some(name) = entry.file_name().to_str() {
-                if name == pattern {
-                    return Ok(entry.into_path());
-                }
-            }
-        }
-    }
-    Err(anyhow!("task file not found for {task_id}"))
-}
-
 fn parse_task(path: &Path) -> Result<Task> {
     let content = fs::read_to_string(path)?;
     let matter = Matter::<YAML>::new();
@@ -232,6 +217,11 @@ fn cmd_enrich(tasks: &mut HashMap<String, Task>, phase: &str) -> Result<()> {
     let plans = plans::p2_plans();
     for (id, plan) in plans {
         if let Some(task) = tasks.get_mut(id) {
+            // update value from plan
+            if let Some(v) = plan.value {
+                task.front.value = Some(v.to_string());
+            }
+
             // rebuild body with plan content
             let steps = plan
                 .steps
