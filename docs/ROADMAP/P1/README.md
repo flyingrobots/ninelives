@@ -19,7 +19,7 @@ Executive Summary: Build the observability foundation that enables autonomous op
 - [ ] [P1.07.b](P1.07.b.md) Implement `FallbackSink` for fallback on failure (tests & docs)
 - [ ] [P1.08.a](P1.08.a.md) Add `ComposedSinkError` type for composition errors (core implementation)
 - [ ] [P1.08.b](P1.08.b.md) Add `ComposedSinkError` type for composition errors (tests & docs)
-- [ ] [P1.09](P1.09.md) Document sink composition patterns
+- [x] [P1.09](P1.09.md) Document sink composition patterns
 - [ ] [P1.10.a](P1.10.a.md) Thread sink through policy constructors/builders via `.with_sink()` method (core implementation)
 - [ ] [P1.10.b](P1.10.b.md) Thread sink through policy constructors/builders via `.with_sink()` method (tests & docs)
 - [ ] [P1.11.a](P1.11.a.md) Add examples showing telemetry integration: (core implementation)
