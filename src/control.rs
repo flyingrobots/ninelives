@@ -184,26 +184,33 @@ impl<S> tower_layer::Layer<S> for AuthorizationLayer {
     }
 }
 
-impl<S, Request> Service<Request> for AuthorizationService<S>
+impl<S, C> Service<CommandEnvelope<C>> for AuthorizationService<S>
 where
-    S: Service<Request>,
-    S::Error: Send + Sync + 'static,
+    C: CommandLabel + Clone + Send + Sync + 'static,
+    S: Service<CommandEnvelope<C>, Response = CommandResult, Error = CommandError>
+        + Clone
+        + Send
+        + 'static,
     S::Future: Send + 'static,
 {
-    type Response = S::Response;
-    type Error = S::Error;
-    type Future = S::Future;
+    type Response = CommandResult;
+    type Error = CommandError;
+    type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
 
     fn poll_ready(
         &mut self,
         cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Result<(), Self::Error>> {
+    ) -> std::task::Poll<Result<(), CommandError>> {
         self.inner.poll_ready(cx)
     }
 
-    fn call(&mut self, req: Request) -> Self::Future {
-        // Authorization logic will be applied in P2.16b; pass-through for now.
-        self.inner.call(req)
+    fn call(&mut self, req: CommandEnvelope<C>) -> Self::Future {
+        let registry = self._registry.clone();
+        let mut inner = self.inner.clone();
+        Box::pin(async move {
+            registry.authenticate(&req).map_err(CommandError::Auth)?;
+            inner.call(req).await
+        })
     }
 }
 

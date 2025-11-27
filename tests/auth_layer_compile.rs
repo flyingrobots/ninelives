@@ -1,6 +1,9 @@
-#![allow(missing_docs, unused_mut)]
+#![allow(missing_docs)]
 
-use ninelives::control::{AuthMode, AuthRegistry, PassthroughAuth};
+use ninelives::control::{
+    AuthMode, AuthPayload, AuthRegistry, BuiltInCommand, CommandEnvelope, CommandMeta,
+    CommandResult, PassthroughAuth,
+};
 use ninelives::AuthorizationLayer;
 use std::future::Ready;
 use std::task::{Context, Poll};
@@ -9,17 +12,17 @@ use tower::{Layer, Service, ServiceExt};
 #[derive(Clone)]
 struct Echo;
 
-impl Service<u32> for Echo {
-    type Response = u32;
-    type Error = std::convert::Infallible;
-    type Future = Ready<Result<u32, Self::Error>>;
+impl Service<CommandEnvelope<BuiltInCommand>> for Echo {
+    type Response = CommandResult;
+    type Error = ninelives::control::CommandError;
+    type Future = Ready<Result<CommandResult, Self::Error>>;
 
     fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         Poll::Ready(Ok(()))
     }
 
-    fn call(&mut self, req: u32) -> Self::Future {
-        std::future::ready(Ok(req))
+    fn call(&mut self, _req: CommandEnvelope<BuiltInCommand>) -> Self::Future {
+        std::future::ready(Ok(CommandResult::Ack))
     }
 }
 
@@ -29,9 +32,13 @@ async fn authorization_layer_compiles_and_passes_through() {
     registry.register(std::sync::Arc::new(PassthroughAuth));
 
     let layer = AuthorizationLayer::new(registry);
-    let mut svc = layer.layer(Echo);
+    let svc = layer.layer(Echo);
 
-    let mut ready = svc.ready().await.unwrap();
-    let out = ready.call(7).await.unwrap();
-    assert_eq!(out, 7);
+    let env = CommandEnvelope {
+        cmd: BuiltInCommand::List,
+        auth: Some(AuthPayload::Opaque(vec![])),
+        meta: CommandMeta { id: "t".into(), correlation_id: None, timestamp_millis: None },
+    };
+    let out = svc.oneshot(env).await.unwrap();
+    assert_eq!(out, CommandResult::Ack);
 }
