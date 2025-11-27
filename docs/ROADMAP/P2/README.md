@@ -17,7 +17,7 @@
 - [x] [P2.08](P2.08.md) Implement `CommandRouter`
 - [x] [P2.09](P2.09.md) Create `ConfigRegistry` for adaptive handles
 - [x] [P2.10](P2.10.md) Implement `Set/Get` commands
-- [ ] [P2.11](P2.11.md) System State Query (Debug)
+- [x] [P2.11](P2.11.md) System State Query (Debug)
 - [x] [P2.12](P2.12.md) ResetCircuitBreaker handler
 - [x] [P2.121](P2.121.md) Circuit breaker registry + ids
 - [x] [P2.13](P2.13.md) ListConfig handler
