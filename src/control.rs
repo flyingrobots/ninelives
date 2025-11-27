@@ -394,6 +394,7 @@ pub enum BuiltInCommand {
     WriteConfig { path: String, value: String },
     ResetCircuitBreaker { id: String },
     ListConfig,
+    GetState,
 }
 
 pub trait CommandLabel {
@@ -411,6 +412,7 @@ impl CommandLabel for BuiltInCommand {
             BuiltInCommand::WriteConfig { .. } => "write_config",
             BuiltInCommand::ResetCircuitBreaker { .. } => "reset_circuit_breaker",
             BuiltInCommand::ListConfig => "list_config",
+            BuiltInCommand::GetState => "get_state",
         }
     }
 }
@@ -618,6 +620,27 @@ impl CommandHandler<BuiltInCommand> for BuiltInHandler {
                     Err(e) => Ok(CommandResult::Error(e)),
                 }
             }
+            BuiltInCommand::GetState => {
+                let breakers = crate::circuit_breaker_registry::global().snapshot();
+                let map: serde_json::Map<String, serde_json::Value> = breakers
+                    .into_iter()
+                    .map(|(id, state)| {
+                        (
+                            id,
+                            serde_json::Value::String(
+                                match state {
+                                    crate::circuit_breaker::CircuitState::Closed => "Closed",
+                                    crate::circuit_breaker::CircuitState::Open => "Open",
+                                    crate::circuit_breaker::CircuitState::HalfOpen => "HalfOpen",
+                                }
+                                .into(),
+                            ),
+                        )
+                    })
+                    .collect();
+                let payload = serde_json::json!({ "breakers": map });
+                Ok(CommandResult::Value(payload.to_string()))
+            }
         }
     }
 }
@@ -716,5 +739,16 @@ mod tests {
         reg.register_fromstr("b", crate::adaptive::Adaptive::new(1usize));
         reg.register_fromstr("a", crate::adaptive::Adaptive::new(2usize));
         assert_eq!(reg.keys(), vec!["a".to_string(), "b".to_string()]);
+    }
+
+    #[test]
+    fn breaker_snapshot_sorted_and_states() {
+        crate::circuit_breaker_registry::register_new("cb_a".into());
+        crate::circuit_breaker_registry::register_new("cb_b".into());
+        let snap = crate::circuit_breaker_registry::global().snapshot();
+        assert_eq!(snap.len(), 2);
+        assert_eq!(snap[0].0, "cb_a");
+        assert_eq!(snap[0].1, crate::circuit_breaker::CircuitState::Closed);
+        assert_eq!(snap[1].0, "cb_b");
     }
 }

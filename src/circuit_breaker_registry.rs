@@ -43,6 +43,15 @@ impl CircuitBreakerRegistry {
             Err(format!("breaker id not found: {id}"))
         }
     }
+
+    /// Snapshot of all breaker states (id -> state).
+    pub fn snapshot(&self) -> Vec<(String, CircuitState)> {
+        let map = self.inner.lock().unwrap();
+        let mut entries: Vec<(String, CircuitState)> =
+            map.iter().map(|(k, v)| (k.clone(), v.state())).collect();
+        entries.sort_by(|a, b| a.0.cmp(&b.0));
+        entries
+    }
 }
 
 static GLOBAL_REGISTRY: OnceLock<CircuitBreakerRegistry> = OnceLock::new();

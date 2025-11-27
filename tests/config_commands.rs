@@ -67,6 +67,35 @@ async fn list_config_returns_registered_keys() {
 }
 
 #[tokio::test]
+async fn get_state_reports_open_breaker() {
+    // Create breaker and force it to open.
+    let cfg =
+        CircuitBreakerConfig::new(1, Duration::from_millis(1), 1).unwrap().with_id("cb_state");
+    let layer = CircuitBreakerLayer::new(cfg).unwrap();
+    let mut svc = layer.layer(FailingSvc);
+    let _ = svc.ready().await.unwrap().call(()).await;
+
+    let handler = BuiltInHandler::default();
+    let mut auth = AuthRegistry::new(AuthMode::First);
+    auth.register(std::sync::Arc::new(PassthroughAuth));
+    let history = Arc::new(InMemoryHistory::default());
+    let router = CommandRouter::new(auth, Arc::new(handler), history);
+
+    let env = CommandEnvelope {
+        cmd: BuiltInCommand::GetState,
+        auth: Some(AuthPayload::Opaque(vec![])),
+        meta: CommandMeta { id: "gs".into(), correlation_id: None, timestamp_millis: None },
+    };
+    let res = router.execute(env).await.unwrap();
+    if let CommandResult::Value(s) = res {
+        let v: serde_json::Value = serde_json::from_str(&s).unwrap();
+        assert_eq!(v["breakers"]["cb_state"], "Open");
+    } else {
+        panic!("expected Value result");
+    }
+}
+
+#[tokio::test]
 async fn reset_circuit_breaker_command() {
     register_new("cb1".into());
 
