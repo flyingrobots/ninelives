@@ -21,6 +21,7 @@ members = [
     "ninelives-jsonl",
     "ninelives-otlp",
     "ninelives-cookbook",
+    "xtask",
 ]
 resolver = "2"
 

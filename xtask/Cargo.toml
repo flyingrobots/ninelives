@@ -1,0 +1,10 @@
+[package]
+name = "xtask"
+edition = "2021"
+version = "0.1.0"
+publish = false
+
+[dependencies]
+anyhow = "1"
+walkdir = "2"
+regex = "1"

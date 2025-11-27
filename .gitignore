@@ -34,3 +34,4 @@ Thumbs.db
 # Misc project-local
 .env
 .env.local
+.obsidian/
