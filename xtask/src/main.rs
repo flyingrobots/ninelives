@@ -325,8 +325,184 @@ fn cmd_sync_dag(tasks: &mut HashMap<String, Task>, phase: &str) -> Result<()> {
     save_all(tasks)
 }
 
+fn collect_all_edges() -> Result<Vec<(String, String)>> {
+    let mut edges = read_edges(&Path::new("docs/ROADMAP").join("DAG.csv"))?;
+    for entry in WalkDir::new("docs/ROADMAP") {
+        let entry = entry?;
+        if entry.file_type().is_file() {
+            if let Some(name) = entry.file_name().to_str() {
+                if name == "DAG.csv"
+                    && entry.path().parent().map(|p| p.ends_with("ROADMAP")).unwrap_or(false)
+                {
+                    continue;
+                }
+                if name == "DAG.csv" {
+                    edges.extend(read_edges(entry.path())?);
+                }
+            }
+        }
+    }
+    Ok(edges)
+}
+
+fn append_edges(edges: &[(String, String)]) -> Result<()> {
+    let dag_path = Path::new("docs/ROADMAP").join("DAG.csv");
+    let mut existing = read_edges(&dag_path)?;
+    for e in edges {
+        if !existing.contains(e) {
+            existing.push(e.clone());
+        }
+    }
+    // write unique with header
+    let mut wtr = csv::Writer::from_writer(Vec::new());
+    wtr.write_record(&["from", "to"])?;
+    for (from, to) in &existing {
+        wtr.write_record(&[from, to])?;
+    }
+    let data = String::from_utf8(wtr.into_inner()?)?;
+    fs::create_dir_all(dag_path.parent().unwrap())?;
+    fs::write(dag_path, data)?;
+    Ok(())
+}
+
+fn cmd_add(
+    tasks: &mut HashMap<String, Task>,
+    id: &str,
+    title: &str,
+    est: &str,
+    value: &str,
+    deps: Vec<String>,
+) -> Result<()> {
+    let phase = id.split('.').next().ok_or_else(|| anyhow!("bad id"))?;
+    let phase_dir = Path::new("docs/ROADMAP").join(phase);
+    fs::create_dir_all(&phase_dir)?;
+
+    // create frontmatter and body
+    let fm = Frontmatter {
+        id: id.to_string(),
+        title: title.to_string(),
+        estimate: Some(est.to_string()),
+        status: Status::Open,
+        blocked_by: deps.clone(),
+        blocks: Vec::new(),
+        value: Some(value.to_string()),
+    };
+    let body = format!(
+        "# [{id}] {title}\n\n## Summary\n\n{title}\n\n## Steps\n1. Write/adjust tests\n2. Implement\n3. Update docs/ADR\n\n## Ready When\n- [ ] Tests pass\n- [ ] Docs updated\n\n## Test Plan\n\n### Unit Tests\n- [ ] Add unit coverage\n\n### Integration Tests\n- [ ] Add integration coverage\n\n### End-to-end Tests\n- N/A\n"
+    );
+    let fm_yaml = serde_yaml::to_string(&fm)?.trim().to_string();
+    let content = format!("---\n{fm_yaml}\n---\n\n{body}");
+    let path = phase_dir.join(format!("{id}.md"));
+    fs::write(&path, content)?;
+
+    // append edges to global DAG
+    let new_edges: Vec<(String, String)> =
+        deps.iter().map(|d| (d.clone(), id.to_string())).collect();
+    append_edges(&new_edges)?;
+
+    // reload tasks and resync
+    let mut new_tasks = load_tasks()?;
+    cmd_sync_dag(&mut new_tasks, "all")?;
+    *tasks = new_tasks;
+    Ok(())
+}
+
+fn compute_ready(tasks: &HashMap<String, Task>) -> Vec<String> {
+    let mut ready = Vec::new();
+    for (id, t) in tasks {
+        if t.front.status != Status::Open {
+            continue;
+        }
+        let mut blocked = false;
+        for dep in &t.front.blocked_by {
+            if let Some(dep_task) = tasks.get(dep) {
+                if dep_task.front.status != Status::Closed {
+                    blocked = true;
+                    break;
+                }
+            } else {
+                // missing dep, treat as blocked
+                blocked = true;
+                break;
+            }
+        }
+        if !blocked {
+            ready.push(id.clone());
+        }
+    }
+    ready
+}
+
+fn parse_estimate(est: &Option<String>) -> f64 {
+    if let Some(s) = est {
+        let digits: String = s.chars().take_while(|c| c.is_ascii_digit() || *c == '.').collect();
+        if let Ok(v) = digits.parse::<f64>() {
+            return if v > 0.0 { v } else { 2.0 };
+        }
+    }
+    2.0
+}
+
+fn value_weight(v: &Option<String>) -> f64 {
+    match v.as_deref() {
+        Some("H") => 3.0,
+        Some("M") => 2.0,
+        Some("L") => 1.0,
+        _ => 1.0,
+    }
+}
+
+fn suggest(tasks: &HashMap<String, Task>, scope: &str) -> Result<()> {
+    let edges = collect_all_edges()?;
+    let mut adj: HashMap<String, Vec<String>> = HashMap::new();
+    for (from, to) in edges {
+        adj.entry(from).or_default().push(to);
+    }
+    // compute downstream depth (longest path) via dfs memo
+    fn depth(
+        node: &str,
+        adj: &HashMap<String, Vec<String>>,
+        memo: &mut HashMap<String, usize>,
+    ) -> usize {
+        if let Some(&d) = memo.get(node) {
+            return d;
+        }
+        let d = 1 + adj
+            .get(node)
+            .map(|v| v.iter().map(|n| depth(n, adj, memo)).max().unwrap_or(0))
+            .unwrap_or(0);
+        memo.insert(node.to_string(), d);
+        d
+    }
+    let mut memo = HashMap::new();
+    let ready = compute_ready(tasks);
+    let mut ranked = Vec::new();
+    for id in ready {
+        if scope != "all" && !id.starts_with(scope) {
+            continue;
+        }
+        let t = tasks.get(&id).unwrap();
+        let dur = parse_estimate(&t.front.estimate);
+        let val = value_weight(&t.front.value);
+        let score = val / dur;
+        let dep_depth = depth(&id, &adj, &mut memo);
+        ranked.push((score, dep_depth, id.clone(), t.front.title.clone(), dur, val));
+    }
+    ranked.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap().then(b.1.cmp(&a.1)));
+    println!("Ready tasks (sorted by value/duration, then downstream depth):");
+    for (score, depth, id, title, dur, val) in &ranked {
+        println!(
+            "- {} ({}) score={:.2} value={} dur={}h depth={}",
+            id, title, score, val, dur, depth
+        );
+    }
+    if ranked.is_empty() {
+        println!("No ready tasks in scope {scope}");
+    }
+    Ok(())
+}
 fn usage() {
-    eprintln!("Usage:\n  cargo run --bin tasks set <TASK_ID> <open|blocked|closed>\n  cargo run --bin tasks block <FROM_ID> <TO_ID>\n  cargo run --bin tasks enrich P2          # apply canned plans to phase 2\n  cargo run --bin tasks sync-dag P2        # import DAG.csv edges into blocked_by/blocks");
+    eprintln!("Usage:\n  cargo run --bin tasks set <TASK_ID> <open|blocked|closed>\n  cargo run --bin tasks block <FROM_ID> <TO_ID>\n  cargo run --bin tasks enrich P2            # apply canned plans to phase 2\n  cargo run --bin tasks sync-dag <PHASE|all> # import DAG.csv edges into blocked_by/blocks\n  cargo run --bin tasks suggest [PHASE|all]  # list ready tasks ranked by value/duration\n  cargo run --bin tasks add <TASK_ID> <TITLE> <EST> <VALUE> <DEP1,DEP2,...|->  # create task and edges");
 }
 
 fn main() -> Result<()> {
@@ -390,6 +566,28 @@ fn main() -> Result<()> {
                 cmd_sync_dag(&mut tasks, phase)?;
                 println!("Synced DAG for {phase}");
             }
+        }
+        "suggest" => {
+            let scope = if args.is_empty() { "all".to_string() } else { args[0].clone() };
+            suggest(&tasks, &scope)?;
+        }
+        "add" => {
+            if args.len() < 5 {
+                usage();
+                std::process::exit(1);
+            }
+            let id = args[0].clone();
+            let title = args[1].clone();
+            let est = args[2].clone();
+            let value = args[3].clone();
+            let dep_arg = args[4].clone();
+            let deps: Vec<String> = if dep_arg == "-" {
+                Vec::new()
+            } else {
+                dep_arg.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect()
+            };
+            cmd_add(&mut tasks, &id, &title, &est, &value, deps)?;
+            println!("Added task {id}");
         }
         _ => {
             usage();
