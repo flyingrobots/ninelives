@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+
 use hdrhistogram::Histogram;
 use ninelives::telemetry::{NonBlockingSink, NullSink, PolicyEvent, RetryEvent, StreamingSink};
 use std::time::{Duration, Instant};

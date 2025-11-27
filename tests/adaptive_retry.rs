@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+
 use ninelives::adaptive::Adaptive;
 use ninelives::{Backoff, Jitter, RetryPolicy};
 use std::sync::{

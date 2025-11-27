@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+
 use ninelives::control::CommandContext;
 use serde_json::json;
 

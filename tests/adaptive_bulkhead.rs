@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+
 use ninelives::BulkheadPolicy;
 use ninelives::ResilienceError;
 use std::sync::atomic::{AtomicUsize, Ordering};

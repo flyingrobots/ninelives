@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+
 use ninelives::circuit_breaker_registry::register_new;
 use ninelives::control::{
     AuthMode, AuthPayload, AuthRegistry, CommandEnvelope, CommandMeta, CommandResult,
