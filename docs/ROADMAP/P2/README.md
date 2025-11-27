@@ -26,7 +26,7 @@ See [DAG.csv](DAG.csv) for the edge list.
 - [ ] [P2.13](P2.13.md) ListPolicies handler
 
 ### Transport
-- [ ] [P2.14](P2.14.md) Transport abstraction design (HTTP/gRPC friendly)
+- [/] [P2.14](P2.14.md) Transport abstraction design (HTTP/gRPC friendly)
 - [/] [P2.15](P2.15.md) In-process transport (channels)
 
 ### Auth/Audit/Wrap
@@ -52,7 +52,7 @@ See [DAG.csv](DAG.csv) for the edge list.
 - [ ] [P2.11](P2.11.md) State handler: query policy state
 - [x] [P2.12](P2.12.md) ResetCircuitBreaker handler
 - [ ] [P2.13](P2.13.md) ListPolicies handler
-- [ ] [P2.14](P2.14.md) Transport abstraction design (HTTP/gRPC friendly)
+- [/] [P2.14](P2.14.md) Transport abstraction design (HTTP/gRPC friendly)
 - [ ] [P2.16](P2.16.md) Authorization layer
 - [x] [P2.17](P2.17.md) Audit layer
 - [/] [P2.15](P2.15.md) In-process transport (channels)

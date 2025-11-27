@@ -1,28 +1,20 @@
-# Phase 3
+# Phase 3: Adaptive Policies
 
-Executive Summary: Aggregate telemetry into queryable system state.
+Executive Summary: Transform `ninelives` from a static configuration library into a dynamic, self-regulating system.
+
+This phase builds the **Closed Loop Control** capabilities:
+1.  **Observe**: Aggregate raw events into windowed metrics (Rates, Latencies).
+2.  **Decide**: Use Control Laws (AIMD, Budgets) to calculate optimal parameters.
+3.  **Act**: Update `Adaptive<T>` handles in real-time.
 
 ## Tasks
-- [ ] [P3.01.a](P3.01.a.md) Design `SystemState` struct: (core implementation)
-- [ ] [P3.01.b](P3.01.b.md) Design `SystemState` struct: (tests & docs)
-- [ ] [P3.02.a](P3.02.a.md) Implement efficient storage (ring buffers, sketches) (core implementation)
-- [ ] [P3.02.b](P3.02.b.md) Implement efficient storage (ring buffers, sketches) (tests & docs)
-- [ ] [P3.03.a](P3.03.a.md) Create `ninelives-observer` crate (core implementation)
-- [ ] [P3.03.b](P3.03.b.md) Create `ninelives-observer` crate (tests & docs)
-- [ ] [P3.04.a](P3.04.a.md) Implement `Observer` as a background task (core implementation)
-- [ ] [P3.04.b](P3.04.b.md) Implement `Observer` as a background task (tests & docs)
-- [ ] [P3.05.a](P3.05.a.md) Subscribe to StreamingSink (core implementation)
-- [ ] [P3.05.b](P3.05.b.md) Subscribe to StreamingSink (tests & docs)
-- [ ] [P3.06.a](P3.06.a.md) Ingest PolicyEvents and update SystemState (core implementation)
-- [ ] [P3.06.b](P3.06.b.md) Ingest PolicyEvents and update SystemState (tests & docs)
-- [ ] [P3.07.a](P3.07.a.md) Expose query interface: (core implementation)
-- [ ] [P3.07.b](P3.07.b.md) Expose query interface: (tests & docs)
-- [ ] [P3.08.a](P3.08.a.md) Wire Observer to telemetry message bus (core implementation)
-- [ ] [P3.08.b](P3.08.b.md) Wire Observer to telemetry message bus (tests & docs)
-- [ ] [P3.09.a](P3.09.a.md) Add control plane commands to query Observer state (core implementation)
-- [ ] [P3.09.b](P3.09.b.md) Add control plane commands to query Observer state (tests & docs)
-- [ ] [P3.10.a](P3.10.a.md) Add examples showing Observer usage (core implementation)
-- [ ] [P3.10.b](P3.10.b.md) Add examples showing Observer usage (tests & docs)
+- [ ] [P3.01](P3.01.md) **Windowed Metrics Primitives**: The core data structures.
+- [/] [P3.02](P3.02.md) **Telemetry Aggregator**: The sink that fills the windows.
+- [/] [P3.03](P3.03.md) **Adaptive Controller Primitive**: The generic feedback loop runner.
+- [/] [P3.04](P3.04.md) **AIMD Concurrency**: Auto-scaling for Bulkheads.
+- [/] [P3.05](P3.05.md) **Retry Budgeting**: Storm prevention.
+- [/] [P3.06](P3.06.md) **System State Query**: Exposing the metrics.
 
-## Definition of Ready
-- TBD
+## Alignment with GATOS
+- **P3.04 (AIMD)** is critical for GATOS M4 (Job Plane) to auto-scale worker pools.
+- **P3.05 (Retry Budget)** is critical for GATOS M3 (Message Plane) to prevent Git CAS retry storms.

@@ -1,34 +1,17 @@
-# Phase 5
+# Phase 5: Self-Healing Brain (Sentinel)
 
-Executive Summary: Build the self-healing brain of the system.
+Executive Summary: Build `ninelives-sentinel`, a meta-policy engine capable of observing system state, evaluating scripts, and issuing commands to achieve autonomous self-healing capabilities. This is the "brain" of the entire `ninelives` ecosystem.
+
+## Context
+
+Phase 3 provides the observational capabilities (metrics aggregation). Phase 5 uses this observation as input for a decision-making engine that can then issue commands back into the system (via the control plane from Phase 2). The goal is to move from manual configuration to automated, adaptive resilience.
 
 ## Tasks
-- [ ] [P5.01.a](P5.01.a.md) Create `ninelives-sentinel` crate (core implementation)
-- [ ] [P5.01.b](P5.01.b.md) Create `ninelives-sentinel` crate (tests & docs)
-- [ ] [P5.02.a](P5.02.a.md) Integrate Rhai scripting engine (core implementation)
-- [ ] [P5.02.b](P5.02.b.md) Integrate Rhai scripting engine (tests & docs)
-- [ ] [P5.03.a](P5.03.a.md) Define script API: (core implementation)
-- [ ] [P5.03.b](P5.03.b.md) Define script API: (tests & docs)
-- [ ] [P5.04.a](P5.04.a.md) Implement meta-policy evaluation loop: (core implementation)
-- [ ] [P5.04.b](P5.04.b.md) Implement meta-policy evaluation loop: (tests & docs)
-- [ ] [P5.05.a](P5.05.a.md) `ReloadMetaPolicyHandler` command (core implementation)
-- [ ] [P5.05.b](P5.05.b.md) `ReloadMetaPolicyHandler` command (tests & docs)
-- [ ] [P5.06.a](P5.06.a.md) Watch script file for changes (optional) (core implementation)
-- [ ] [P5.06.b](P5.06.b.md) Watch script file for changes (optional) (tests & docs)
-- [ ] [P5.07.a](P5.07.a.md) Validate script before activating (core implementation)
-- [ ] [P5.07.b](P5.07.b.md) Validate script before activating (tests & docs)
-- [ ] [P5.08.a](P5.08.a.md) Auto-adjust retry backoff based on error rate (core implementation)
-- [ ] [P5.08.b](P5.08.b.md) Auto-adjust retry backoff based on error rate (tests & docs)
-- [ ] [P5.09.a](P5.09.a.md) Open circuit breaker on sustained failures (core implementation)
-- [ ] [P5.09.b](P5.09.b.md) Open circuit breaker on sustained failures (tests & docs)
-- [ ] [P5.10.a](P5.10.a.md) Increase bulkhead capacity under load (core implementation)
-- [ ] [P5.10.b](P5.10.b.md) Increase bulkhead capacity under load (tests & docs)
-- [ ] [P5.11.a](P5.11.a.md) Alert on anomalies (core implementation)
-- [ ] [P5.11.b](P5.11.b.md) Alert on anomalies (tests & docs)
-- [ ] [P5.12.a](P5.12.a.md) Implement `Sentinel` as top-level coordinator: (core implementation)
-- [ ] [P5.12.b](P5.12.b.md) Implement `Sentinel` as top-level coordinator: (tests & docs)
-- [ ] [P5.13.a](P5.13.a.md) Add graceful shutdown (core implementation)
-- [ ] [P5.13.b](P5.13.b.md) Add graceful shutdown (tests & docs)
+- [ ] [P5.01](P5.01.md) **Sentinel Crate & Top-Level Coordinator**: Establish the `ninelives-sentinel` crate and its main orchestration logic.
+- [/] [P5.02](P5.02.md) **Scripting Engine Integration & API**: Integrate an embedded scripting language (e.g., Rhai) and define a safe, sandboxed API for scripts to interact with `ninelives` components.
+- [/] [P5.03](P5.03.md) **Meta-Policy Evaluation Loop & Management**: Implement the continuous loop for executing meta-policy scripts and provide dynamic script loading/reloading capabilities.
+- [/] [P5.04](P5.04.md) **Built-in Meta-Policies & Examples**: Translate P3's adaptive control laws into concrete example meta-policy scripts, demonstrating automated self-tuning.
 
-## Definition of Ready
-- TBD
+## Alignment with GATOS
+- **P5.01-P5.04** are critical for GATOS M6 (Explorer & Verification) and M7 (Proof-of-Experiment) by enabling verifiable autonomous operation.
+- The `Sentinel` will be the primary mechanism for GATOS to achieve self-tuning worker pools, adaptive policy gates, and automated incident response based on observed conditions.

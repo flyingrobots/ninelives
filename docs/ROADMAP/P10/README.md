@@ -1,36 +1,17 @@
-# Phase 10
+# Phase 10: Production Hardening
 
-Executive Summary: Optimize for zero-overhead and production reliability.
+Executive Summary: Ensure `ninelives` is robust, performant, and observable for mission-critical production environments. This phase focuses on rigorous testing, optimization, and comprehensive monitoring capabilities.
+
+## Context
+
+A resilience library must itself be resilient, performant, and provide deep insights into its operation. This phase aims to make `ninelives` battle-hardened, capable of withstanding adverse conditions, and easily debuggable and monitorable in production.
 
 ## Tasks
-- [ ] [P10.01.a](P10.01.a.md) Criterion benchmarks for each layer (core implementation)
-- [ ] [P10.01.b](P10.01.b.md) Criterion benchmarks for each layer (tests & docs)
-- [ ] [P10.02.a](P10.02.a.md) Compare overhead vs raw service calls (core implementation)
-- [ ] [P10.02.b](P10.02.b.md) Compare overhead vs raw service calls (tests & docs)
-- [ ] [P10.03.a](P10.03.a.md) Profile hot paths (event emission, state checks) (core implementation)
-- [ ] [P10.03.b](P10.03.b.md) Profile hot paths (event emission, state checks) (tests & docs)
-- [ ] [P10.04.a](P10.04.a.md) Optimize lock contention (core implementation)
-- [ ] [P10.04.b](P10.04.b.md) Optimize lock contention (tests & docs)
-- [ ] [P10.05.a](P10.05.a.md) < 1% latency overhead for policy layers (core implementation)
-- [ ] [P10.05.b](P10.05.b.md) < 1% latency overhead for policy layers (tests & docs)
-- [ ] [P10.06.a](P10.06.a.md) < 10μs per event emission (core implementation)
-- [ ] [P10.06.b](P10.06.b.md) < 10μs per event emission (tests & docs)
-- [ ] [P10.07.a](P10.07.a.md) Lock-free fast paths where possible (core implementation)
-- [ ] [P10.07.b](P10.07.b.md) Lock-free fast paths where possible (tests & docs)
-- [ ] [P10.08.a](P10.08.a.md) Chaos engineering tests (core implementation)
-- [ ] [P10.08.b](P10.08.b.md) Chaos engineering tests (tests & docs)
-- [ ] [P10.09.a](P10.09.a.md) Soak tests (run for days) (core implementation)
-- [ ] [P10.09.b](P10.09.b.md) Soak tests (run for days) (tests & docs)
-- [ ] [P10.10.a](P10.10.a.md) Load tests (thousands of RPS) (core implementation)
-- [ ] [P10.10.b](P10.10.b.md) Load tests (thousands of RPS) (tests & docs)
-- [ ] [P10.11.a](P10.11.a.md) Failure injection tests (core implementation)
-- [ ] [P10.11.b](P10.11.b.md) Failure injection tests (tests & docs)
-- [ ] [P10.12.a](P10.12.a.md) Add detailed tracing spans to all layers (core implementation)
-- [ ] [P10.12.b](P10.12.b.md) Add detailed tracing spans to all layers (tests & docs)
-- [ ] [P10.13.a](P10.13.a.md) Metrics integration (Prometheus) (core implementation)
-- [ ] [P10.13.b](P10.13.b.md) Metrics integration (Prometheus) (tests & docs)
-- [ ] [P10.14.a](P10.14.a.md) Add flame graph generation support (core implementation)
-- [ ] [P10.14.b](P10.14.b.md) Add flame graph generation support (tests & docs)
+- [/] [P10.01](P10.01.md) **Performance Benchmarking & Profiling**: Establish a comprehensive benchmark suite and profile hot paths to identify optimization opportunities.
+- [/] [P10.02](P10.02.md) **Low-Overhead Optimization**: Implement optimizations to minimize CPU, memory, and latency overhead, focusing on lock contention and zero-allocation.
+- [/] [P10.03](P10.03.md) **Advanced Reliability Testing**: Conduct chaos engineering, soak tests, load tests, and failure injection to validate robustness under extreme conditions.
+- [/] [P10.04](P10.04.md) **Production Observability**: Enhance tracing and integrate with standard metrics systems (e.g., Prometheus) for deep introspection.
 
-## Definition of Ready
-- TBD
+## Alignment with GATOS
+- **P10.01-P10.04** are essential for GATOS M9 (Conformance Suite) and M10+ (Enterprise & Scale) by providing a thoroughly validated, high-performance, and observable resilience foundation.
+- The optimizations and testing in this phase directly contribute to `ninelives` being a reliable and trustworthy component within the verifiable GATOS ecosystem.

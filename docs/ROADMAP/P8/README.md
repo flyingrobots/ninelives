@@ -1,24 +1,18 @@
-# Phase 8
+# Phase 8: Transport Protocols
 
-Executive Summary: Make the control plane accessible via multiple protocols.
+Executive Summary: Expand the accessibility of the `ninelives-control` plane by implementing various network transport protocols. This allows external systems (CLIs, UIs, other services) to interact with and manage `ninelives` instances effectively.
+
+## Context
+
+The `ninelives-control` plane, developed in Phase 2, provides an internal API for managing resilience policies. This phase focuses on exposing that API over standard network protocols, leveraging the `Transport` abstraction designed in P2.14.
 
 ## Tasks
-- [ ] [P8.01.a](P8.01.a.md) Design transport-agnostic command serialization (core implementation)
-- [ ] [P8.01.b](P8.01.b.md) Design transport-agnostic command serialization (tests & docs)
-- [ ] [P8.02.a](P8.02.a.md) Support JSON and/or MessagePack (core implementation)
-- [ ] [P8.02.b](P8.02.b.md) Support JSON and/or MessagePack (tests & docs)
-- [ ] [P8.03.a](P8.03.a.md) Create `ninelives-rest` crate (core implementation)
-- [ ] [P8.03.b](P8.03.b.md) Create `ninelives-rest` crate (tests & docs)
-- [ ] [P8.04.a](P8.04.a.md) Expose ControlPlaneRouter over HTTP endpoints (core implementation)
-- [ ] [P8.04.b](P8.04.b.md) Expose ControlPlaneRouter over HTTP endpoints (tests & docs)
-- [ ] [P8.05.a](P8.05.a.md) Add authentication middleware (core implementation)
-- [ ] [P8.05.b](P8.05.b.md) Add authentication middleware (tests & docs)
-- [ ] [P8.06.a](P8.06.a.md) `ninelives-graphql` (GraphQL API) (core implementation)
-- [ ] [P8.06.b](P8.06.b.md) `ninelives-graphql` (GraphQL API) (tests & docs)
-- [ ] [P8.07.a](P8.07.a.md) `ninelives-mcp` (Model Context Protocol) (core implementation)
-- [ ] [P8.07.b](P8.07.b.md) `ninelives-mcp` (Model Context Protocol) (tests & docs)
-- [ ] [P8.08.a](P8.08.a.md) `ninelives-grpc` (gRPC service) (core implementation)
-- [ ] [P8.08.b](P8.08.b.md) `ninelives-grpc` (gRPC service) (tests & docs)
+- [ ] [P8.01](P8.01.md) **Command Serialization & Deserialization**: Define a canonical wire format (e.g., JSON) for `CommandEnvelope` and its components.
+- [/] [P8.02](P8.02.md) **HTTP REST Transport**: Implement a `ninelives-rest` crate for HTTP-based control plane access.
+- [/] [P8.03](P8.03.md) **gRPC Transport**: Implement a `ninelives-grpc` crate for high-performance, strongly-typed control plane access.
+- [/] [P8.04](P8.04.md) **Advanced/Future Transports (MCP/GraphQL)**: Placeholder for specialized or future transport protocols.
 
-## Definition of Ready
-- TBD
+## Alignment with GATOS
+- **P8.01 (Serialization)** is foundational for `gatos-cli` and `gatos-control-plane` to communicate with `ninelives` instances.
+- **P8.02 (HTTP REST)** directly enables GATOS M8 (Demos & Examples) by providing a user-friendly API for `gatos-cli` integration.
+- **P8.03 (gRPC)** supports GATOS M10 (Enterprise & Scale) by offering a high-performance control plane suitable for inter-service communication within the GATOS ecosystem.

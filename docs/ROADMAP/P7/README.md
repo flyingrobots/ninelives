@@ -1,21 +1,16 @@
-# Phase 7
+# Phase 7: Crate Split
 
-Executive Summary: Split into focused crates per the spec.
+Executive Summary: Refactor the monolithic `ninelives` crate into a well-defined Cargo workspace with smaller, focused crates. This enhances modularity, improves build times, and clarifies architectural boundaries, making `ninelives` easier to maintain, extend, and use.
+
+## Context
+
+As `ninelives` grows, a single large crate can become unwieldy. Splitting into `ninelives-core`, `ninelives-control`, `ninelives-observer`, and `ninelives-sentinel` (from P5) allows for more granular dependency management, reduces compilation times for specific use cases, and aligns with best practices for larger Rust projects. The original `ninelives` crate will become a meta-crate that re-exports components for convenience and backward compatibility.
 
 ## Tasks
-- [ ] [P7.01.a](P7.01.a.md) Create workspace Cargo.toml (core implementation)
-- [ ] [P7.01.b](P7.01.b.md) Create workspace Cargo.toml (tests & docs)
-- [ ] [P7.02.a](P7.02.a.md) Split crates: (core implementation)
-- [ ] [P7.02.b](P7.02.b.md) Split crates: (tests & docs)
-- [ ] [P7.03.a](P7.03.a.md) Update dependencies and re-exports (core implementation)
-- [ ] [P7.03.b](P7.03.b.md) Update dependencies and re-exports (tests & docs)
-- [ ] [P7.04.a](P7.04.a.md) Ensure backward compatibility (core implementation)
-- [ ] [P7.04.b](P7.04.b.md) Ensure backward compatibility (tests & docs)
-- [ ] [P7.05.a](P7.05.a.md) Create adapter template/guide (core implementation)
-- [ ] [P7.05.b](P7.05.b.md) Create adapter template/guide (tests & docs)
-- [ ] [P7.06.a](P7.06.a.md) Implement priority adapters: (core implementation)
-- [ ] [P7.06.b](P7.06.b.md) Implement priority adapters: (tests & docs)
-- [ ] [P7.07](P7.07.md) Document adapter development
+- [/] [P7.01](P7.01.md) **Workspace Setup & Core Crate Split**: Convert to a Cargo workspace and extract core resilience primitives into `ninelives-core`.
+- [/] [P7.02](P7.02.md) **Control & Observer Crates Split**: Extract control plane components into `ninelives-control` and telemetry/adaptive logic into `ninelives-observer`.
+- [/] [P7.03](P7.03.md) **Compatibility & Adapter Development Guidance**: Ensure backward compatibility and provide clear guidance for external developers to build extensions.
 
-## Definition of Ready
-- TBD
+## Alignment with GATOS
+- **P7.01-P7.03** are crucial for GATOS by providing a cleaner, more modular `ninelives` dependency structure. This allows GATOS components to import only the necessary parts of `ninelives` (e.g., `gatos-policy` might only need `ninelives-core` for algebra and specific layers, `gatos-control` would need `ninelives-control`).
+- This phase directly enables better dependency management and reduces the binary size of GATOS components.
