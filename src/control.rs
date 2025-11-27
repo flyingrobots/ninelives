@@ -5,12 +5,14 @@
 //! after auth. History storage is pluggable.
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
 use std::fmt::Display;
+use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
+use futures::future::{self, BoxFuture};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
+use tower::Service;
 
 /// Opaque command identifier.
 pub type CommandId = String;
@@ -27,14 +29,8 @@ pub struct CommandMeta {
 #[derive(Clone, Debug)]
 pub enum AuthPayload {
     Jwt { token: String },
-    Signatures {
-        payload_hash: [u8; 32],
-        signatures: Vec<DetachedSig>,
-    },
-    Mtls {
-        peer_dn: String,
-        cert_chain: Vec<Vec<u8>>,
-    },
+    Signatures { payload_hash: [u8; 32], signatures: Vec<DetachedSig> },
+    Mtls { peer_dn: String, cert_chain: Vec<Vec<u8>> },
     Opaque(Vec<u8>),
 }
 
@@ -89,17 +85,26 @@ pub trait AuthProvider: Send + Sync {
     fn name(&self) -> &'static str;
 
     /// Verify credentials; returns context on success.
-    fn authenticate(&self, meta: &CommandMeta, auth: Option<&AuthPayload>) -> Result<AuthContext, AuthError>;
+    fn authenticate(
+        &self,
+        meta: &CommandMeta,
+        auth: Option<&AuthPayload>,
+    ) -> Result<AuthContext, AuthError>;
 
     /// Optional authorization using the command label.
-    fn authorize(&self, _ctx: &AuthContext, _label: &str, _meta: &CommandMeta) -> Result<(), AuthError> {
+    fn authorize(
+        &self,
+        _ctx: &AuthContext,
+        _label: &str,
+        _meta: &CommandMeta,
+    ) -> Result<(), AuthError> {
         Ok(())
     }
 }
 
 /// Registry that tries providers in order.
 pub struct AuthRegistry {
-    providers: Vec<Arc<dyn AuthProvider>>, 
+    providers: Vec<Arc<dyn AuthProvider>>,
     mode: AuthMode,
 }
 
@@ -152,16 +157,53 @@ impl AuthRegistry {
 /// Passthrough provider (dev/testing).
 pub struct PassthroughAuth;
 impl AuthProvider for PassthroughAuth {
-    fn name(&self) -> &'static str { "passthrough" }
-    fn authenticate(&self, _meta: &CommandMeta, _auth: Option<&AuthPayload>) -> Result<AuthContext, AuthError> {
-        Ok(AuthContext { principal: "anonymous".into(), provider: self.name(), attributes: HashMap::new() })
+    fn name(&self) -> &'static str {
+        "passthrough"
+    }
+    fn authenticate(
+        &self,
+        _meta: &CommandMeta,
+        _auth: Option<&AuthPayload>,
+    ) -> Result<AuthContext, AuthError> {
+        Ok(AuthContext {
+            principal: "anonymous".into(),
+            provider: self.name(),
+            attributes: HashMap::new(),
+        })
     }
 }
 
 /// Command handler trait.
 #[async_trait]
 pub trait CommandHandler<C: Clone>: Send + Sync {
-    async fn handle(&self, cmd: CommandEnvelope<C>, ctx: AuthContext) -> Result<CommandResult, CommandError>;
+    async fn handle(
+        &self,
+        cmd: CommandEnvelope<C>,
+        ctx: AuthContext,
+    ) -> Result<CommandResult, CommandError>;
+}
+
+/// Command service signature using tower::Service over CommandContext.
+pub trait CommandService:
+    Service<
+        CommandContext,
+        Response = CommandResult,
+        Error = CommandError,
+        Future = BoxFuture<'static, Result<CommandResult, CommandError>>,
+    > + Send
+    + Sync
+{
+}
+
+impl<T> CommandService for T where
+    T: Service<
+            CommandContext,
+            Response = CommandResult,
+            Error = CommandError,
+            Future = BoxFuture<'static, Result<CommandResult, CommandError>>,
+        > + Send
+        + Sync
+{
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -213,7 +255,7 @@ impl CommandHistory for InMemoryHistory {
 /// Simple in-process router using an AuthRegistry and handler.
 pub struct CommandRouter<C> {
     auth: AuthRegistry,
-    handler: Arc<dyn CommandHandler<C>>, 
+    handler: Arc<dyn CommandHandler<C>>,
     history: Arc<dyn CommandHistory>,
 }
 
@@ -221,7 +263,11 @@ impl<C> CommandRouter<C>
 where
     C: Send + Sync + Clone + CommandLabel + 'static,
 {
-    pub fn new(auth: AuthRegistry, handler: Arc<dyn CommandHandler<C>>, history: Arc<dyn CommandHistory>) -> Self {
+    pub fn new(
+        auth: AuthRegistry,
+        handler: Arc<dyn CommandHandler<C>>,
+        history: Arc<dyn CommandHistory>,
+    ) -> Self {
         Self { auth, handler, history }
     }
 
@@ -276,8 +322,11 @@ impl ConfigRegistry {
     }
 
     /// Register a value using FromStr/Display for parsing/formatting.
-    pub fn register_fromstr<T>(&mut self, path: impl Into<String>, handle: crate::adaptive::Adaptive<T>)
-    where
+    pub fn register_fromstr<T>(
+        &mut self,
+        path: impl Into<String>,
+        handle: crate::adaptive::Adaptive<T>,
+    ) where
         T: Clone + Send + Sync + 'static,
         T: std::str::FromStr,
         <T as std::str::FromStr>::Err: Display,
@@ -292,19 +341,20 @@ impl ConfigRegistry {
     }
 
     /// Register with custom parse/render functions.
-    pub fn register<T, P, R>(&mut self, path: impl Into<String>, handle: crate::adaptive::Adaptive<T>, parse: P, render: R)
-    where
+    pub fn register<T, P, R>(
+        &mut self,
+        path: impl Into<String>,
+        handle: crate::adaptive::Adaptive<T>,
+        parse: P,
+        render: R,
+    ) where
         T: Clone + Send + Sync + 'static,
         P: Fn(&str) -> Result<T, String> + Send + Sync + 'static,
         R: Fn(&T) -> String + Send + Sync + 'static,
     {
         self.entries.insert(
             path.into(),
-            Box::new(GenericConfig {
-                handle,
-                parse: Arc::new(parse),
-                render: Arc::new(render),
-            }),
+            Box::new(GenericConfig { handle, parse: Arc::new(parse), render: Arc::new(render) }),
         );
     }
 
@@ -399,14 +449,14 @@ impl BuiltInHandler {
 
 #[async_trait]
 impl CommandHandler<BuiltInCommand> for BuiltInHandler {
-    async fn handle(&self, cmd: CommandEnvelope<BuiltInCommand>, _ctx: AuthContext) -> Result<CommandResult, CommandError> {
+    async fn handle(
+        &self,
+        cmd: CommandEnvelope<BuiltInCommand>,
+        _ctx: AuthContext,
+    ) -> Result<CommandResult, CommandError> {
         match cmd.cmd {
-            BuiltInCommand::Set { key, value } => {
-                self.set_or_store(key, value)
-            }
-            BuiltInCommand::Get { key } => {
-                Ok(self.get_from_store_or_config(&key))
-            }
+            BuiltInCommand::Set { key, value } => self.set_or_store(key, value),
+            BuiltInCommand::Get { key } => Ok(self.get_from_store_or_config(&key)),
             BuiltInCommand::List => {
                 let keys = self.store.lock().unwrap().keys().cloned().collect();
                 Ok(CommandResult::List(keys))
@@ -446,6 +496,8 @@ impl CommandHandler<BuiltInCommand> for BuiltInHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use futures::future::ready;
+    use tower::Service;
 
     fn env(cmd: BuiltInCommand) -> CommandEnvelope<BuiltInCommand> {
         CommandEnvelope {
@@ -464,7 +516,10 @@ mod tests {
         let history: Arc<dyn CommandHistory> = Arc::new(InMemoryHistory::default());
         let router = CommandRouter::new(reg, handler, history.clone());
 
-        let res = router.execute(env(BuiltInCommand::Set { key: "k".into(), value: "v".into() })).await.unwrap();
+        let res = router
+            .execute(env(BuiltInCommand::Set { key: "k".into(), value: "v".into() }))
+            .await
+            .unwrap();
         assert_eq!(res, CommandResult::Ack);
 
         let res = router.execute(env(BuiltInCommand::Get { key: "k".into() })).await.unwrap();
@@ -476,8 +531,14 @@ mod tests {
 
     struct DenyAll;
     impl AuthProvider for DenyAll {
-        fn name(&self) -> &'static str { "deny" }
-        fn authenticate(&self, _meta: &CommandMeta, _auth: Option<&AuthPayload>) -> Result<AuthContext, AuthError> {
+        fn name(&self) -> &'static str {
+            "deny"
+        }
+        fn authenticate(
+            &self,
+            _meta: &CommandMeta,
+            _auth: Option<&AuthPayload>,
+        ) -> Result<AuthContext, AuthError> {
             Err(AuthError::Unauthenticated("nope".into()))
         }
     }
@@ -494,5 +555,25 @@ mod tests {
 
         let res = router.execute(env(BuiltInCommand::List)).await.unwrap();
         assert_eq!(res, CommandResult::List(vec![]));
+    }
+
+    #[test]
+    fn command_service_compiles() {
+        struct EchoSvc;
+        impl Service<CommandContext> for EchoSvc {
+            type Response = CommandResult;
+            type Error = CommandError;
+            type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
+            fn poll_ready(
+                &mut self,
+                _cx: &mut std::task::Context<'_>,
+            ) -> std::task::Poll<Result<(), Self::Error>> {
+                std::task::Poll::Ready(Ok(()))
+            }
+            fn call(&mut self, _req: CommandContext) -> Self::Future {
+                Box::pin(ready(Ok(CommandResult::Ack)))
+            }
+        }
+        let _svc: Box<dyn CommandService> = Box::new(EchoSvc);
     }
 }

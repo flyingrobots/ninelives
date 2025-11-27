@@ -16,7 +16,7 @@ See [DAG.csv](DAG.csv) for the edge list.
 
 ### Command Schema & Router
 - [x] [P2.07](P2.07.md) CommandContext schema (id, args, identity, response channel placeholder)
-- [ ] [P2.08](P2.08.md) CommandHandler trait (tower::Service<CommandContext>)
+- [x] [P2.08](P2.08.md) CommandHandler trait (tower::Service<CommandContext>)
 - [x] [P2.09](P2.09.md) ControlPlaneRouter skeleton (auth, dispatch, history)
 
 ### Parameter/State Handlers
@@ -46,7 +46,7 @@ See [DAG.csv](DAG.csv) for the edge list.
 - [x] [P2.04](P2.04.md) Adaptive integration: Timeout duration
 - [x] [P2.05](P2.05.md) Adaptive integration: CircuitBreaker thresholds/timeouts
 - [x] [P2.06](P2.06.md) Adaptive integration: Bulkhead max_concurrent
-- [ ] [P2.08](P2.08.md) CommandHandler trait (tower::Service<CommandContext>)
+- [x] [P2.08](P2.08.md) CommandHandler trait (tower::Service<CommandContext>)
 - [x] [P2.09](P2.09.md) ControlPlaneRouter skeleton (auth, dispatch, history)
 - [x] [P2.10](P2.10.md) Parameter handlers: Set/Get adaptive values
 - [ ] [P2.11](P2.11.md) State handler: query policy state
