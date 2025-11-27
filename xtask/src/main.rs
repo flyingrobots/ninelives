@@ -263,35 +263,59 @@ fn cmd_enrich(tasks: &mut HashMap<String, Task>, phase: &str) -> Result<()> {
     save_all(tasks)
 }
 
-fn cmd_sync_dag(tasks: &mut HashMap<String, Task>, phase: &str) -> Result<()> {
-    let dag_path = Path::new("docs/ROADMAP").join(phase).join("DAG.csv");
-    if !dag_path.exists() {
-        return Ok(()); // nothing to do
+fn read_edges(path: &Path) -> Result<Vec<(String, String)>> {
+    if !path.exists() {
+        return Ok(vec![]);
     }
-    let data = fs::read_to_string(&dag_path).context("read DAG.csv")?;
+    let data = fs::read_to_string(path).context("read DAG.csv")?;
     let mut rdr = csv::Reader::from_reader(data.as_bytes());
-    // reset relationships
-    for t in tasks.values_mut() {
-        if t.front.id.starts_with(phase) {
-            t.front.blocked_by.clear();
-            t.front.blocks.clear();
-        }
-    }
+    let mut edges = Vec::new();
     for rec in rdr.records() {
         let rec = rec?;
         let from = rec.get(0).unwrap_or("").trim();
         let to = rec.get(1).unwrap_or("").trim();
-        if from.is_empty() || to.is_empty() {
-            continue;
+        if !from.is_empty() && !to.is_empty() {
+            edges.push((from.to_string(), to.to_string()));
         }
-        if let Some(to_task) = tasks.get_mut(to) {
-            if !to_task.front.blocked_by.contains(&from.to_string()) {
-                to_task.front.blocked_by.push(from.to_string());
+    }
+    Ok(edges)
+}
+
+fn cmd_sync_dag(tasks: &mut HashMap<String, Task>, phase: &str) -> Result<()> {
+    // gather edges from global DAG and phase DAG (if present)
+    let mut edges = read_edges(&Path::new("docs/ROADMAP").join("DAG.csv"))?;
+    let phase_path = Path::new("docs/ROADMAP").join(phase).join("DAG.csv");
+    edges.extend(read_edges(&phase_path)?);
+
+    if phase == "all" {
+        for t in tasks.values_mut() {
+            t.front.blocked_by.clear();
+            t.front.blocks.clear();
+        }
+    } else {
+        for t in tasks.values_mut() {
+            if t.front.id.starts_with(phase) {
+                t.front.blocked_by.clear();
+                t.front.blocks.clear();
             }
         }
-        if let Some(from_task) = tasks.get_mut(from) {
-            if !from_task.front.blocks.contains(&to.to_string()) {
-                from_task.front.blocks.push(to.to_string());
+    }
+
+    for (from, to) in edges {
+        if phase != "all" {
+            // skip edges not touching this phase
+            if !from.starts_with(phase) && !to.starts_with(phase) {
+                continue;
+            }
+        }
+        if let Some(to_task) = tasks.get_mut(&to) {
+            if !to_task.front.blocked_by.contains(&from) {
+                to_task.front.blocked_by.push(from.clone());
+            }
+        }
+        if let Some(from_task) = tasks.get_mut(&from) {
+            if !from_task.front.blocks.contains(&to) {
+                from_task.front.blocks.push(to.clone());
             }
         }
     }
