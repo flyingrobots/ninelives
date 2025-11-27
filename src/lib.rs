@@ -141,6 +141,7 @@ pub use circuit_breaker::{
     CircuitBreakerConfig, CircuitBreakerError, CircuitBreakerLayer, CircuitState,
 };
 pub use clock::{Clock, MonotonicClock};
+pub use control::AuthorizationLayer;
 pub use error::ResilienceError;
 pub use jitter::Jitter;
 pub use retry::{BuildError, RetryLayer, RetryPolicy, RetryPolicyBuilder, RetryService};

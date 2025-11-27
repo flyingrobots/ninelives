@@ -104,6 +104,7 @@ pub trait AuthProvider: Send + Sync {
 }
 
 /// Registry that tries providers in order.
+#[derive(Clone)]
 pub struct AuthRegistry {
     providers: Vec<Arc<dyn AuthProvider>>,
     mode: AuthMode,
@@ -152,6 +153,55 @@ impl AuthRegistry {
                 last_ctx.ok_or(AuthError::Unauthenticated("no providers".into()))
             }
         }
+    }
+}
+
+/// Authorization layer wraps an inner service and preserves auth registry for later use.
+#[derive(Clone)]
+pub struct AuthorizationLayer {
+    registry: Arc<AuthRegistry>,
+}
+
+impl AuthorizationLayer {
+    pub fn new(registry: AuthRegistry) -> Self {
+        Self { registry: Arc::new(registry) }
+    }
+}
+
+#[derive(Clone)]
+pub struct AuthorizationService<S> {
+    inner: S,
+    _registry: Arc<AuthRegistry>,
+}
+
+impl<S> tower_layer::Layer<S> for AuthorizationLayer {
+    type Service = AuthorizationService<S>;
+
+    fn layer(&self, inner: S) -> Self::Service {
+        AuthorizationService { inner, _registry: self.registry.clone() }
+    }
+}
+
+impl<S, Request> Service<Request> for AuthorizationService<S>
+where
+    S: Service<Request>,
+    S::Error: Send + Sync + 'static,
+    S::Future: Send + 'static,
+{
+    type Response = S::Response;
+    type Error = S::Error;
+    type Future = S::Future;
+
+    fn poll_ready(
+        &mut self,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Result<(), Self::Error>> {
+        self.inner.poll_ready(cx)
+    }
+
+    fn call(&mut self, req: Request) -> Self::Future {
+        // Authorization logic will be applied in P2.16b; pass-through for now.
+        self.inner.call(req)
     }
 }
 
