@@ -7,6 +7,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
+mod plans;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 enum Status {
@@ -70,8 +72,12 @@ fn find_task_file(task_id: &str) -> Result<PathBuf> {
     let pattern = format!("{task_id}.md");
     for entry in WalkDir::new("docs/ROADMAP") {
         let entry = entry?;
-        if entry.file_type().is_file() && entry.file_name() == pattern {
-            return Ok(entry.into_path());
+        if entry.file_type().is_file() {
+            if let Some(name) = entry.file_name().to_str() {
+                if name == pattern {
+                    return Ok(entry.into_path());
+                }
+            }
         }
     }
     Err(anyhow!("task file not found for {task_id}"))
@@ -82,7 +88,7 @@ fn parse_task(path: &Path) -> Result<Task> {
     let matter = Matter::<YAML>::new();
     let parsed = matter.parse(&content);
     let mut front: Frontmatter =
-        parsed.data.as_ref().map(|d| d.deserialize()).transpose()?.unwrap_or_default();
+        parsed.data.as_ref().map(|d| d.deserialize().unwrap_or_default()).unwrap_or_default();
     if front.id.is_empty() {
         front.id = path.file_stem().and_then(|s| s.to_str()).unwrap_or_default().to_string();
     }
@@ -93,8 +99,9 @@ fn parse_task(path: &Path) -> Result<Task> {
 }
 
 fn write_task(task: &Task) -> Result<()> {
-    let matter = Matter::<YAML>::new();
-    let rendered = matter.stringify(&task.front, &task.body);
+    // Manual stringify to avoid API differences
+    let fm = serde_yaml::to_string(&task.front)?.trim().to_string();
+    let rendered = format!("---\n{}\n---\n{}", fm, task.body);
     fs::write(&task.path, rendered)?;
     Ok(())
 }
@@ -149,28 +156,38 @@ fn recompute_blocked(tasks: &mut HashMap<String, Task>) {
     for t in tasks.values_mut() {
         t.front.blocks.clear();
     }
-    let snapshot = tasks.clone();
+    // build snapshot of statuses for dependency checks
+    let snapshot: HashMap<String, Status> =
+        tasks.iter().map(|(id, t)| (id.clone(), t.front.status)).collect();
+
+    // rebuild blocks lists
+    let ids: Vec<String> = tasks.keys().cloned().collect();
+    for id in &ids {
+        let deps = tasks[id].front.blocked_by.clone();
+        for dep in deps {
+            if let Some(dep_task) = tasks.get_mut(&dep) {
+                if !dep_task.front.blocks.contains(id) {
+                    dep_task.front.blocks.push(id.clone());
+                }
+            }
+        }
+    }
+
+    // recompute blocked/open based on snapshot
     for t in tasks.values_mut() {
+        if t.front.status == Status::Closed {
+            continue;
+        }
+        let mut blocked = false;
         for dep in &t.front.blocked_by {
-            if let Some(dep_task) = tasks.get_mut(dep) {
-                if !dep_task.front.blocks.contains(&t.front.id) {
-                    dep_task.front.blocks.push(t.front.id.clone());
+            if let Some(dep_status) = snapshot.get(dep) {
+                if *dep_status != Status::Closed {
+                    blocked = true;
+                    break;
                 }
             }
         }
-        // recompute status if not closed
-        if t.front.status != Status::Closed {
-            let mut blocked = false;
-            for dep in &t.front.blocked_by {
-                if let Some(dep_task) = snapshot.get(dep) {
-                    if dep_task.front.status != Status::Closed {
-                        blocked = true;
-                        break;
-                    }
-                }
-            }
-            t.front.status = if blocked { Status::Blocked } else { Status::Open };
-        }
+        t.front.status = if blocked { Status::Blocked } else { Status::Open };
     }
 }
 
@@ -190,20 +207,64 @@ fn cmd_set(tasks: &mut HashMap<String, Task>, id: &str, status: Status) -> Resul
 }
 
 fn cmd_block(tasks: &mut HashMap<String, Task>, from: &str, to: &str) -> Result<()> {
-    let from_task = tasks.get_mut(from).ok_or_else(|| anyhow!("from task not found"))?;
-    let to_task = tasks.get_mut(to).ok_or_else(|| anyhow!("to task not found"))?;
-    if !to_task.front.blocked_by.contains(&from.to_string()) {
-        to_task.front.blocked_by.push(from.to_string());
+    {
+        let to_task = tasks.get_mut(to).ok_or_else(|| anyhow!("to task not found"))?;
+        if !to_task.front.blocked_by.contains(&from.to_string()) {
+            to_task.front.blocked_by.push(from.to_string());
+        }
     }
-    if !from_task.front.blocks.contains(&to.to_string()) {
-        from_task.front.blocks.push(to.to_string());
+    {
+        let from_task = tasks.get_mut(from).ok_or_else(|| anyhow!("from task not found"))?;
+        if !from_task.front.blocks.contains(&to.to_string()) {
+            from_task.front.blocks.push(to.to_string());
+        }
     }
     recompute_blocked(tasks);
     save_all(tasks)
 }
 
+fn cmd_enrich(tasks: &mut HashMap<String, Task>, phase: &str) -> Result<()> {
+    if phase != "P2" {
+        return Err(anyhow!("enrich currently supports only P2"));
+    }
+    let plans = plans::p2_plans();
+    for (id, plan) in plans {
+        if let Some(task) = tasks.get_mut(id) {
+            // rebuild body with plan content
+            let steps = plan
+                .steps
+                .iter()
+                .enumerate()
+                .map(|(i, s)| format!("{}. {}", i + 1, s))
+                .collect::<Vec<_>>()
+                .join("\n");
+            let ready =
+                plan.ready.iter().map(|r| format!("- [ ] {}", r)).collect::<Vec<_>>().join("\n");
+            let mut tests = String::from("## Test Plan\n");
+            if !plan.unit.is_empty() {
+                tests.push_str("\n### Unit Tests\n");
+                for c in plan.unit {
+                    tests.push_str(&format!("- [ ] {}\n", c));
+                }
+            }
+            if !plan.integ.is_empty() {
+                tests.push_str("\n### Integration Tests\n");
+                for c in plan.integ {
+                    tests.push_str(&format!("- [ ] {}\n", c));
+                }
+            }
+            tests.push_str("\n### End-to-end Tests\n- N/A\n");
+            task.body = format!(
+                "# [{}] {}\n\n## Summary\n\n{}\n\n## Steps\n{}\n\n## Ready When\n{}\n\n{}",
+                task.front.id, task.front.title, plan.summary, steps, ready, tests
+            );
+        }
+    }
+    save_all(tasks)
+}
+
 fn usage() {
-    eprintln!("Usage:\n  cargo run --bin tasks set <TASK_ID> <open|blocked|closed>\n  cargo run --bin tasks block <FROM_ID> <TO_ID>");
+    eprintln!("Usage:\n  cargo run --bin tasks set <TASK_ID> <open|blocked|closed>\n  cargo run --bin tasks block <FROM_ID> <TO_ID>\n  cargo run --bin tasks enrich P2          # apply canned plans to phase 2");
 }
 
 fn main() -> Result<()> {
@@ -234,6 +295,15 @@ fn main() -> Result<()> {
             let to = &args[1];
             cmd_block(&mut tasks, from, to)?;
             println!("{from} now blocks {to}");
+        }
+        "enrich" => {
+            if args.len() != 1 {
+                usage();
+                std::process::exit(1);
+            }
+            let phase = &args[0];
+            cmd_enrich(&mut tasks, phase)?;
+            println!("Enriched tasks for {phase}");
         }
         _ => {
             usage();
