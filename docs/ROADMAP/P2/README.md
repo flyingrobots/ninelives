@@ -31,7 +31,7 @@ See [DAG.csv](DAG.csv) for the edge list.
 
 ### Auth/Audit/Wrap
 - [ ] [P2.16](P2.16.md) Authorization layer
-- [ ] [P2.17](P2.17.md) Audit layer
+- [x] [P2.17](P2.17.md) Audit layer
 - [/] [P2.18](P2.18.md) Router wrapping with AuthZ + Audit policies
 
 ### Packaging & Docs
@@ -54,7 +54,7 @@ See [DAG.csv](DAG.csv) for the edge list.
 - [ ] [P2.13](P2.13.md) ListPolicies handler
 - [ ] [P2.14](P2.14.md) Transport abstraction design (HTTP/gRPC friendly)
 - [ ] [P2.16](P2.16.md) Authorization layer
-- [ ] [P2.17](P2.17.md) Audit layer
+- [x] [P2.17](P2.17.md) Audit layer
 - [/] [P2.15](P2.15.md) In-process transport (channels)
 - [/] [P2.18](P2.18.md) Router wrapping with AuthZ + Audit policies
 - [/] [P2.19](P2.19.md) Package ninelives-control crate

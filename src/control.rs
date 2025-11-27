@@ -13,6 +13,7 @@ use futures::future::{self, BoxFuture};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use tower::Service;
+use tracing::info;
 
 /// Opaque command identifier.
 pub type CommandId = String;
@@ -212,6 +213,8 @@ pub enum CommandError {
     Auth(#[from] AuthError),
     #[error("handler: {0}")]
     Handler(String),
+    #[error("audit: {0}")]
+    Audit(String),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -221,6 +224,32 @@ pub enum CommandResult {
     List(Vec<String>),
     Reset,
     Error(String),
+}
+
+/// Audit record emitted after command execution.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct AuditRecord {
+    pub id: CommandId,
+    pub label: String,
+    pub principal: String,
+    pub status: String,
+}
+
+/// Audit sink interface.
+#[async_trait]
+pub trait AuditSink: Send + Sync {
+    async fn record(&self, record: AuditRecord) -> Result<(), CommandError>;
+}
+
+/// Simple audit sink that logs via tracing.
+pub struct TracingAuditSink;
+
+#[async_trait]
+impl AuditSink for TracingAuditSink {
+    async fn record(&self, record: AuditRecord) -> Result<(), CommandError> {
+        info!(target: "ninelives::audit", id=%record.id, label=%record.label, principal=%record.principal, status=%record.status, "audit");
+        Ok(())
+    }
 }
 
 /// Command history interface (pluggable storage).
@@ -257,6 +286,7 @@ pub struct CommandRouter<C> {
     auth: AuthRegistry,
     handler: Arc<dyn CommandHandler<C>>,
     history: Arc<dyn CommandHistory>,
+    audit: Option<Arc<dyn AuditSink>>,
 }
 
 impl<C> CommandRouter<C>
@@ -268,13 +298,31 @@ where
         handler: Arc<dyn CommandHandler<C>>,
         history: Arc<dyn CommandHistory>,
     ) -> Self {
-        Self { auth, handler, history }
+        Self { auth, handler, history, audit: None }
+    }
+
+    pub fn with_audit(mut self, audit: Arc<dyn AuditSink>) -> Self {
+        self.audit = Some(audit);
+        self
     }
 
     pub async fn execute(&self, env: CommandEnvelope<C>) -> Result<CommandResult, CommandError> {
         let ctx = self.auth.authenticate(&env)?;
-        let res = self.handler.handle(env.clone(), ctx).await?;
+        let res = self.handler.handle(env.clone(), ctx.clone()).await?;
         self.history.append(&env.meta, &res).await;
+        if let Some(sink) = &self.audit {
+            let status = match &res {
+                CommandResult::Error(e) => e.clone(),
+                _ => "ok".into(),
+            };
+            let record = AuditRecord {
+                id: env.meta.id.clone(),
+                label: env.cmd.label().into(),
+                principal: ctx.principal,
+                status,
+            };
+            sink.record(record).await?;
+        }
         Ok(res)
     }
 }
