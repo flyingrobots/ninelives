@@ -11,7 +11,7 @@ use std::sync::RwLock;
 #[cfg(not(feature = "adaptive-rwlock"))]
 use arc_swap::ArcSwap;
 
-/// DynamicConfig<T> gives cheap reads and controlled updates for shared config.
+/// `DynamicConfig<T>` gives cheap reads and controlled updates for shared config.
 #[derive(Debug)]
 pub struct DynamicConfig<T> {
     #[cfg(not(feature = "adaptive-rwlock"))]
