@@ -184,19 +184,18 @@ See recipes in [`ninelives-cookbook/src/lib.rs`](ninelives-cookbook/src/lib.rs) 
 
 ## Cookbook (pick your recipe)
 
-- **Simple retry:** `retry_fast` — 3 attempts, 50ms exp backoff + jitter.
-- **Latency guard:** `timeout_p95` — 300ms budget.
-- **Bulkhead:** `bulkhead_isolate(max)` — protect shared deps.
-- **API guardrail (intermediate):** `api_guardrail` — timeout + breaker + bulkhead.
-- **Reliable read (advanced):** `reliable_read` — fast path then fallback stack.
-- **Hedged read (tricky):** `hedged_read` — fork-join two differently-tuned stacks.
-- **Hedge + fallback (god tier):** `hedged_then_fallback` — race two fast paths, then fall back to a sturdy stack.
-- **Sensible defaults:** `sensible_defaults` — timeout + retry + bulkhead starter pack.
+- **Simple retry:** [`retry_fast`](ninelives-cookbook/src/lib.rs#L15) — 3 attempts, 50ms exp backoff + jitter.
+- **Latency guard:** [`timeout_p95`](ninelives-cookbook/src/lib.rs#L33) — 300ms budget.
+- **Bulkhead:** [`bulkhead_isolate(max)`](ninelives-cookbook/src/lib.rs#L39) — protect shared deps.
+- **API guardrail (intermediate):** [`api_guardrail`](ninelives-cookbook/src/lib.rs#L74) — timeout + breaker + bulkhead.
+- **Reliable read (advanced):** [`reliable_read`](ninelives-cookbook/src/lib.rs#L48) — fast path then fallback stack.
+- **Hedged read (tricky):** [`hedged_read`](ninelives-cookbook/src/lib.rs#L90) — fork-join two differently tuned stacks.
+- **Hedge + fallback (god tier):** [`hedged_then_fallback`](ninelives-cookbook/src/lib.rs#L129) — race two fast paths, then fall back to a sturdy stack.
+- **Sensible defaults:** [`sensible_defaults`](ninelives-cookbook/src/lib.rs#L112) — timeout + retry + bulkhead starter pack.
 
 Most recipes are adaptive: retry/timeout/circuit/bulkhead knobs can be updated live via the `Adaptive<T>` handles (see cookbook for details).
 
-All live in `src/cookbook.rs`.
-Moved to the `ninelives-cookbook` crate (see its README/examples).
+All live in [`ninelives-cookbook/src/lib.rs`](ninelives-cookbook/src/lib.rs) with runnable examples in [`ninelives-cookbook/examples/`](ninelives-cookbook/examples).
 
 ## Control Plane: Live Config
 
