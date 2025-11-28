@@ -3,7 +3,7 @@ name = "ninelives-nats"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
-description = "Optional NATS telemetry sink for ninelives"
+description = "NATS telemetry sink for ninelives (bring-your-own client)"
 license.workspace = true
 publish = true
 repository.workspace = true
@@ -13,9 +13,10 @@ readme = "README.md"
 ninelives = { workspace = true }
 serde_json.workspace = true
 tower-service = { workspace = true }
-nats = "0.25"
+async-nats = "0.36"
 tokio = { version = "1", features = ["rt", "macros"] }
 tracing = "0.1"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }
+futures-util = "0.3"

@@ -1,5 +1,8 @@
+use async_nats::Client;
+use futures_util::StreamExt;
 use ninelives::telemetry::{PolicyEvent, RetryEvent};
 use ninelives_nats::NatsSink;
+use tower_service::Service;
 
 // Requires NATS running and env NINE_LIVES_TEST_NATS_URL set, e.g. nats://127.0.0.1:4222
 #[tokio::test]
@@ -8,12 +11,11 @@ async fn publishes_events_to_nats() {
     let url = std::env::var("NINE_LIVES_TEST_NATS_URL").expect("set NINE_LIVES_TEST_NATS_URL");
     let subject = "policy.events";
 
-    let client = nats::asynk::connect(url.clone()).await.expect("connect nats");
+    let client: Client = async_nats::connect(url.clone()).await.expect("connect nats");
     let mut sink = NatsSink::new(client.clone(), subject);
 
     // subscribe before publishing to avoid drops
-    let sub_client = nats::asynk::connect(url).await.expect("connect nats sub");
-    let sub = sub_client.subscribe(subject).await.expect("subscribe");
+    let mut sub = client.subscribe(subject).await.expect("subscribe");
 
     let event = PolicyEvent::Retry(RetryEvent::Attempt {
         attempt: 1,
@@ -22,6 +24,6 @@ async fn publishes_events_to_nats() {
     sink.call(event).await.unwrap();
 
     let msg = sub.next().await.expect("message");
-    let payload: serde_json::Value = serde_json::from_slice(&msg.data).unwrap();
+    let payload: serde_json::Value = serde_json::from_slice(&msg.payload).unwrap();
     assert_eq!(payload["kind"], "retry_attempt");
 }

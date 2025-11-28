@@ -1,17 +1,14 @@
-//! NATS telemetry sink for `ninelives` (optional companion crate).
+//! NATS telemetry sink for `ninelives` (companion crate).
 //!
-//! Default build is a no-op sink to keep dependencies light. Enable the `client`
-//! feature to publish `PolicyEvent`s to a NATS subject.
-//!
-//! ```toml
-//! ninelives-nats = { version = "0.1", features = ["client"] }
-//! ```
+//! Bring your own async `async_nats::Client`; events are serialized to
+//! JSON and published to the configured subject.
 //!
 //! ```rust
 //! use ninelives_nats::NatsSink;
 //! # use ninelives::telemetry::PolicyEvent;
 //! # async fn demo() -> Result<(), Box<dyn std::error::Error>> {
-//! let sink = NatsSink::new("nats://127.0.0.1:4222", "policy.events")?;
+//! let client = async_nats::connect("nats://127.0.0.1:4222").await?;
+//! let sink = NatsSink::new(client, "policy.events");
 //! // wrap with NonBlockingSink if desired
 //! # Ok(()) }
 //! ```
@@ -25,12 +22,12 @@ use std::task::{Context, Poll};
 #[derive(Clone, Debug)]
 pub struct NatsSink {
     subject: String,
-    client: nats::asynk::Connection,
+    client: async_nats::Client,
 }
 
 impl NatsSink {
     /// Create a sink using an existing NATS async connection.
-    pub fn new(client: nats::asynk::Connection, subject: impl Into<String>) -> Self {
+    pub fn new(client: async_nats::Client, subject: impl Into<String>) -> Self {
         Self { subject: subject.into(), client }
     }
 }
@@ -40,34 +37,18 @@ impl tower_service::Service<PolicyEvent> for NatsSink {
     type Error = Infallible;
     type Future = Pin<Box<dyn std::future::Future<Output = Result<(), Self::Error>> + Send>>;
 
-    #[cfg_attr(not(feature = "client"), allow(unused_variables))]
     fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         Poll::Ready(Ok(()))
     }
 
-    #[cfg_attr(not(feature = "client"), allow(unused_variables))]
     fn call(&mut self, event: PolicyEvent) -> Self::Future {
-        #[cfg(feature = "client")]
-        let fut = {
-            let subject = self.subject.clone();
-            let mut client = self.client.clone();
-            let payload =
-                serde_json::to_vec(&event_to_json(&event)).unwrap_or_else(|_| b"{}".to_vec());
-            Box::pin(async move {
-                let _ = client.publish(subject, payload).await;
-                Ok(())
-            })
-        };
-
-        #[cfg(not(feature = "client"))]
-        let fut = {
-            // Still touch the event to ensure serialization paths stay valid even when the client
-            // feature is off (keeps compilation honest for downstream users).
-            let _ = serde_json::to_vec(&event_to_json(&event));
-            Box::pin(async move { Ok(()) })
-        };
-
-        fut
+        let subject = self.subject.clone();
+        let client = self.client.clone();
+        let payload = serde_json::to_vec(&event_to_json(&event)).unwrap_or_else(|_| b"{}".to_vec());
+        Box::pin(async move {
+            let _ = client.publish(subject, payload.into()).await;
+            Ok(())
+        })
     }
 }
 
