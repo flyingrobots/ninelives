@@ -13,4 +13,12 @@ cargo test --all-features --all-targets
 echo "[pre-push] running cargo doc --no-deps with -D warnings"
 RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
 
+echo "[pre-push] syncing roadmap DAG (cargo run -p xtask --bin xtask sync-dag all)"
+cargo run -p xtask --bin xtask sync-dag all
+echo "[pre-push] checking for roadmap drift"
+git diff --exit-code docs/ROADMAP || {
+  echo "[pre-push] roadmap drift detected; run 'cargo run -p xtask --bin xtask sync-dag all' and commit" >&2
+  exit 1
+}
+
 echo "[pre-push] all checks passed"
