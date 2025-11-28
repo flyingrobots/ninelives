@@ -277,7 +277,7 @@ pub enum CommandError {
     Audit(String),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum CommandResult {
     Ack,
     Value(String),

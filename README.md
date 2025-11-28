@@ -183,6 +183,8 @@ Moved to the `ninelives-cookbook` crate (see its README/examples).
 
 Nine Lives ships a lightweight, transport-agnostic control nucleus. You register live knobs with a `ConfigRegistry`, wire it into the built-in handler, then speak commands (over any transport you like) to read/write values at runtime.
 
+👉 See `ninelives-cookbook/examples/control_plane.rs` for a runnable end-to-end example using the in-process channel transport.
+
 ```rust
 use ninelives::control::*;
 use ninelives::{Backoff, Jitter, RetryPolicy};

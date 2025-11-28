@@ -1,4 +1,9 @@
 use serde::{Deserialize, Serialize};
+use serde_json::Value as JsonValue;
+use std::sync::OnceLock;
+
+use jsonschema::JSONSchema;
+use serde_json::json;
 
 use super::{AuthPayload, CommandContext, CommandEnvelope, CommandLabel};
 
@@ -18,6 +23,44 @@ pub struct TransportEnvelope {
     /// Optional auth payload.
     #[serde(default)]
     pub auth: Option<AuthPayload>,
+}
+
+// -----------------------------------------------------------------------------
+// Schema validation helpers (runtime enforced in TransportRouter)
+// -----------------------------------------------------------------------------
+
+fn transport_envelope_schema() -> &'static JSONSchema {
+    static SCHEMA: OnceLock<JSONSchema> = OnceLock::new();
+    SCHEMA.get_or_init(|| {
+        let raw = include_str!("../../schemas/transport-envelope.schema.json");
+        let value: JsonValue = serde_json::from_str(raw).expect("valid transport-envelope schema");
+        JSONSchema::compile(&value).expect("transport-envelope schema compiles")
+    })
+}
+
+fn command_result_schema() -> &'static JSONSchema {
+    static SCHEMA: OnceLock<JSONSchema> = OnceLock::new();
+    SCHEMA.get_or_init(|| {
+        let raw = include_str!("../../schemas/command-result.schema.json");
+        let value: JsonValue = serde_json::from_str(raw).expect("valid command-result schema");
+        JSONSchema::compile(&value).expect("command-result schema compiles")
+    })
+}
+
+fn validate(schema: &JSONSchema, value: &JsonValue) -> Result<(), String> {
+    schema
+        .validate(value)
+        .map_err(|errs| errs.map(|e| e.to_string()).collect::<Vec<_>>().join(", "))
+}
+
+fn command_result_to_schema_value(res: &super::CommandResult) -> JsonValue {
+    match res {
+        super::CommandResult::Ack => json!({ "result": "ack" }),
+        super::CommandResult::Value(v) => json!({ "result": "value", "value": v }),
+        super::CommandResult::List(items) => json!({ "result": "list", "items": items }),
+        super::CommandResult::Reset => json!({ "result": "reset" }),
+        super::CommandResult::Error(msg) => json!({ "result": "error", "message": msg }),
+    }
 }
 
 /// Transport abstraction for encoding/decoding control-plane messages.
@@ -65,8 +108,18 @@ where
     /// Handle a raw request frame and return encoded response bytes.
     pub async fn handle(&self, raw: &[u8]) -> Result<Vec<u8>, String> {
         let env = self.transport.decode(raw).map_err(T::map_error)?;
+
+        // Runtime validation of incoming envelope against JSON Schema
+        let env_val = serde_json::to_value(&env).map_err(|e| e.to_string())?;
+        validate(transport_envelope_schema(), &env_val)?;
+
         let (cmd_env, ctx) = (self.to_command)(env)?;
         let res = self.router.execute(cmd_env).await.map_err(|e| format!("{}", e))?;
+
+        // Runtime validation of outgoing CommandResult against JSON Schema
+        let res_val = command_result_to_schema_value(&res);
+        validate(command_result_schema(), &res_val)?;
+
         self.transport.encode(&ctx, &res).map_err(T::map_error)
     }
 }

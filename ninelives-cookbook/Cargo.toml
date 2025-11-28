@@ -10,3 +10,8 @@ repository = "https://github.com/flyingrobots/ninelives"
 
 [dependencies]
 ninelives = { version = "0.1.0", path = ".." }
+
+[dev-dependencies]
+tokio = { version = "~1.48", features = ["full"] }
+tower = { version = "0.5.2", features = ["full"] }
+tracing-subscriber = "~0.3.20"

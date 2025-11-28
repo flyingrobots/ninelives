@@ -22,11 +22,11 @@
 - [x] [P2.121](P2.121.md) Circuit breaker registry + ids
 - [x] [P2.13](P2.13.md) ListConfig handler
 - [x] [P2.14a](P2.14a.md) Transport Trait & Envelope
-- [ ] [P2.14b](P2.14b.md) TransportRouter Wrapper
+- [x] [P2.14b](P2.14b.md) TransportRouter Wrapper
 - [x] [P2.15](P2.15.md) In-process transport adapter
 - [x] [P2.16a](P2.16a.md) AuthorizationLayer Structure
-- [ ] [P2.16b](P2.16b.md) Authorization Logic Integration
+- [x] [P2.16b](P2.16b.md) Authorization Logic Integration
 - [x] [P2.17](P2.17.md) Audit logging integration
 - [x] [P2.18](P2.18.md) Router wrapping with AuthZ + Audit policies
-- [/] [P2.19](P2.19.md) Package `ninelives-control`
-- [/] [P2.20](P2.20.md) Cookbook examples for control plane
+- [x] [P2.19](P2.19.md) Package `ninelives-control`
+- [x] [P2.20](P2.20.md) Cookbook examples for control plane

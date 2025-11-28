@@ -40,6 +40,7 @@ let svc = ServiceBuilder::new().layer(policy).service_fn(|req: &str| async move 
 Run from this crate:
 ```bash
 cargo run -p ninelives-cookbook --example retry_fast
+cargo run -p ninelives-cookbook --example control_plane   # control-plane quickstart
 ```
 
 (Examples mirror the recipes and show end-to-end usage.)
