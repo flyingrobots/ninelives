@@ -1,5 +1,5 @@
 //! Kafka telemetry sink for `ninelives` (companion crate).
-//! Default build is a no-op to keep the core light; enable `client` to emit to Kafka.
+//! Bring your own `FutureProducer`; events are sent as JSON payloads.
 
 use ninelives::telemetry::{PolicyEvent, TelemetrySink};
 use serde_json::json;
@@ -36,26 +36,15 @@ impl tower_service::Service<PolicyEvent> for KafkaSink {
     }
 
     fn call(&mut self, event: PolicyEvent) -> Self::Future {
-        #[cfg(feature = "client")]
-        let fut = {
-            use rdkafka::producer::FutureRecord;
-            let topic = self.topic.clone();
-            let producer = self.producer.clone();
-            let payload =
-                serde_json::to_vec(&event_to_json(&event)).unwrap_or_else(|_| b"{}".to_vec());
-            Box::pin(async move {
-                let _ = producer.send(FutureRecord::to(&topic).payload(&payload), 0).await;
-                Ok(())
-            })
-        };
-
-        #[cfg(not(feature = "client"))]
-        let fut = {
-            let _ = serde_json::to_vec(&event_to_json(&event));
-            Box::pin(async move { Ok(()) })
-        };
-
-        fut
+        use rdkafka::producer::FutureRecord;
+        let topic = self.topic.clone();
+        let producer = self.producer.clone();
+        let payload = serde_json::to_vec(&event_to_json(&event)).unwrap_or_else(|_| b"{}".to_vec());
+        Box::pin(async move {
+            let record = FutureRecord::<(), _>::to(&topic).payload(&payload);
+            let _ = producer.send(record, None).await;
+            Ok(())
+        })
     }
 }
 

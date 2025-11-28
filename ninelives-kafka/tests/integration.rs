@@ -1,11 +1,13 @@
 use ninelives::telemetry::{PolicyEvent, RetryEvent};
 use ninelives_kafka::KafkaSink;
+use rdkafka::Message;
 use rdkafka::{
     consumer::{Consumer, StreamConsumer},
     message::BorrowedMessage,
     producer::FutureProducer,
     ClientConfig,
 };
+use tower_service::Service;
 
 // Requires Kafka running and env NINE_LIVES_TEST_KAFKA_BROKERS set (e.g. 127.0.0.1:9092)
 #[tokio::test]
