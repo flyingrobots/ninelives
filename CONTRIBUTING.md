@@ -13,7 +13,7 @@ cargo fmt -- --check
 cargo clippy --all-targets --all-features -- -D warnings 
 cargo test --all-features --all-targets
 ```
-To enable the repo's hooks (pre-push, etc.), set:
+To enable the repo's hooks (pre-commit, pre-push), set:
 
 ```bash
 git config core.hooksPath scripts/git-hooks
