@@ -7,26 +7,4 @@
 *   **Outcome:** A secure, interactive control plane where `Adaptive<T>` configuration handles can be inspected and modified on the fly via a standardized command interface.
 
 ## Tasks
-- [x] [P2.01](P2.01.md) Define `Adaptive<T>` types
-- [x] [P2.02](P2.02.md) Implement lock-free `arc-swap` for Adaptive
-- [x] [P2.03](P2.03.md) Integrate Adaptive into `CircuitBreaker`
-- [x] [P2.04](P2.04.md) Integrate Adaptive into `Bulkhead`
-- [x] [P2.05](P2.05.md) Integrate Adaptive into `Retry`
-- [x] [P2.06](P2.06.md) Integrate Adaptive into `Timeout`
-- [x] [P2.07](P2.07.md) Define `Command` enum and `CommandHandler` trait
-- [x] [P2.08](P2.08.md) Implement `CommandRouter`
-- [x] [P2.09](P2.09.md) Create `ConfigRegistry` for adaptive handles
-- [x] [P2.10](P2.10.md) Implement `Set/Get` commands
-- [x] [P2.11](P2.11.md) System State Query (Debug)
-- [x] [P2.12](P2.12.md) ResetCircuitBreaker handler
-- [x] [P2.121](P2.121.md) Circuit breaker registry + ids
-- [x] [P2.13](P2.13.md) ListConfig handler
-- [x] [P2.14a](P2.14a.md) Transport Trait & Envelope
-- [x] [P2.14b](P2.14b.md) TransportRouter Wrapper
-- [x] [P2.15](P2.15.md) In-process transport adapter
-- [x] [P2.16a](P2.16a.md) AuthorizationLayer Structure
-- [x] [P2.16b](P2.16b.md) Authorization Logic Integration
-- [x] [P2.17](P2.17.md) Audit logging integration
-- [x] [P2.18](P2.18.md) Router wrapping with AuthZ + Audit policies
-- [x] [P2.19](P2.19.md) Package `ninelives-control`
-- [x] [P2.20](P2.20.md) Cookbook examples for control plane
+All Phase 2 tasks are complete; detailed cards have been archived.

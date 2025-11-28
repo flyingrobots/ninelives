@@ -7,7 +7,6 @@
 *   **Outcome:** Seamless interoperability. `ninelives` becomes a controllable citizen of the infrastructure, accessible via HTTP REST and gRPC, enabling rich integration with external orchestration and monitoring systems.
 
 ## Tasks
-- [ ] [P8.01a](P8.01a.md) Wire Format Spec
 - [ ] [P8.01b](P8.01b.md) Envelope Serde
 - [ ] [P8.01c](P8.01c.md) Command Serde
 - [ ] [P8.02a](P8.02a.md) Rest Server Init
