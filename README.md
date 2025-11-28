@@ -15,6 +15,14 @@ Nine Lives provides battle-tested resilience patterns (retry, circuit breaker, b
 - **Schema enforcement:** transport envelopes and command results validated at runtime against JSON Schemas in [`schemas/`](schemas); contract tests [`schema_transport_envelope.rs`](tests/schema_transport_envelope.rs) / [`schema_command_result.rs`](tests/schema_command_result.rs).
 - **Schemas relocated:** now live under [`schemas/`](schemas) and are included at build time.
 
+## What's Next (Phase 3 preview)
+- **Observer/system state aggregation:** ingest `PolicyEvent`s and expose a queryable state for operators and the future Sentinel.
+- **Telemetry-backed decisions:** groundwork for meta-policies that react to breaker states, retry exhaustion, and bulkhead pressure.
+- **Roadmap link:** see [Phase 3](docs/ROADMAP/P3/README.md) in the [ROADMAP](docs/ROADMAP/README.md).
+
+> [!warning]
+> This crate will be split into smaller crates soon. The project's organization is not yet considered stable. Breaking changes are anticipated soon.
+
 ## Implemented Features (with runnable examples)
 
 - **Retry with backoff + jitter** — cookbook: [`retry_only`](ninelives-cookbook/examples/retry_only.rs)
