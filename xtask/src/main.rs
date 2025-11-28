@@ -647,7 +647,7 @@ fn suggest(tasks: &HashMap<String, Task>, scope: &str) -> Result<()> {
     Ok(())
 }
 fn usage() {
-    eprintln!("Usage:\n  cargo run --bin tasks set <TASK_ID> <open|blocked|closed>\n  cargo run --bin tasks block <FROM_ID> <TO_ID>\n  cargo run --bin tasks enrich P2            # apply canned plans to phase 2\n  cargo run --bin tasks sync-dag <PHASE|all> # import DAG.csv edges into blocked_by/blocks\n  cargo run --bin tasks suggest [PHASE|all]  # list ready tasks ranked by value/duration\n  cargo run --bin tasks add <TASK_ID> <TITLE> <EST> <VALUE> <DEP1,DEP2,...|->  # create task and edges\n  cargo run --bin tasks it-nats              # spin up NATS via docker compose and run integration tests");
+    eprintln!("Usage:\n  cargo run --bin tasks set <TASK_ID> <open|blocked|closed>\n  cargo run --bin tasks block <FROM_ID> <TO_ID>\n  cargo run --bin tasks enrich P2            # apply canned plans to phase 2\n  cargo run --bin tasks sync-dag <PHASE|all> # import DAG.csv edges into blocked_by/blocks\n  cargo run --bin tasks suggest [PHASE|all]  # list ready tasks ranked by value/duration\n  cargo run --bin tasks add <TASK_ID> <TITLE> <EST> <VALUE> <DEP1,DEP2,...|->  # create task and edges\n  cargo run --bin tasks it-nats              # spin up NATS via docker compose and run integration tests\n  cargo run --bin tasks it-kafka             # spin up Kafka via docker compose and run integration tests");
 }
 
 fn run(cmd: &str, args: &[&str], dir: Option<&Path>) -> Result<()> {
@@ -688,14 +688,14 @@ fn wait_for_host(hostport: &str, attempts: usize, sleep: Duration) -> Result<()>
     Err(anyhow!("service at {} did not become ready", hostport))
 }
 
-fn parse_host_port(nats_url: &str) -> Option<String> {
-    // very small parser: nats://host:port[/...]
-    let without_scheme = nats_url.split("//").nth(1)?;
+fn parse_host_port(addr: &str) -> Option<String> {
+    let first = addr.split(',').next()?;
+    let without_scheme = first.split("//").nth(1).unwrap_or(first);
     let host_port = without_scheme.split('/').next()?;
-    if host_port.is_empty() {
-        None
-    } else {
+    if host_port.contains(':') && !host_port.is_empty() {
         Some(host_port.to_string())
+    } else {
+        None
     }
 }
 
@@ -737,6 +737,43 @@ fn cmd_it_nats() -> Result<()> {
     Ok(())
 }
 
+fn cmd_it_kafka() -> Result<()> {
+    let env_var = "NINE_LIVES_TEST_KAFKA_BROKERS";
+    let compose_dir = Path::new("ninelives-kafka");
+
+    let provided = std::env::var(env_var).ok();
+    let brokers = provided.clone().unwrap_or_else(|| "127.0.0.1:9092".to_string());
+    let host_port = parse_host_port(&brokers).unwrap_or_else(|| "127.0.0.1:9092".to_string());
+
+    let should_start_compose = provided.is_none();
+    let _guard = if should_start_compose {
+        docker_compose(&["up", "-d"], compose_dir)?;
+        struct Guard<'a> {
+            dir: &'a Path,
+        }
+        impl<'a> Drop for Guard<'a> {
+            fn drop(&mut self) {
+                let _ = docker_compose(&["down", "-v"], self.dir);
+            }
+        }
+        Some(Guard { dir: compose_dir })
+    } else {
+        None
+    };
+
+    wait_for_host(&host_port, 40, Duration::from_millis(300))
+        .with_context(|| format!("waiting for Kafka at {}", host_port))?;
+
+    let mut cmd = Command::new("cargo");
+    cmd.args(["test", "-p", "ninelives-kafka"]);
+    cmd.env(env_var, &brokers);
+    let status = cmd.status().context("running cargo test -p ninelives-kafka")?;
+    if !status.success() {
+        return Err(anyhow!("tests failed"));
+    }
+    Ok(())
+}
+
 fn main() -> Result<()> {
     let mut args = std::env::args().skip(1).collect::<Vec<_>>();
     if args.is_empty() {
@@ -765,6 +802,9 @@ fn main() -> Result<()> {
             let to = &args[1];
             cmd_block(&mut tasks, from, to)?;
             println!("{from} now blocks {to}");
+        }
+        "it-kafka" => {
+            cmd_it_kafka()?;
         }
         "enrich" => {
             if args.len() != 1 {

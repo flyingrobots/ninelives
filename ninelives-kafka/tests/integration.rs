@@ -9,12 +9,16 @@ use rdkafka::{
 };
 use tower_service::Service;
 
-// Requires Kafka running and env NINE_LIVES_TEST_KAFKA_BROKERS set (e.g. 127.0.0.1:9092)
+// Requires Kafka running. If NINE_LIVES_TEST_KAFKA_BROKERS is unset, the test skips.
 #[tokio::test]
-#[ignore]
 async fn publishes_events_to_kafka() {
-    let brokers =
-        std::env::var("NINE_LIVES_TEST_KAFKA_BROKERS").expect("set NINE_LIVES_TEST_KAFKA_BROKERS");
+    let brokers = match std::env::var("NINE_LIVES_TEST_KAFKA_BROKERS") {
+        Ok(v) => v,
+        Err(_) => {
+            eprintln!("skipping: set NINE_LIVES_TEST_KAFKA_BROKERS (e.g. 127.0.0.1:9092)");
+            return;
+        }
+    };
     let topic = "policy.events";
 
     let producer: FutureProducer = ClientConfig::new()
