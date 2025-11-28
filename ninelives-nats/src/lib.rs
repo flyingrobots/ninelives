@@ -73,7 +73,10 @@ impl tower_service::Service<PolicyEvent> for NatsSink {
         };
 
         #[cfg(not(feature = "client"))]
-        let fut = Box::pin(async move { Ok(()) });
+        let fut = {
+            let _ = event;
+            Box::pin(async move { Ok(()) })
+        };
 
         fut
     }
