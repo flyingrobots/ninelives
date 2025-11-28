@@ -1,6 +1,4 @@
 use anyhow::{anyhow, Context, Result};
-use gray_matter::{engine::YAML, Matter};
-use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -43,13 +41,6 @@ impl Status {
             Status::Closed => "closed",
         }
     }
-    fn mark(self) -> char {
-        match self {
-            Status::Open => ' ',
-            Status::Blocked => '/',
-            Status::Closed => 'x',
-        }
-    }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -71,32 +62,169 @@ struct Frontmatter {
 struct Task {
     front: Frontmatter,
     body: String,
-    path: PathBuf,
+    path: PathBuf, // phase README path
 }
 
-fn parse_task(path: &Path) -> Result<Task> {
-    let content = fs::read_to_string(path)?;
-    let matter = Matter::<YAML>::new();
-    let parsed = matter.parse(&content);
-    let mut front: Frontmatter =
-        parsed.data.as_ref().map(|d| d.deserialize().unwrap_or_default()).unwrap_or_default();
-    if front.id.is_empty() {
-        front.id = path.file_stem().and_then(|s| s.to_str()).unwrap_or_default().to_string();
+fn strip_tasks_section(readme_text: &str) -> String {
+    let mut out = Vec::new();
+    let mut in_tasks = false;
+    for line in readme_text.lines() {
+        if line.trim().eq_ignore_ascii_case("## Tasks") {
+            in_tasks = true;
+            continue;
+        }
+        if in_tasks && line.starts_with("## ") {
+            in_tasks = false;
+        }
+        if !in_tasks {
+            out.push(line);
+        }
     }
-    if front.title.is_empty() {
-        front.title = front.id.clone();
+    while out.last().map(|l| l.is_empty()).unwrap_or(false) {
+        out.pop();
     }
-    Ok(Task { front, body: parsed.content, path: path.to_path_buf() })
+    out.push("");
+    out.join("\n")
 }
 
-fn write_task(task: &Task) -> Result<()> {
-    // Manual stringify to avoid API differences
-    let fm = serde_yaml::to_string(&task.front)?.trim().to_string();
-    let mut rendered = format!("---\n{}\n---\n{}", fm, task.body);
-    if !rendered.ends_with('\n') {
-        rendered.push('\n');
+fn parse_tasks_from_readme(path: &Path) -> Result<Vec<Task>> {
+    let text = fs::read_to_string(path)?;
+    let lines = text.lines().collect::<Vec<_>>();
+    let mut idx = None;
+    for (i, l) in lines.iter().enumerate() {
+        if l.trim().eq_ignore_ascii_case("## Tasks") {
+            idx = Some(i + 1);
+            break;
+        }
     }
-    fs::write(&task.path, rendered)?;
+    let mut tasks = Vec::new();
+    let mut i = idx.unwrap_or(lines.len());
+    while i < lines.len() {
+        if !lines[i].starts_with("### ") {
+            i += 1;
+            continue;
+        }
+        let heading = lines[i].trim_start_matches("### ").trim();
+        let mut parts = heading.splitn(2, ' ');
+        let id = parts.next().unwrap_or("").to_string();
+        let title = parts.next().unwrap_or(heading).to_string();
+        i += 1;
+        // parse table
+        let mut meta = Frontmatter { id: id.clone(), title: title.clone(), ..Default::default() };
+        let mut table_started = false;
+        while i < lines.len() {
+            let l = lines[i].trim();
+            if l.starts_with("### ") {
+                break;
+            }
+            if l.starts_with("## ") {
+                break;
+            }
+            if l.starts_with("| id |") {
+                table_started = true;
+            }
+            if table_started && l.starts_with('|') && l.contains('|') {
+                let cols: Vec<_> = l.trim_matches('|').split('|').map(|s| s.trim()).collect();
+                if cols.len() >= 2 {
+                    let key = cols[0];
+                    let val = cols[1];
+                    match key {
+                        "id" => meta.id = val.to_string(),
+                        "title" => meta.title = val.to_string(),
+                        "estimate" => meta.estimate = Some(val.to_string()),
+                        "status" => {
+                            meta.status =
+                                Status::from_str(&val.to_lowercase()).unwrap_or(Status::Open)
+                        }
+                        "blocked_by" => {
+                            meta.blocked_by = if val == "-" || val.is_empty() {
+                                vec![]
+                            } else {
+                                val.split(',')
+                                    .map(|s| s.trim().to_string())
+                                    .filter(|s| !s.is_empty())
+                                    .collect()
+                            }
+                        }
+                        "blocks" => {
+                            meta.blocks = if val == "-" || val.is_empty() {
+                                vec![]
+                            } else {
+                                val.split(',')
+                                    .map(|s| s.trim().to_string())
+                                    .filter(|s| !s.is_empty())
+                                    .collect()
+                            }
+                        }
+                        "value" => {
+                            meta.value = if val == "-" || val.is_empty() {
+                                None
+                            } else {
+                                Some(val.to_string())
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            i += 1;
+            if table_started && l.is_empty() {
+                break;
+            }
+        }
+        // body until next ### or ##
+        let mut body_lines = Vec::new();
+        while i < lines.len() {
+            let l = lines[i];
+            if l.starts_with("### ") || l.starts_with("## ") {
+                break;
+            }
+            body_lines.push(l);
+            i += 1;
+        }
+        let body = body_lines.join("\n").trim().to_string();
+        tasks.push(Task { front: meta, body, path: path.to_path_buf() });
+    }
+    Ok(tasks)
+}
+
+fn render_tasks(tasks: &[Task]) -> String {
+    let mut out = String::from("## Tasks\n\n");
+    if tasks.is_empty() {
+        out.push_str("No open tasks.\n");
+        return out;
+    }
+    for t in tasks {
+        out.push_str(&format!("### {} {}\n\n", t.front.id, t.front.title));
+        out.push_str("| field | value |\n| --- | --- |\n");
+        let fmt_list = |v: &Vec<String>| if v.is_empty() { "-".to_string() } else { v.join(", ") };
+        out.push_str(&format!("| id | {} |\n", t.front.id));
+        out.push_str(&format!("| title | {} |\n", t.front.title));
+        out.push_str(&format!(
+            "| estimate | {} |\n",
+            t.front.estimate.clone().unwrap_or_else(|| "-".to_string())
+        ));
+        out.push_str(&format!("| status | {} |\n", t.front.status.to_str()));
+        out.push_str(&format!("| blocked_by | {} |\n", fmt_list(&t.front.blocked_by)));
+        out.push_str(&format!("| blocks | {} |\n", fmt_list(&t.front.blocks)));
+        out.push_str(&format!(
+            "| value | {} |\n\n",
+            t.front.value.clone().unwrap_or_else(|| "-".to_string())
+        ));
+        if !t.body.is_empty() {
+            out.push_str(&t.body);
+            out.push('\n');
+        }
+        out.push('\n');
+    }
+    out
+}
+
+fn write_phase(readme: &Path, tasks: &[Task]) -> Result<()> {
+    let base = strip_tasks_section(&fs::read_to_string(readme)?);
+    let rendered =
+        format!("{}\n\n{}", base.trim_end(), render_tasks(tasks)).trim_end().to_string() + "\n";
+    fs::write(readme, rendered)?;
     Ok(())
 }
 
@@ -104,45 +232,14 @@ fn load_tasks() -> Result<HashMap<String, Task>> {
     let mut map = HashMap::new();
     for entry in WalkDir::new("docs/ROADMAP") {
         let entry = entry?;
-        if entry.file_type().is_file() {
-            if let Some(name) = entry.file_name().to_str() {
-                if name.starts_with('P') && name.ends_with(".md") && name != "README.md" {
-                    let task = parse_task(entry.path())?;
-                    map.insert(task.front.id.clone(), task);
-                }
+        if entry.file_type().is_file() && entry.file_name() == "README.md" {
+            let tasks = parse_tasks_from_readme(entry.path())?;
+            for t in tasks {
+                map.insert(t.front.id.clone(), t);
             }
         }
     }
     Ok(map)
-}
-
-fn update_checklist(task: &Task) -> Result<()> {
-    let phase = task.front.id.split('.').next().unwrap();
-    let readme_path = Path::new("docs/ROADMAP").join(phase).join("README.md");
-    let data = fs::read_to_string(&readme_path)?;
-    let re = Regex::new(r"^- \[[ x/]\] \[(P\d+\.\d+)\]\(([^)]+)\) (.*)$").unwrap();
-    let mut out = String::new();
-    for line in data.lines() {
-        if let Some(caps) = re.captures(line) {
-            let id = &caps[1];
-            let link = &caps[2];
-            let title = &caps[3];
-            if id == task.front.id {
-                out.push_str(&format!(
-                    "- [{}] [{}]({}) {}\n",
-                    task.front.status.mark(),
-                    id,
-                    link,
-                    title
-                ));
-                continue;
-            }
-        }
-        out.push_str(line);
-        out.push('\n');
-    }
-    fs::write(readme_path, out)?;
-    Ok(())
 }
 
 fn recompute_blocked(tasks: &mut HashMap<String, Task>) {
@@ -192,9 +289,16 @@ fn recompute_blocked(tasks: &mut HashMap<String, Task>) {
 }
 
 fn save_all(tasks: &HashMap<String, Task>) -> Result<()> {
-    for task in tasks.values() {
-        write_task(task)?;
-        update_checklist(task)?;
+    // group by phase README path
+    let mut phases: HashMap<PathBuf, Vec<Task>> = HashMap::new();
+    for t in tasks.values() {
+        phases.entry(t.path.clone()).or_default().push(t.clone());
+    }
+    for tasks in phases.values_mut() {
+        tasks.sort_by(|a, b| a.front.id.cmp(&b.front.id));
+    }
+    for (readme, ts) in phases {
+        write_phase(&readme, &ts)?;
     }
     Ok(())
 }
@@ -377,10 +481,8 @@ fn cmd_add(
     deps: Vec<String>,
 ) -> Result<()> {
     let phase = id.split('.').next().ok_or_else(|| anyhow!("bad id"))?;
-    let phase_dir = Path::new("docs/ROADMAP").join(phase);
-    fs::create_dir_all(&phase_dir)?;
+    let readme_path = Path::new("docs/ROADMAP").join(phase).join("README.md");
 
-    // create frontmatter and body
     let fm = Frontmatter {
         id: id.to_string(),
         title: title.to_string(),
@@ -390,23 +492,17 @@ fn cmd_add(
         blocks: Vec::new(),
         value: Some(value.to_string()),
     };
-    let body = format!(
-        "# [{id}] {title}\n\n## Summary\n\n{title}\n\n## Steps\n1. Write/adjust tests\n2. Implement\n3. Update docs/ADR\n\n## Ready When\n- [ ] Tests pass\n- [ ] Docs updated\n\n## Test Plan\n\n### Unit Tests\n- [ ] Add unit coverage\n\n### Integration Tests\n- [ ] Add integration coverage\n\n### End-to-end Tests\n- N/A\n"
-    );
-    let fm_yaml = serde_yaml::to_string(&fm)?.trim().to_string();
-    let content = format!("---\n{fm_yaml}\n---\n\n{body}");
-    let path = phase_dir.join(format!("{id}.md"));
-    fs::write(&path, content)?;
+    let body = "#### Summary\n- [ ] Fill in summary\n\n#### Steps\n1. Write/adjust tests\n2. Implement\n3. Update docs/ADR\n\n#### Test Plan\n- [ ] Unit tests\n- [ ] Integration tests\n".to_string();
+    let task = Task { front: fm, body, path: readme_path.clone() };
+    tasks.insert(id.to_string(), task);
 
     // append edges to global DAG
     let new_edges: Vec<(String, String)> =
         deps.iter().map(|d| (d.clone(), id.to_string())).collect();
     append_edges(&new_edges)?;
 
-    // reload tasks and resync
-    let mut new_tasks = load_tasks()?;
-    cmd_sync_dag(&mut new_tasks, "all")?;
-    *tasks = new_tasks;
+    // recompute and persist
+    cmd_sync_dag(tasks, "all")?;
     Ok(())
 }
 
