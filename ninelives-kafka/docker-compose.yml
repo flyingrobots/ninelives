@@ -17,7 +17,3 @@ services:
       - --check=false
     ports:
       - "9092:9092"
-      - "9644:9644"
-    environment:
-      KAFKA_API: 0.0.0.0:9092
-      KAFKA_API_ADVERTISE: 127.0.0.1:9092

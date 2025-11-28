@@ -13,16 +13,9 @@ readme = "README.md"
 ninelives = { workspace = true }
 serde_json.workspace = true
 tower-service = { workspace = true }
-
-# Client dependency is optional to keep core builds light
-nats = { version = "0.25", optional = true }
-tokio = { version = "1", features = ["rt", "macros"], optional = true }
+nats = "0.25"
+tokio = { version = "1", features = ["rt", "macros"] }
 tracing = "0.1"
 
-[features]
-# default = [] keeps builds fast. Enable `client` to actually publish to NATS.
-client = ["nats", "tokio"]
-
 [dev-dependencies]
-testcontainers = "0.15"
 tokio = { version = "1", features = ["full"] }
