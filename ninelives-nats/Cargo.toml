@@ -22,3 +22,7 @@ tracing = "0.1"
 [features]
 # default = [] keeps builds fast. Enable `client` to actually publish to NATS.
 client = ["nats", "tokio"]
+
+[dev-dependencies]
+testcontainers = "0.15"
+tokio = { version = "1", features = ["full"] }
