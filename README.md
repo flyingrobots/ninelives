@@ -15,6 +15,19 @@ Nine Lives provides battle-tested resilience patterns (retry, circuit breaker, b
 - **Schema enforcement:** transport envelopes and command results validated at runtime against JSON Schemas; contract tests added.
 - **Schemas relocated:** now live under `schemas/` and are included at build time.
 
+## Implemented Features (with runnable examples)
+
+- **Retry with backoff + jitter** — cookbook: `cargo run -p ninelives-cookbook --example retry_only`
+- **Timeout guards** — cookbook: `cargo run -p ninelives-cookbook --example timeout_fallback`
+- **Bulkhead concurrency limits** — cookbook: `cargo run -p ninelives-cookbook --example bulkhead_concurrency`
+- **Algebraic composition (`+ | &`)** — cookbook: `cargo run -p ninelives-cookbook --example algebra_composition`
+- **Hedged/parallel attempts (fork-join)** — cookbook: `cargo run -p ninelives-cookbook --example telemetry_composition` (shows multicasting/telemetry on forked paths)
+- **Telemetry sinks (log/memory/streaming)** — cookbook: `cargo run -p ninelives-cookbook --example telemetry_basic`
+- **Control plane (live config writes)** — cookbook: `cargo run -p ninelives-cookbook --example control_plane`
+- **Adaptive knobs** — integrated across retry/timeout/bulkhead/circuit breaker; see control_plane example and retry/bulkhead adaptive tests.
+
+For more recipes, browse `ninelives-cookbook/examples/` and `ninelives-cookbook/src/lib.rs` functions (`retry_fast`, `api_guardrail`, `hedged_read`, `hedged_then_fallback`, `sensible_defaults`).
+
 ## Features
 
 - 🔁 **Retry policies** with exponential/linear/constant backoff and jitter
