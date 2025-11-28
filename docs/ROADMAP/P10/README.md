@@ -7,20 +7,399 @@
 *   **Outcome:** A library that is essentially invisible in terms of latency (< 10μs overhead) but invincible in terms of reliability—a zero-cost insurance policy for mission-critical infrastructure.
 
 ## Tasks
-- [ ] [P10.01a](P10.01a.md) Benchmark Crate
-- [ ] [P10.01b](P10.01b.md) Microbenchmarks
-- [ ] [P10.01c](P10.01c.md) Profiling Setup
-- [ ] [P10.01d](P10.01d.md) Targets & Baseline
-- [ ] [P10.02a](P10.02a.md) Lock Review
-- [ ] [P10.02b](P10.02b.md) Lock-Free Refactor
-- [ ] [P10.02c](P10.02c.md) Alloc Review
-- [ ] [P10.02d](P10.02d.md) LTO/Codegen
-- [ ] [P10.03a](P10.03a.md) Chaos Tools
-- [ ] [P10.03b](P10.03b.md) Chaos Test
-- [ ] [P10.03c](P10.03c.md) Soak Harness
-- [ ] [P10.03d](P10.03d.md) Load Harness
-- [ ] [P10.03e](P10.03e.md) Failure Injection
-- [ ] [P10.04a](P10.04a.md) Tracing Spans
-- [ ] [P10.04b](P10.04b.md) Prometheus Sink
-- [ ] [P10.04c](P10.04c.md) Adaptive Metrics
-- [ ] [P10.04d](P10.04d.md) Flamegraph Docs
+
+### P10.01a Benchmark Crate
+
+| field | value |
+| --- | --- |
+| id | P10.01a |
+| title | Benchmark Crate |
+| estimate | 2h |
+| status | open |
+| blocked_by | - |
+| blocks | - |
+| value | H |
+
+#### Summary
+
+Setup `ninelives-bench` with Criterion.
+
+#### Steps
+1.  Create crate.
+2.  Add `criterion` dep.
+3.  Setup harness.
+
+#### Definition of Done
+- [ ] Crate runs `cargo bench`.
+
+### P10.01b Microbenchmarks
+
+| field | value |
+| --- | --- |
+| id | P10.01b |
+| title | Microbenchmarks |
+| estimate | 4h |
+| status | blocked |
+| blocked_by | - |
+| blocks | - |
+| value | H |
+
+#### Summary
+
+Benchmark all layers.
+
+#### Steps
+1.  Bench Retry, Circuit, Bulkhead.
+2.  Bench composition.
+
+#### Definition of Done
+- [ ] Comprehensive benches.
+
+### P10.01c Profiling Setup
+
+| field | value |
+| --- | --- |
+| id | P10.01c |
+| title | Profiling Setup |
+| estimate | 2h |
+| status | blocked |
+| blocked_by | - |
+| blocks | - |
+| value | H |
+
+#### Summary
+
+Scripts for flamegraphs.
+
+#### Steps
+1.  Script to run `cargo bench --profile-time` or `perf`.
+2.  Gen SVG.
+
+#### Definition of Done
+- [ ] Flamegraphs generation works.
+
+### P10.01d Targets & Baseline
+
+| field | value |
+| --- | --- |
+| id | P10.01d |
+| title | Targets & Baseline |
+| estimate | 2h |
+| status | blocked |
+| blocked_by | - |
+| blocks | - |
+| value | H |
+
+#### Summary
+
+Establish baseline perf.
+
+#### Steps
+1.  Run benches.
+2.  Record numbers.
+3.  Set goals (<10us).
+
+#### Definition of Done
+- [ ] Baseline documented.
+
+### P10.02a Lock Review
+
+| field | value |
+| --- | --- |
+| id | P10.02a |
+| title | Lock Review |
+| estimate | 4h |
+| status | blocked |
+| blocked_by | - |
+| blocks | - |
+| value | H |
+
+#### Summary
+
+Audit `Mutex` usage.
+
+#### Steps
+1.  Find all `Mutex`.
+2.  Identify hot paths.
+
+#### Definition of Done
+- [ ] Audit complete.
+
+### P10.02b Lock-Free Refactor
+
+| field | value |
+| --- | --- |
+| id | P10.02b |
+| title | Lock-Free Refactor |
+| estimate | 4h |
+| status | blocked |
+| blocked_by | - |
+| blocks | - |
+| value | H |
+
+#### Summary
+
+Switch to atomics/RwLock.
+
+#### Steps
+1.  Refactor CircuitBreaker.
+2.  Use `ArcSwap`.
+
+#### Definition of Done
+- [ ] Contention reduced.
+
+### P10.02c Alloc & Arc Review
+
+| field | value |
+| --- | --- |
+| id | P10.02c |
+| title | Alloc & Arc Review |
+| estimate | 2h |
+| status | blocked |
+| blocked_by | - |
+| blocks | - |
+| value | H |
+
+#### Summary
+
+Reduce cloning/allocations and atomic reference counting on hot paths.
+
+#### Steps
+1.  Profile allocations.
+2.  Reuse buffers where possible.
+3.  **Bundle Arcs**: Refactor services to use a shared `Context` struct (e.g., `Arc<CircuitBreakerContext>`) instead of holding separate `Arc<State>`, `Arc<Config>`, `Arc<Clock>`. This reduces atomic ops from 4 per request to 1.
+
+#### Definition of Done
+- [ ] Allocs minimized.
+- [ ] Atomic ops per request reduced.
+
+#### Test Plan
+- [ ] Benchmarks confirm throughput increase.
+
+### P10.02d LTO/Codegen
+
+| field | value |
+| --- | --- |
+| id | P10.02d |
+| title | LTO/Codegen |
+| estimate | 2h |
+| status | blocked |
+| blocked_by | - |
+| blocks | - |
+| value | H |
+
+#### Summary
+
+Tune release profile.
+
+#### Steps
+1.  Enable LTO.
+2.  Set codegen units = 1.
+
+#### Definition of Done
+- [ ] Release profile tuned.
+
+### P10.03a Chaos Tools
+
+| field | value |
+| --- | --- |
+| id | P10.03a |
+| title | Chaos Tools |
+| estimate | 4h |
+| status | blocked |
+| blocked_by | - |
+| blocks | - |
+| value | H |
+
+#### Summary
+
+Setup chaos harness.
+
+#### Steps
+1.  Create test harness.
+2.  Inject network delays/drops.
+
+#### Definition of Done
+- [ ] Harness working.
+
+### P10.03b Chaos Test
+
+| field | value |
+| --- | --- |
+| id | P10.03b |
+| title | Chaos Test |
+| estimate | 4h |
+| status | blocked |
+| blocked_by | - |
+| blocks | - |
+| value | H |
+
+#### Summary
+
+Run chaos scenarios.
+
+#### Steps
+1.  Verify resilience under chaos.
+
+#### Definition of Done
+- [ ] Tests pass.
+
+### P10.03c Soak Harness
+
+| field | value |
+| --- | --- |
+| id | P10.03c |
+| title | Soak Harness |
+| estimate | 2h |
+| status | blocked |
+| blocked_by | - |
+| blocks | - |
+| value | H |
+
+#### Summary
+
+Setup long-running test.
+
+#### Steps
+1.  Script to run app loop forever.
+2.  Monitor RAM.
+
+#### Definition of Done
+- [ ] Harness ready.
+
+### P10.03d Load Harness
+
+| field | value |
+| --- | --- |
+| id | P10.03d |
+| title | Load Harness |
+| estimate | 2h |
+| status | blocked |
+| blocked_by | - |
+| blocks | - |
+| value | H |
+
+#### Summary
+
+Setup load test.
+
+#### Steps
+1.  Use `wrk` or `go-bench`.
+2.  Target endpoint.
+
+#### Definition of Done
+- [ ] Load test runs.
+
+### P10.03e Failure Injection
+
+| field | value |
+| --- | --- |
+| id | P10.03e |
+| title | Failure Injection |
+| estimate | 4h |
+| status | blocked |
+| blocked_by | - |
+| blocks | - |
+| value | H |
+
+#### Summary
+
+Specific error injection.
+
+#### Steps
+1.  Inject error types.
+2.  Verify policy handling.
+
+#### Definition of Done
+- [ ] Handlers verified.
+
+### P10.04a Tracing Spans
+
+| field | value |
+| --- | --- |
+| id | P10.04a |
+| title | Tracing Spans |
+| estimate | 2h |
+| status | blocked |
+| blocked_by | - |
+| blocks | - |
+| value | M |
+
+#### Summary
+
+Audit/Add tracing.
+
+#### Steps
+1.  Ensure all layers emit spans.
+2.  Check log verbosity.
+
+#### Definition of Done
+- [ ] Spans complete.
+
+### P10.04b Prometheus Sink
+
+| field | value |
+| --- | --- |
+| id | P10.04b |
+| title | Prometheus Sink |
+| estimate | 2h |
+| status | blocked |
+| blocked_by | - |
+| blocks | - |
+| value | M |
+
+#### Summary
+
+Impl `TelemetrySink` for Prom.
+
+#### Steps
+1.  Use `prometheus-client`.
+2.  Map events to counters.
+
+#### Definition of Done
+- [ ] Metrics exported.
+
+### P10.04c Adaptive Metrics
+
+| field | value |
+| --- | --- |
+| id | P10.04c |
+| title | Adaptive Metrics |
+| estimate | 2h |
+| status | blocked |
+| blocked_by | - |
+| blocks | - |
+| value | M |
+
+#### Summary
+
+Expose config as metrics.
+
+#### Steps
+1.  Walk ConfigRegistry.
+2.  Export values as gauges.
+
+#### Definition of Done
+- [ ] Config visible in Prom.
+
+### P10.04d Flamegraph Docs
+
+| field | value |
+| --- | --- |
+| id | P10.04d |
+| title | Flamegraph Docs |
+| estimate | 2h |
+| status | blocked |
+| blocked_by | - |
+| blocks | - |
+| value | L |
+
+#### Summary
+
+Document debugging.
+
+#### Steps
+1.  Write guide on profiling.
+
+#### Definition of Done
+- [ ] Guide exists.

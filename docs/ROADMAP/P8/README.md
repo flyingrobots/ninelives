@@ -7,20 +7,394 @@
 *   **Outcome:** Seamless interoperability. `ninelives` becomes a controllable citizen of the infrastructure, accessible via HTTP REST and gRPC, enabling rich integration with external orchestration and monitoring systems.
 
 ## Tasks
-- [ ] [P8.01b](P8.01b.md) Envelope Serde
-- [ ] [P8.01c](P8.01c.md) Command Serde
-- [ ] [P8.02a](P8.02a.md) Rest Server Init
-- [ ] [P8.02b](P8.02b.md) Rest Auth Middleware
-- [ ] [P8.02c](P8.02c.md) Rest Handlers
-- [ ] [P8.02d](P8.02d.md) Rest Error Map
-- [ ] [P8.02e](P8.02e.md) Rest Example
-- [ ] [P8.03a](P8.03a.md) gRPC Protos
-- [ ] [P8.03b](P8.03b.md) Tonic Server
-- [ ] [P8.03c](P8.03c.md) gRPC Auth
-- [ ] [P8.03d](P8.03d.md) gRPC Client
-- [ ] [P8.03e](P8.03e.md) gRPC Integ
-- [ ] [P8.04a](P8.04a.md) GraphQL Research
-- [ ] [P8.04b](P8.04b.md) MCP Research
-- [ ] [P8.05a](P8.05a.md) DeadlineContext & Layer
-- [ ] [P8.05b](P8.05b.md) Header Extraction (Ingress)
-- [ ] [P8.05c](P8.05c.md) Header Injection (Egress)
+
+### P8.01b Envelope Serde
+
+| field | value |
+| --- | --- |
+| id | P8.01b |
+| title | Envelope Serde |
+| estimate | 2h |
+| status | open |
+| blocked_by | - |
+| blocks | - |
+| value | H |
+
+#### Summary
+
+Implement `serde` for `CommandEnvelope`.
+
+#### Steps
+1.  Derive/Impl Serialize/Deserialize for Envelope.
+2.  Handle AuthPayload polymorphism.
+
+#### Definition of Done
+- [ ] Envelope serializes to JSON.
+
+### P8.01c Command Serde
+
+| field | value |
+| --- | --- |
+| id | P8.01c |
+| title | Command Serde |
+| estimate | 2h |
+| status | blocked |
+| blocked_by | - |
+| blocks | - |
+| value | H |
+
+#### Summary
+
+Implement `serde` for `BuiltInCommand`.
+
+#### Steps
+1.  Ensure all command variants serialize.
+2.  Unit tests for roundtrip.
+
+#### Definition of Done
+- [ ] Commands serialize.
+
+### P8.02a Rest Server Init
+
+| field | value |
+| --- | --- |
+| id | P8.02a |
+| title | Rest Server Init |
+| estimate | 2h |
+| status | blocked |
+| blocked_by | - |
+| blocks | - |
+| value | H |
+
+#### Summary
+
+Create `ninelives-rest` and basic server.
+
+#### Steps
+1.  New crate.
+2.  Add `axum`/`tokio`.
+3.  Listen on port.
+
+#### Definition of Done
+- [ ] Server runs.
+
+### P8.02b Rest Auth Middleware
+
+| field | value |
+| --- | --- |
+| id | P8.02b |
+| title | Rest Auth Middleware |
+| estimate | 2h |
+| status | blocked |
+| blocked_by | - |
+| blocks | - |
+| value | H |
+
+#### Summary
+
+Extract Auth header.
+
+#### Steps
+1.  Axum middleware to read `Authorization`.
+2.  Populate request extension.
+
+#### Definition of Done
+- [ ] Auth header extracted.
+
+### P8.02c Rest Handlers
+
+| field | value |
+| --- | --- |
+| id | P8.02c |
+| title | Rest Handlers |
+| estimate | 2h |
+| status | blocked |
+| blocked_by | - |
+| blocks | - |
+| value | H |
+
+#### Summary
+
+Implement POST /commands.
+
+#### Steps
+1.  Handler accepts JSON.
+2.  Decodes to Envelope.
+3.  Calls Router.
+
+#### Definition of Done
+- [ ] Handler works.
+
+### P8.02d Rest Error Map
+
+| field | value |
+| --- | --- |
+| id | P8.02d |
+| title | Rest Error Map |
+| estimate | 2h |
+| status | blocked |
+| blocked_by | - |
+| blocks | - |
+| value | H |
+
+#### Summary
+
+Map CommandError to HTTP status.
+
+#### Steps
+1.  Impl `IntoResponse` for `CommandError`.
+2.  Auth -> 401, etc.
+
+#### Definition of Done
+- [ ] Errors return correct codes.
+
+### P8.02e Rest Example
+
+| field | value |
+| --- | --- |
+| id | P8.02e |
+| title | Rest Example |
+| estimate | 2h |
+| status | blocked |
+| blocked_by | - |
+| blocks | - |
+| value | M |
+
+#### Summary
+
+Cookbook example for REST.
+
+#### Steps
+1.  `examples/rest_control.rs`.
+2.  Start server + client calls.
+
+#### Definition of Done
+- [ ] Example runs.
+
+### P8.03a gRPC Protos
+
+| field | value |
+| --- | --- |
+| id | P8.03a |
+| title | gRPC Protos |
+| estimate | 2h |
+| status | blocked |
+| blocked_by | - |
+| blocks | - |
+| value | M |
+
+#### Summary
+
+Define .proto files.
+
+#### Steps
+1.  Create `control.proto`.
+2.  Define messages.
+
+#### Definition of Done
+- [ ] Protos compile.
+
+### P8.03b Tonic Server
+
+| field | value |
+| --- | --- |
+| id | P8.03b |
+| title | Tonic Server |
+| estimate | 2h |
+| status | blocked |
+| blocked_by | - |
+| blocks | - |
+| value | M |
+
+#### Summary
+
+Implement `ninelives-grpc`.
+
+#### Steps
+1.  Generate Rust code.
+2.  Impl service trait calling Router.
+
+#### Definition of Done
+- [ ] gRPC server runs.
+
+### P8.03c gRPC Auth
+
+| field | value |
+| --- | --- |
+| id | P8.03c |
+| title | gRPC Auth |
+| estimate | 2h |
+| status | blocked |
+| blocked_by | - |
+| blocks | - |
+| value | M |
+
+#### Summary
+
+Auth interceptor.
+
+#### Steps
+1.  Read metadata/mTLS.
+2.  Set context.
+
+#### Definition of Done
+- [ ] Auth works.
+
+### P8.03d gRPC Client
+
+| field | value |
+| --- | --- |
+| id | P8.03d |
+| title | gRPC Client |
+| estimate | 2h |
+| status | blocked |
+| blocked_by | - |
+| blocks | - |
+| value | M |
+
+#### Summary
+
+Example client logic.
+
+#### Steps
+1.  Connect to server.
+2.  Send command.
+
+#### Definition of Done
+- [ ] Client connects.
+
+### P8.03e gRPC Integ
+
+| field | value |
+| --- | --- |
+| id | P8.03e |
+| title | gRPC Integ |
+| estimate | 2h |
+| status | blocked |
+| blocked_by | - |
+| blocks | - |
+| value | M |
+
+#### Summary
+
+End-to-end test.
+
+#### Steps
+1.  Test full loop.
+
+#### Definition of Done
+- [ ] Test passes.
+
+### P8.04a GraphQL Research
+
+| field | value |
+| --- | --- |
+| id | P8.04a |
+| title | GraphQL Research |
+| estimate | 2h |
+| status | blocked |
+| blocked_by | - |
+| blocks | - |
+| value | L |
+
+#### Summary
+
+Assess GraphQL fit.
+
+#### Steps
+1.  Prototype schema.
+
+#### Definition of Done
+- [ ] Decision made.
+
+### P8.04b MCP Research
+
+| field | value |
+| --- | --- |
+| id | P8.04b |
+| title | MCP Research |
+| estimate | 2h |
+| status | blocked |
+| blocked_by | - |
+| blocks | - |
+| value | L |
+
+#### Summary
+
+Assess MCP fit.
+
+#### Steps
+1.  Read MCP spec.
+
+#### Definition of Done
+- [ ] Decision made.
+
+### P8.05a DeadlineContext & Layer
+
+| field | value |
+| --- | --- |
+| id | P8.05a |
+| title | DeadlineContext & Layer |
+| estimate | 2h |
+| status | open |
+| blocked_by | - |
+| blocks | - |
+| value | H |
+
+#### Summary
+
+Define `DeadlineContext` and logic.
+
+#### Steps
+1.  Struct `DeadlineContext { deadline: Instant }`.
+2.  `DeadlineLayer` checks `deadline - now()`.
+
+#### Definition of Done
+- [ ] Layer enforces deadline.
+
+### P8.05b Header Extraction (Ingress)
+
+| field | value |
+| --- | --- |
+| id | P8.05b |
+| title | Header Extraction (Ingress) |
+| estimate | 2h |
+| status | blocked |
+| blocked_by | - |
+| blocks | - |
+| value | H |
+
+#### Summary
+
+Extract headers in Transports.
+
+#### Steps
+1.  Update REST/gRPC servers.
+2.  Read `grpc-timeout`.
+3.  Set Context.
+
+#### Definition of Done
+- [ ] Ingress sets deadline.
+
+### P8.05c Header Injection (Egress)
+
+| field | value |
+| --- | --- |
+| id | P8.05c |
+| title | Header Injection (Egress) |
+| estimate | 2h |
+| status | blocked |
+| blocked_by | - |
+| blocks | - |
+| value | H |
+
+#### Summary
+
+Inject headers in Clients.
+
+#### Steps
+1.  Update `ninelives-rest/grpc` clients.
+2.  Serialize remaining time.
+
+#### Definition of Done
+- [ ] Egress propagates deadline.
