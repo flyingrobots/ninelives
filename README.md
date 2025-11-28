@@ -173,14 +173,14 @@ let policy = Policy(circuit_breaker) + Policy(retry.into_layer());
 - **Advanced:** `NonBlockingSink(OtlpSink)` + `StreamingSink` fan-out for in-cluster consumers.
 - **GOD MODE:** `StreamingSink` → NATS/Kafka/Elastic via companion crates, with Observer + Sentinel auto-tuning when drop/evict metrics spike.
 
-See recipes in `src/cookbook.rs` and companion cookbooks:
-- `ninelives-otlp/README.md`
-- `ninelives-nats/README.md`
-- `ninelives-kafka/README.md`
-- `ninelives-elastic/README.md`
-- `ninelives-etcd/README.md`
-- `ninelives-prometheus/README.md`
-- `ninelives-jsonl/README.md`
+See recipes in [`ninelives-cookbook/src/lib.rs`](ninelives-cookbook/src/lib.rs) and companion cookbooks:
+- [`ninelives-otlp/README.md`](ninelives-otlp/README.md)
+- [`ninelives-nats/README.md`](ninelives-nats/README.md)
+- [`ninelives-kafka/README.md`](ninelives-kafka/README.md)
+- [`ninelives-elastic/README.md`](ninelives-elastic/README.md)
+- [`ninelives-etcd/README.md`](ninelives-etcd/README.md)
+- [`ninelives-prometheus/README.md`](ninelives-prometheus/README.md)
+- [`ninelives-jsonl/README.md`](ninelives-jsonl/README.md)
 
 ## Cookbook (pick your recipe)
 
