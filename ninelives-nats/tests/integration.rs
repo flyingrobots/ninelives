@@ -4,11 +4,16 @@ use ninelives::telemetry::{PolicyEvent, RetryEvent};
 use ninelives_nats::NatsSink;
 use tower_service::Service;
 
-// Requires NATS running and env NINE_LIVES_TEST_NATS_URL set, e.g. nats://127.0.0.1:4222
+// Requires NATS running. If NINE_LIVES_TEST_NATS_URL is unset, the test skips.
 #[tokio::test]
-#[ignore]
 async fn publishes_events_to_nats() {
-    let url = std::env::var("NINE_LIVES_TEST_NATS_URL").expect("set NINE_LIVES_TEST_NATS_URL");
+    let url = match std::env::var("NINE_LIVES_TEST_NATS_URL") {
+        Ok(v) => v,
+        Err(_) => {
+            eprintln!("skipping: set NINE_LIVES_TEST_NATS_URL (e.g. nats://127.0.0.1:4222)");
+            return;
+        }
+    };
     let subject = "policy.events";
 
     let client: Client = async_nats::connect(url.clone()).await.expect("connect nats");
