@@ -1710,7 +1710,7 @@ dependencies = [
 
 [[package]]
 name = "ninelives"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "arc-swap",
  "async-trait",
@@ -1731,7 +1731,7 @@ dependencies = [
 
 [[package]]
 name = "ninelives-cookbook"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "ninelives",
  "tokio",
@@ -1741,7 +1741,7 @@ dependencies = [
 
 [[package]]
 name = "ninelives-elastic"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "elasticsearch",
  "ninelives",
@@ -1752,7 +1752,7 @@ dependencies = [
 
 [[package]]
 name = "ninelives-etcd"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "chrono",
  "etcd-client",
@@ -1763,7 +1763,7 @@ dependencies = [
 
 [[package]]
 name = "ninelives-jsonl"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "ninelives",
  "serde_json",
@@ -1773,26 +1773,29 @@ dependencies = [
 
 [[package]]
 name = "ninelives-kafka"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "ninelives",
  "rdkafka",
+ "serde_json",
+ "tokio",
  "tracing",
 ]
 
 [[package]]
 name = "ninelives-nats"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "nats",
  "ninelives",
+ "serde_json",
  "tokio",
  "tracing",
 ]
 
 [[package]]
 name = "ninelives-otlp"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "ninelives",
  "opentelemetry",
@@ -1803,7 +1806,7 @@ dependencies = [
 
 [[package]]
 name = "ninelives-prometheus"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "ninelives",
  "prometheus",
@@ -2477,9 +2480,9 @@ dependencies = [
 
 [[package]]
 name = "rdkafka"
-version = "0.36.2"
+version = "0.37.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1beea247b9a7600a81d4cc33f659ce1a77e1988323d7d2809c7ed1c21f4c316d"
+checksum = "14b52c81ac3cac39c9639b95c20452076e74b8d9a71bc6fc4d83407af2ea6fff"
 dependencies = [
  "futures-channel",
  "futures-util",

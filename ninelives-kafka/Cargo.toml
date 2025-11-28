@@ -11,10 +11,10 @@ readme = "README.md"
 
 [dependencies]
 ninelives = { workspace = true }
+serde_json.workspace = true
 tracing = "0.1"
-
-# Heavy deps are optional
-rdkafka = { version = "0.36", features = ["tokio"], optional = true }
+rdkafka = { version = "0.37", features = ["tokio"], optional = true }
+tokio = { version = "1", features = ["rt", "macros"], optional = true }
 
 [features]
 client = ["rdkafka"]
