@@ -10,6 +10,11 @@ Resilience patterns for Rust with algebraic composition.
 
 Nine Lives provides battle-tested resilience patterns (retry, circuit breaker, bulkhead, timeout) as composable [tower](https://github.com/tower-rs/tower) layers with a unique algebraic composition system.
 
+## What's New
+- **Control plane locked in (Phase 2 complete):** runtime config via `ConfigRegistry`, authenticated command router, in-process transport, and cookbook example `cargo run -p ninelives-cookbook --example control_plane`.
+- **Schema enforcement:** transport envelopes and command results validated at runtime against JSON Schemas; contract tests added.
+- **Schemas relocated:** now live under `schemas/` and are included at build time.
+
 ## Features
 
 - 🔁 **Retry policies** with exponential/linear/constant backoff and jitter

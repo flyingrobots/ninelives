@@ -2,7 +2,7 @@
 
 ## Milestones
 - [x] Phase 1 (P1) — Build the observability foundation that enables autonomous operation. ([link](P1/README.md))
-- [ ] Phase 2 (P2) — Enable runtime policy tuning and command execution. ([link](P2/README.md))
+- [x] Phase 2 (P2) — Enable runtime policy tuning and command execution. ([link](P2/README.md))
 - [ ] Phase 3 (P3) — Aggregate telemetry into queryable system state. ([link](P3/README.md))
 - [ ] Phase 4 (P4) — Implement the "happy eyeballs" parallel composition operator. ([link](P4/README.md))
 - [ ] Phase 5 (P5) — Build the self-healing brain of the system. ([link](P5/README.md))
