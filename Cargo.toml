@@ -40,7 +40,7 @@ tower = { version = "0.5.2", features = ["full"] }
 tower-layer = "0.3"
 tower-service = "0.3"
 tracing = "~0.1.40"
-rand = "~0.8.5"
+rand = "~0.9.0"
 async-trait = "~0.1.86"
 futures = "~0.3.31"
 thiserror = "1"
