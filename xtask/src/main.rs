@@ -92,7 +92,10 @@ fn parse_task(path: &Path) -> Result<Task> {
 fn write_task(task: &Task) -> Result<()> {
     // Manual stringify to avoid API differences
     let fm = serde_yaml::to_string(&task.front)?.trim().to_string();
-    let rendered = format!("---\n{}\n---\n{}", fm, task.body);
+    let mut rendered = format!("---\n{}\n---\n{}", fm, task.body);
+    if !rendered.ends_with('\n') {
+        rendered.push('\n');
+    }
     fs::write(&task.path, rendered)?;
     Ok(())
 }

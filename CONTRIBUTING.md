@@ -13,7 +13,13 @@ cargo fmt -- --check
 cargo clippy --all-targets --all-features -- -D warnings 
 cargo test --all-features --all-targets
 ```
-To enable the repo's pre-push hook (runs the commands above plus `cargo doc --no-deps -D warnings`), set: `git config core.hooksPath .githooks`.
+To enable the repo's hooks (pre-push, etc.), set:
+
+```bash
+git config core.hooksPath scripts/git-hooks
+```
+
+Or run the helper script: `scripts/setup-hooks.sh`.
 4. Open a PR with a clear description and necessary tests.
 
 ## 🧪 Testing Notes
