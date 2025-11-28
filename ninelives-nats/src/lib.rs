@@ -55,10 +55,12 @@ impl tower_service::Service<PolicyEvent> for NatsSink {
     type Error = Infallible;
     type Future = Pin<Box<dyn std::future::Future<Output = Result<(), Self::Error>> + Send>>;
 
+    #[cfg_attr(not(feature = "client"), allow(unused_variables))]
     fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         Poll::Ready(Ok(()))
     }
 
+    #[cfg_attr(not(feature = "client"), allow(unused_variables))]
     fn call(&mut self, event: PolicyEvent) -> Self::Future {
         #[cfg(feature = "client")]
         let fut = {
@@ -74,7 +76,9 @@ impl tower_service::Service<PolicyEvent> for NatsSink {
 
         #[cfg(not(feature = "client"))]
         let fut = {
-            let _ = event;
+            // Still touch the event to ensure serialization paths stay valid even when the client
+            // feature is off (keeps compilation honest for downstream users).
+            let _ = serde_json::to_vec(&event_to_json(&event));
             Box::pin(async move { Ok(()) })
         };
 
