@@ -340,6 +340,29 @@ impl CommandHistory for InMemoryHistory {
     }
 }
 
+/// In-memory audit sink (tests/diagnostics).
+#[derive(Default)]
+pub struct MemoryAuditSink {
+    records: Arc<Mutex<Vec<AuditRecord>>>,
+}
+
+impl MemoryAuditSink {
+    pub fn new() -> Self {
+        Self::default()
+    }
+    pub fn records(&self) -> Vec<AuditRecord> {
+        self.records.lock().unwrap().clone()
+    }
+}
+
+#[async_trait]
+impl AuditSink for MemoryAuditSink {
+    async fn record(&self, record: AuditRecord) -> Result<(), CommandError> {
+        self.records.lock().unwrap().push(record);
+        Ok(())
+    }
+}
+
 /// Simple in-process router using an AuthRegistry and handler.
 pub struct CommandRouter<C> {
     auth: AuthRegistry,
@@ -366,12 +389,30 @@ where
     }
 
     pub async fn execute(&self, env: CommandEnvelope<C>) -> Result<CommandResult, CommandError> {
-        let ctx = self.auth.authenticate(&env)?;
+        // Auth path: audit denials too.
+        let auth_result = self.auth.authenticate(&env);
+        let ctx = match auth_result {
+            Ok(ctx) => ctx,
+            Err(e) => {
+                if let Some(sink) = &self.audit {
+                    let record = AuditRecord {
+                        id: env.meta.id.clone(),
+                        label: env.cmd.label().into(),
+                        principal: "unknown".into(),
+                        status: format!("denied: {}", e),
+                    };
+                    sink.record(record).await?;
+                }
+                return Err(CommandError::Auth(e));
+            }
+        };
+
         let res = self.handler.handle(env.clone(), ctx.clone()).await?;
         self.history.append(&env.meta, &res).await;
+
         if let Some(sink) = &self.audit {
             let status = match &res {
-                CommandResult::Error(e) => e.clone(),
+                CommandResult::Error(e) => format!("error: {}", e),
                 _ => "ok".into(),
             };
             let record = AuditRecord {
