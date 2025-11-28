@@ -29,7 +29,7 @@ async fn publishes_events_to_nats() {
         attempt: 1,
         delay: std::time::Duration::from_millis(50),
     });
-    sink.call(event).await.unwrap();
+    sink.call(event.clone()).await.unwrap();
 
     // Assert delivery
     let msg = sub.next().await.expect("message");
