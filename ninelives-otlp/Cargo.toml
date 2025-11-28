@@ -1,15 +1,16 @@
 [package]
 name = "ninelives-otlp"
-version = "0.1.0"
-edition = "2021"
-authors = ["James Ross <james@flyingrobots.dev>"]
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
 description = "OTLP telemetry sink for ninelives"
-license = "Apache-2.0"
+license.workspace = true
 publish = true
-repository = "https://github.com/flyingrobots/ninelives"
+repository.workspace = true
+readme = "README.md"
 
 [dependencies]
-ninelives = { version = "0.1.0", path = ".." }
+ninelives = { workspace = true }
 tracing = "0.1"
 
 opentelemetry = { version = "0.21", optional = true }

@@ -1,33 +1,50 @@
 # Nine Lives 🐱
 
-> Tower-native fractal supervision for async Rust — autonomous, self-healing Services via composable policy algebra.
-
-Resilience patterns for Rust with algebraic composition.
+> **Tower-native fractal supervision for async Rust.**
+>
+> Autonomous, self-healing Services via composable policy algebra.
 
 [![Crates.io](https://img.shields.io/crates/v/ninelives.svg)](https://crates.io/crates/ninelives)
 [![Documentation](https://docs.rs/ninelives/badge.svg)](https://docs.rs/ninelives)
 [![License](https://img.shields.io/crates/l/ninelives.svg)](LICENSE)
 
-Nine Lives provides battle-tested resilience patterns (retry, circuit breaker, bulkhead, timeout) as composable [tower](https://github.com/tower-rs/tower) layers with a unique algebraic composition system.
+**Nine Lives** is a resilience framework for Rust that treats failure handling as a composition problem. It provides standard patterns (retry, circuit breaker, bulkhead, timeout) as **Tower layers**, but supercharges them with an **algebraic composition system** that lets you express complex recovery strategies declaratively.
 
-## Roadmap & Status
+---
 
-- **Phase 1 – Observability foundation** ✅ — telemetry events and sinks; see [P1](docs/ROADMAP/P1/README.md).
-- **Phase 2 – Control plane** ✅ — runtime config via `ConfigRegistry`, authenticated command router, in-process transport, runtime schema validation (`schemas/`), and cookbook example [`control_plane`](ninelives-cookbook/examples/control_plane.rs).
-- **Phase 3 – Observer (up next)** 🚧 — aggregate `PolicyEvent`s into queryable state for operators/Sentinel; see [P3](docs/ROADMAP/P3/README.md) in the [ROADMAP](docs/ROADMAP/README.md).
-- **Beyond** — Sentinel/meta-policy engine, crate split, multi-protocol transports (see full [ROADMAP](docs/ROADMAP/README.md)).
+## ⚗️ The Algebra of Resilience
 
-> [!warning]
-> This project will be split into smaller crates soon. The organization is not yet stable; expect breaking changes.\n
+These operators are recursive: a composed `Policy` is just another `Policy`, allowing you to snap them together like Lego blocks into arbitrarily complex supervision trees.
 
-## Quick Start
+Nine Lives introduces three intuitive operators to compose `Policy` layers:
 
-Add to your `Cargo.toml`:
+*   **`Policy(A) + Policy(B)` (Wrap):** `A` wraps `B` to create a sequential pipeline. This is standard Tower layering, where the outer layer `A` processes requests before passing them to the inner layer `B`.
+    *   *Example:* `Retry + Timeout` implies a Timeout mechanism applied *after* an operation has potentially retried.
 
+*   **`Policy(A) | Policy(B)` (Fallback):** Tries `A` first. If `A` fails, `B` is then attempted with the original request. This enables graceful degradation.
+    *   *Example:* `FastCache | SlowDatabase` will try to fetch from a fast cache, and only if that fails, query a slower database.
+
+*   **`Policy(A) & Policy(B)` (Race):** Runs `A` and `B` concurrently. The first successful response from either `A` or `B` is returned. If both fail, an error is returned. This is useful for "Happy Eyeballs" patterns or redundant requests.
+    *   *Example:* `RegionA & RegionB` to race requests to two different regions, using the quicker response.
+
+### Expressive Composition
+
+Combine strategies naturally with operator precedence (`&` > `+` > `|`). No more nested builder hell.
+
+```rust
+// "Try the fast path. If it fails, retry the slow path with a circuit breaker."
+let strategy = fast_path | (retry + breaker + slow_path);
+```
+
+---
+
+## 🚀 Quick Start
+
+Add to `Cargo.toml`:
 ```toml
 [dependencies]
-ninelives = "0.1"
-tower = "0.5"
+ninelives = "latest"
+tower = "0.5.2"
 tokio = { version = "1", features = ["full"] }
 ```
 
@@ -36,15 +53,24 @@ tokio = { version = "1", features = ["full"] }
 ```rust
 use ninelives::prelude::*;
 use std::time::Duration;
-use tower::{Service, ServiceBuilder, ServiceExt};
+use tower::{ServiceBuilder, ServiceExt};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Apply a timeout to any service
-    let mut svc = ServiceBuilder::new()
-        .layer(TimeoutLayer::new(Duration::from_secs(1))?)
+    // Define a policy: Retry 3 times with backoff, wrapped in a 1s timeout
+    let retry = RetryPolicy::builder()
+        .max_attempts(3)
+        .backoff(Backoff::exponential(Duration::from_millis(50)))
+        .build()?
+        .into_layer();
+
+    let policy = Policy(TimeoutLayer::new(Duration::from_secs(1))?) + Policy(retry);
+
+    let svc = ServiceBuilder::new()
+        .layer(policy)
         .service_fn(|req: &str| async move {
-            Ok::<_, std::io::Error>(format!("Response: {}", req))
+            // Your potentially failing logic here
+            Ok::<_, std::io::Error>(format!("Echo: {}", req))
         });
 
     let response = svc.ready().await?.call("hello").await?;
@@ -53,115 +79,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-## Algebraic Composition - The Nine Lives Advantage
+---
 
-Compose resilience strategies using intuitive operators:
+## 🍳 Cookbook
 
-- **`Policy(A) + Policy(B)`** - Sequential composition: `A` wraps `B`
-- **`Policy(A) | Policy(B)`** - Fallback: try `A`, fall back to `B` on error
-- **`Policy(A) & Policy(B)`** - Fork-join: try both concurrently, return first success
-
-**Precedence:** `&` > `+` > `|` (like `*` > `+` > bitwise-or in math)
-
-### Example: Fallback Strategy
-
-Try an aggressive timeout first, fall back to a longer timeout on failure:
-
-```rust
-use ninelives::prelude::*;
-use std::time::Duration;
-use tower::{ServiceBuilder, Layer};
-
-let fast = Policy(TimeoutLayer::new(Duration::from_millis(100))?);
-let slow = Policy(TimeoutLayer::new(Duration::from_secs(5))?);
-let policy = fast | slow;
-
-let svc = ServiceBuilder::new()
-    .layer(policy)
-    .service_fn(|req| async { Ok::<_, std::io::Error>(req) });
-```
-
-### Example: Fork-Join (Happy Eyeballs)
-
-Race two strategies concurrently and return the first success:
-
-```rust
-use ninelives::prelude::*;
-use std::time::Duration;
-
-// Create two timeout policies with different durations
-let ipv4 = Policy(TimeoutLayer::new(Duration::from_millis(100))?);
-let ipv6 = Policy(TimeoutLayer::new(Duration::from_millis(150))?);
-
-// Race them concurrently - first success wins
-let policy = ipv4 & ipv6;
-
-let svc = ServiceBuilder::new()
-    .layer(policy)
-    .service_fn(|req| async { Ok::<_, std::io::Error>(req) });
-```
-
-### Example: Multi-Tier Resilience
-
-Combine multiple strategies with automatic precedence:
-
-```rust
-use ninelives::prelude::*;
-use std::time::Duration;
-
-// Aggressive: just a fast timeout
-let aggressive = Policy(TimeoutLayer::new(Duration::from_millis(50))?);
-
-// Defensive: nested timeouts for retries
-let defensive = Policy(TimeoutLayer::new(Duration::from_secs(10))?)
-              + Policy(TimeoutLayer::new(Duration::from_secs(5))?);
-
-// Try aggressive first, fall back to defensive
-let policy = aggressive | defensive;
-// Parsed as: Policy(Timeout50ms) | (Policy(Timeout10s) + Policy(Timeout5s))
-```
-
-### Example: Circuit Breaker with Retry
-
-```rust
-use ninelives::prelude::*;
-use std::time::Duration;
-
-// Build a retry policy with exponential backoff
-let retry = RetryPolicy::builder()
-    .max_attempts(3)
-    .backoff(Backoff::exponential(Duration::from_millis(100)))
-    .with_jitter(Jitter::full())
-    .build()?;
-
-// Configure circuit breaker
-let circuit_breaker = CircuitBreakerLayer::new(
-    CircuitBreakerConfig::default()
-        .failure_threshold(5)
-        .timeout_duration(Duration::from_secs(10))
-)?;
-
-// Compose: circuit breaker wraps retry
-let policy = Policy(circuit_breaker) + Policy(retry.into_layer());
-```
-
-## Telemetry Sink Ladder
-
-- **Baby mode:** `MemorySink::with_capacity(1_000)` for local inspection.
-- **Intermediate:** `NonBlockingSink(LogSink)` to keep request paths non-blocking while logging.
-- **Advanced:** `NonBlockingSink(OtlpSink)` + `StreamingSink` fan-out for in-cluster consumers.
-- **GOD MODE:** `StreamingSink` → NATS/Kafka/Elastic via companion crates, with Observer + Sentinel auto-tuning when drop/evict metrics spike.
-
-See recipes in [`ninelives-cookbook/src/lib.rs`](ninelives-cookbook/src/lib.rs) and companion cookbooks:
-- [`ninelives-otlp/README.md`](ninelives-otlp/README.md)
-- [`ninelives-nats/README.md`](ninelives-nats/README.md)
-- [`ninelives-kafka/README.md`](ninelives-kafka/README.md)
-- [`ninelives-elastic/README.md`](ninelives-elastic/README.md)
-- [`ninelives-etcd/README.md`](ninelives-etcd/README.md)
-- [`ninelives-prometheus/README.md`](ninelives-prometheus/README.md)
-- [`ninelives-jsonl/README.md`](ninelives-jsonl/README.md)
-
-## Cookbook (pick your recipe)
+Pick a recipe from [`ninelives-cookbook`](ninelives-cookbook/src/lib.rs):
 
 - **Simple retry:** [`retry_fast`](ninelives-cookbook/src/lib.rs#L15) — 3 attempts, 50ms exp backoff + jitter.
 - **Latency guard:** [`timeout_p95`](ninelives-cookbook/src/lib.rs#L33) — 300ms budget.
@@ -172,290 +94,77 @@ See recipes in [`ninelives-cookbook/src/lib.rs`](ninelives-cookbook/src/lib.rs) 
 - **Hedge + fallback (god tier):** [`hedged_then_fallback`](ninelives-cookbook/src/lib.rs#L129) — race two fast paths, then fall back to a sturdy stack.
 - **Sensible defaults:** [`sensible_defaults`](ninelives-cookbook/src/lib.rs#L112) — timeout + retry + bulkhead starter pack.
 
-Most recipes are adaptive: retry/timeout/circuit/bulkhead knobs can be updated live via the `Adaptive<T>` handles (see cookbook for details).
+Most recipes are adaptive: retry/timeout/circuit/bulkhead knobs can be updated live via the `Adaptive<T>` handles.
 
-All live in [`ninelives-cookbook/src/lib.rs`](ninelives-cookbook/src/lib.rs) with runnable examples in [`ninelives-cookbook/examples/`](ninelives-cookbook/examples).
-
-## Control Plane: Live Config
-
-Nine Lives ships a lightweight, transport-agnostic control nucleus. You register live knobs with a `ConfigRegistry`, wire it into the built-in handler, then speak commands (over any transport you like) to read/write values at runtime.
-
-👉 See [`ninelives-cookbook/examples/control_plane.rs`](ninelives-cookbook/examples/control_plane.rs) for a runnable end-to-end example using the in-process channel transport.
-
-```rust
-use ninelives::control::*;
-use ninelives::{Backoff, Jitter, RetryPolicy};
-use std::time::Duration;
-
-let policy = RetryPolicy::<std::io::Error>::builder()
-    .max_attempts(3)
-    .backoff(Backoff::exponential(Duration::from_millis(50)))
-    .with_jitter(Jitter::full())
-    .build()
-    .unwrap();
-
-let adaptive = policy.adaptive_max_attempts();
-let mut cfg = ConfigRegistry::new();
-cfg.register_fromstr("retry.max_attempts", adaptive);
-
-let handler = BuiltInHandler::default().with_config_registry(cfg);
-let mut auth = AuthRegistry::new(AuthMode::First);
-auth.register(Arc::new(PassthroughAuth));
-let router = CommandRouter::new(auth, Arc::new(handler), Arc::new(InMemoryHistory::default()));
-
-// Write a new value at runtime
-let cmd = CommandEnvelope {
-    cmd: BuiltInCommand::WriteConfig { path: "retry.max_attempts".into(), value: "5".into() },
-    auth: Some(AuthPayload::Opaque(vec![])),
-    meta: CommandMeta { id: "cmd-1".into(), correlation_id: None, timestamp_millis: None },
-};
-let _ = router.execute(cmd).await?;
-```
-
-Commands:
-- `WriteConfig { path, value }` — parse and set a registered adaptive.
-- `ReadConfig { path }` — fetch the current value.
-- `Set/Get/List/Reset` — simple in-memory K/V for quick experiments (Set will also update a registered config path if it matches).
-
-## Tower Integration
-
-Nine Lives layers work seamlessly with tower's `ServiceBuilder`:
-
-```rust
-use ninelives::prelude::*;
-use tower::ServiceBuilder;
-use std::time::Duration;
-
-let service = ServiceBuilder::new()
-    .layer(TimeoutLayer::new(Duration::from_secs(30))?)
-    .layer(CircuitBreakerLayer::new(CircuitBreakerConfig::default())?)
-    .layer(BulkheadLayer::new(10)?)
-    .service(my_inner_service);
-```
-
-Or use the algebraic syntax:
-
-```rust
-let policy = Policy(TimeoutLayer::new(Duration::from_secs(30))?)
-           + Policy(CircuitBreakerLayer::new(CircuitBreakerConfig::default())?)
-           + Policy(BulkheadLayer::new(10)?);
-
-let service = ServiceBuilder::new()
-    .layer(policy)
-    .service(my_inner_service);
-```
-
-## Available Layers
-
-### TimeoutLayer
-
-Enforces time limits on operations:
-
-```rust
-use ninelives::prelude::*;
-use std::time::Duration;
-
-let timeout = TimeoutLayer::new(Duration::from_secs(5))?;
-```
-
-### RetryLayer
-
-Retries failed operations with configurable backoff and jitter:
-
-```rust
-use ninelives::prelude::*;
-use std::time::Duration;
-
-let retry = RetryPolicy::builder()
-    .max_attempts(3)
-    .backoff(Backoff::exponential(Duration::from_millis(100)))
-    .with_jitter(Jitter::full())
-    .build()?
-    .into_layer();
-```
-
-**Backoff strategies:**
-- `Backoff::constant(duration)` - Fixed delay
-- `Backoff::linear(base)` - Linear increase: `base * attempt`
-- `Backoff::exponential(base)` - Exponential: `base * 2^attempt`
-
-**Jitter strategies:**
-- `Jitter::none()` - No jitter
-- `Jitter::full()` - Random [0, delay]
-- `Jitter::equal()` - delay/2 + random [0, delay/2]
-- `Jitter::decorrelated()` - AWS-style stateful jitter
-
-### CircuitBreakerLayer
-
-Prevents cascading failures with three-state management (Closed/Open/HalfOpen):
-
-```rust
-use ninelives::prelude::*;
-use std::time::Duration;
-
-let circuit_breaker = CircuitBreakerLayer::new(
-    CircuitBreakerConfig::default()
-        .failure_threshold(5)        // Open after 5 failures
-        .timeout_duration(Duration::from_secs(10))  // Stay open for 10s
-        .half_open_max_calls(3)      // Allow 3 test calls in half-open
-)?;
-```
-
-### BulkheadLayer
-
-Limits concurrent requests for resource isolation:
-
-```rust
-use ninelives::prelude::*;
-
-let bulkhead = BulkheadLayer::new(10)?;  // Max 10 concurrent requests
-```
-
-## Error Handling
-
-All resilience errors are unified under `ResilienceError<E>`:
-
-```rust
-use ninelives::ResilienceError;
-
-match service.call(request).await {
-    Ok(response) => { /* success */ },
-    Err(ResilienceError::Timeout { .. }) => { /* timeout */ },
-    Err(ResilienceError::CircuitOpen { .. }) => { /* circuit breaker open */ },
-    Err(ResilienceError::RetryExhausted { failures, .. }) => {
-        // All retry attempts failed
-        eprintln!("Failed after {} attempts", failures.len());
-    },
-    Err(ResilienceError::Bulkhead { .. }) => { /* capacity exhausted */ },
-    Err(ResilienceError::Inner(e)) => { /* inner service error */ },
-}
-```
-
-## Operator Precedence
-
-When combining operators, understand the precedence rules:
-
-```rust
-// & binds tighter than +, and + binds tighter than |
-A | B + C & D   // Parsed as: A | (B + (C & D))
-
-// Use parentheses for explicit control
-(A | B) + C     // C wraps the fallback between A and B
-```
-
-**Examples:**
-
-```rust
-// Try fast, fallback to slow with retry
-let policy = fast | retry + slow;
-// Equivalent to: fast | (retry + slow)
-
-// Retry wraps a fallback
-let policy = retry + (fast | slow);
-
-// Happy Eyeballs: race IPv4 and IPv6
-let policy = ipv4 & ipv6;
-// Both called concurrently, first success wins
-
-// Complex composition
-let policy = aggressive | defensive + (ipv4 & ipv6);
-// Try aggressive, fallback to defensive wrapping parallel attempts
-```
-
-## Testability
-
-Nine Lives is designed for testing with dependency injection:
-
-```rust
-use ninelives::prelude::*;
-use std::time::Duration;
-
-// Use InstantSleeper for tests (no actual delays)
-let retry = RetryPolicy::builder()
-    .max_attempts(3)
-    .backoff(Backoff::exponential(Duration::from_millis(100)))
-    .with_sleeper(InstantSleeper)
-    .build()?;
-
-// TrackingSleeper records sleep durations for assertions
-let tracker = TrackingSleeper::new();
-let retry = RetryPolicy::builder()
-    .max_attempts(3)
-    .with_sleeper(tracker.clone())
-    .build()?;
-
-// ... exercise retry ...
-
-let sleeps = tracker.get_sleeps();
-assert_eq!(sleeps.len(), 2); // Slept twice before success
-```
-
-## Roadmap
-
-Nine Lives is evolving toward a **fractal resilience framework** with autonomous operation:
-
-- **v1.0** (Current Phase): Tower-native layers with algebraic composition ✅
-- **v1.5**: Telemetry events, control plane for runtime tuning 🚧
-- **v2.0**: Autonomous Sentinel with meta-policies, shadow evaluation 🔮
-- **v3.0**: Rich adapter ecosystem (Redis, OTLP, Prometheus) 🌐
-
-See [ROADMAP.md](ROADMAP.md) for the full vision.
-
-## Performance
-
-Nine Lives is built for production:
-
-- **Lock-free** circuit breaker state transitions using atomics
-- **Zero-allocation** backoff/jitter calculations with overflow protection
-- **Minimal overhead** - resilience layers add < 1% latency in common cases
-
-Benchmarks coming soon.
-
-## Comparison to Other Libraries
-
-| Feature | Nine Lives | Resilience4j (Java) | Polly (C#) | tower |
-|---------|-----------|---------------------|-----------|-------|
-| Uniform Service Abstraction | ✅ | ❌ | ❌ | ✅ |
-| Algebraic Composition (`+`, `\|`, `&`) | ✅ | ❌ | ❌ | ❌ |
-| Fork-Join (Happy Eyeballs) | ✅ | ❌ | ❌ | ❌ |
-| Tower Integration | ✅ Native | N/A | N/A | ✅ Native |
-| Lock-Free Implementations | ✅ | Partial | Partial | Varies |
-| Retry with Backoff/Jitter | ✅ | ✅ | ✅ | ❌ |
-| Circuit Breaker | ✅ | ✅ | ✅ | ❌ |
-| Bulkhead | ✅ | ✅ | ✅ | ❌ |
-| Timeout | ✅ | ✅ | ✅ | ✅ |
-
-**Nine Lives' unique advantage:** Algebraic composition with fork-join support lets you express complex resilience strategies declaratively, including concurrent racing patterns like Happy Eyeballs, without nested builders or imperative code.
-
-## Examples
-
-See the [`examples/`](examples/) directory for runnable examples:
-
-- `retry_only.rs` - Basic retry with backoff
-- `decorrelated_jitter.rs` - AWS-style decorrelated jitter
-- `algebra_composition.rs` - Complex algebraic composition patterns
-
-Run with:
-
-```bash
-cargo run --example retry_only
-```
-
-## License
-
-Licensed under either of:
-
-- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
-- MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
-
-at your option.
-
-## Contributing
-
-Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in the work by you shall be dual licensed as above, without any additional terms or conditions.
+See [`ninelives-cookbook/examples/`](ninelives-cookbook/examples) for runnable demos.
 
 ---
 
-**Built with ❤️ for the Rust async ecosystem.**
+## 🔋 Features
+
+### 🛡️ Standard Primitives
+- **Retry:** Exponential/Linear/Constant backoff with full jitter support.
+- **Circuit Breaker:** Lock-free implementation. Automatically opens on failure spikes to protect downstream.
+- **Bulkhead:** Semaphored concurrency limits to prevent resource exhaustion.
+- **Timeout:** Strict latency bounds.
+
+### 🎛️ Control Plane (Adaptive)
+Turn static configs into live knobs. Nine Lives includes a runtime configuration system (`ConfigRegistry`, `CommandRouter`) that lets you adjust max retries, timeouts, or circuit breaker thresholds without restarting the service.
+
+### 📡 Telemetry & Observability
+Unified event system. Every layer emits structured `PolicyEvent`s (e.g., `RetryAttempt`, `CircuitOpen`).
+- **Sinks:**
+  - `LogSink` (tracing)
+  - `OtlpSink` (OpenTelemetry)
+  - `StreamingSink` (Broadcast to NATS/Kafka)
+- **Introspection:** Query the state of any circuit breaker at runtime.
+
+### 🔌 Ecosystem
+Nine Lives is designed to integrate with your infrastructure:
+- [`ninelives-elastic`](ninelives-elastic/README.md)
+- [`ninelives-etcd`](ninelives-etcd/README.md)
+- [`ninelives-jsonl`](ninelives-jsonl/README.md)
+- [`ninelives-kafka`](ninelives-kafka/README.md)
+- [`ninelives-nats`](ninelives-nats/README.md)
+- [`ninelives-otlp`](ninelives-otlp/README.md)
+- [`ninelives-prometheus`](ninelives-prometheus/README.md)
+
+---
+
+## 🆚 Comparison
+
+| Feature                               | Nine Lives | Resilience4j (Java) | Polly (C#) | go-kit (Go) | `tower` (Rust) |
+| :------------------------------------ | :-----------: | :-----------------: | :--------: | :---------: | :------------: |
+| **1. Uniform `Service` Abstraction**  |       ✅       |          ❌          |     ❌      |      ✅      |       ✅        |
+| **2. Fractal/Recursive Architecture** |       ✅       |          ❌          |     ❌      |      ❌      |       ✅        |
+| **3. Algebraic Composition** (`+`, `\|`, `&`)      |          ✅          |     ❌      |      ❌      |       ❌        | ❌   |
+| **4. Composable Telemetry Sinks**     |       ✅       |          ❌          |     ❌      |      ❌      |       ❌        |
+| **5. Live Policy Updates**            |       ✅       |          ✅          |     ✅      |   Partial   |       ❌        |
+| **6. Pluggable Control Plane**        |       ✅       |          ❌          |     ❌      |      ❌      |       ❌        |
+| **7. Autonomous Self-Healing Loop**   |       ✅       |          ❌          |     ❌      |      ❌      |       ❌        |
+| **8. Distributed/Fleet Policies**     |       ✅       |          ❌          |  Partial   |      ❌      |       ❌        |
+| **9. Lock-Free Core**                 |       ✅       |          ⚠️          |     ⚠️      |      ⚠️      |       ⚠️        |
+
+---
+
+## 🗺️ Roadmap
+
+- **Phase 1: Foundation** ✅ (Layers, Algebra, Telemetry)
+- **Phase 2: Control Plane** ✅ (Runtime Config, Command Protocol)
+- **Phase 3: Observer** 🚧 (Aggregation, Sentinel Logic)
+- **Future:** WASM-based Meta-Policies, Distributed Circuit Breaking.
+
+See [ROADMAP.md](docs/ROADMAP/README.md) for details.
+
+---
+
+## 📄 License
+
+Licensed under the Apache License, Version 2.0 (see [LICENSE](LICENSE)).
+
+---
+<div align="center">
+  <b>Built with ❤️ for the Rust async ecosystem.</b>
+</div>
+
+© 2025 James Ross • [Flying Robots](https://github.com/flyingrobots)
