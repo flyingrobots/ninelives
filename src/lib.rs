@@ -142,6 +142,7 @@ pub use circuit_breaker::{
 };
 pub use clock::{Clock, MonotonicClock};
 pub use control::transport::{Transport, TransportEnvelope, TransportRouter};
+pub use control::transport_channel::ChannelTransport;
 pub use control::{AuthorizationLayer, MemoryAuditSink};
 pub use error::ResilienceError;
 pub use jitter::Jitter;

@@ -5,6 +5,7 @@
 //! after auth. History storage is pluggable.
 
 pub mod transport;
+pub mod transport_channel;
 
 use std::collections::HashMap;
 use std::fmt::Display;
