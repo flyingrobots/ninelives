@@ -12,4 +12,4 @@
 - [ ] Phase 9 (P9) — Demonstrate high-level distributed systems patterns. ([link](P9/README.md))
 - [ ] Phase 10 (P10) — Optimize for zero-overhead and production reliability. ([link](P10/README.md))
 
-See `docs/ROADMAP/WORKFLOW.md` for the xtask-based roadmap workflow (sync, suggest, add, set/block, CI guardrails).
+See [`docs/ROADMAP/WORKFLOW.md`](docs/ROADMAP/WORKFLOW.md) for the xtask-based roadmap workflow (sync, suggest, add, set/block, CI guardrails).

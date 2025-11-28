@@ -34,7 +34,7 @@ We need an interoperable wire format so any transport (HTTP, gRPC, JSONL, stdin 
   - `Error(<string>)` -> `{ "result": "error", "message": "..." }`
 - All transports MUST be isomorphic to this JSON shape. Binary transports (gRPC) mirror the same fields.
 - Field ordering is not significant; UTF-8 encoding is required for text transports.
-- Schemas checked into `schemas/transport-envelope.schema.json` and `schemas/command-result.schema.json`.
+- Schemas checked into [`schemas/transport-envelope.schema.json`](schemas/transport-envelope.schema.json) and [`schemas/command-result.schema.json`](schemas/command-result.schema.json).
 
 ## Rationale
 - Keeps command schema stable across transports and languages.
