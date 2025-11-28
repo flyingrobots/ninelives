@@ -11,22 +11,23 @@ Resilience patterns for Rust with algebraic composition.
 Nine Lives provides battle-tested resilience patterns (retry, circuit breaker, bulkhead, timeout) as composable [tower](https://github.com/tower-rs/tower) layers with a unique algebraic composition system.
 
 ## What's New
-- **Control plane locked in (Phase 2 complete):** runtime config via `ConfigRegistry`, authenticated command router, in-process transport, and cookbook example `cargo run -p ninelives-cookbook --example control_plane`.
-- **Schema enforcement:** transport envelopes and command results validated at runtime against JSON Schemas; contract tests added.
-- **Schemas relocated:** now live under `schemas/` and are included at build time.
+- **Control plane locked in (Phase 2 complete):** runtime config via `ConfigRegistry`, authenticated command router, in-process transport, and cookbook example [`control_plane`](ninelives-cookbook/examples/control_plane.rs) (`cargo run -p ninelives-cookbook --example control_plane`).
+- **Schema enforcement:** transport envelopes and command results validated at runtime against JSON Schemas in [`schemas/`](schemas); contract tests [`schema_transport_envelope.rs`](tests/schema_transport_envelope.rs) / [`schema_command_result.rs`](tests/schema_command_result.rs).
+- **Schemas relocated:** now live under [`schemas/`](schemas) and are included at build time.
 
 ## Implemented Features (with runnable examples)
 
-- **Retry with backoff + jitter** — cookbook: `cargo run -p ninelives-cookbook --example retry_only`
-- **Timeout guards** — cookbook: `cargo run -p ninelives-cookbook --example timeout_fallback`
-- **Bulkhead concurrency limits** — cookbook: `cargo run -p ninelives-cookbook --example bulkhead_concurrency`
-- **Algebraic composition (`+ | &`)** — cookbook: `cargo run -p ninelives-cookbook --example algebra_composition`
-- **Hedged/parallel attempts (fork-join)** — cookbook: `cargo run -p ninelives-cookbook --example telemetry_composition` (shows multicasting/telemetry on forked paths)
-- **Telemetry sinks (log/memory/streaming)** — cookbook: `cargo run -p ninelives-cookbook --example telemetry_basic`
-- **Control plane (live config writes)** — cookbook: `cargo run -p ninelives-cookbook --example control_plane`
+- **Retry with backoff + jitter** — cookbook: [`retry_only`](ninelives-cookbook/examples/retry_only.rs)
+- **Timeout guards** — cookbook: [`timeout_fallback`](ninelives-cookbook/examples/timeout_fallback.rs)
+- **Bulkhead concurrency limits** — cookbook: [`bulkhead_concurrency`](ninelives-cookbook/examples/bulkhead_concurrency.rs)
+- **Algebraic composition (`+ | &`)** — cookbook: [`algebra_composition`](ninelives-cookbook/examples/algebra_composition.rs)
+- **Hedged/parallel attempts (fork-join)** — cookbook: [`telemetry_composition`](ninelives-cookbook/examples/telemetry_composition.rs) (shows multicasting/telemetry on forked paths)
+- **Telemetry sinks (log/memory/streaming)** — cookbook: [`telemetry_basic`](ninelives-cookbook/examples/telemetry_basic.rs)
+- **Control plane (live config writes)** — cookbook: [`control_plane`](ninelives-cookbook/examples/control_plane.rs)
+- **Adaptive knobs** — integrated across retry/timeout/bulkhead/circuit breaker; see control_plane example and adaptive tests in [`tests/`](tests).
 - **Adaptive knobs** — integrated across retry/timeout/bulkhead/circuit breaker; see control_plane example and retry/bulkhead adaptive tests.
 
-For more recipes, browse `ninelives-cookbook/examples/` and `ninelives-cookbook/src/lib.rs` functions (`retry_fast`, `api_guardrail`, `hedged_read`, `hedged_then_fallback`, `sensible_defaults`).
+For more recipes, browse [`ninelives-cookbook/examples/`](ninelives-cookbook/examples) and [`ninelives-cookbook/src/lib.rs`](ninelives-cookbook/src/lib.rs) (`retry_fast`, `api_guardrail`, `hedged_read`, `hedged_then_fallback`, `sensible_defaults`).
 
 ## Features
 
