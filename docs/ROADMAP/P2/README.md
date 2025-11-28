@@ -27,6 +27,6 @@
 - [x] [P2.16a](P2.16a.md) AuthorizationLayer Structure
 - [ ] [P2.16b](P2.16b.md) Authorization Logic Integration
 - [x] [P2.17](P2.17.md) Audit logging integration
-- [ ] [P2.18](P2.18.md) Router wrapping with AuthZ + Audit policies
+- [x] [P2.18](P2.18.md) Router wrapping with AuthZ + Audit policies
 - [/] [P2.19](P2.19.md) Package `ninelives-control`
 - [/] [P2.20](P2.20.md) Cookbook examples for control plane
