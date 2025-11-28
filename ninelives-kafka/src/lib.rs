@@ -7,10 +7,16 @@ use std::convert::Infallible;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct KafkaSink {
     topic: String,
     producer: rdkafka::producer::FutureProducer,
+}
+
+impl std::fmt::Debug for KafkaSink {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("KafkaSink").field("topic", &self.topic).finish()
+    }
 }
 
 impl KafkaSink {
