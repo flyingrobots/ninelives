@@ -10,44 +10,15 @@ Resilience patterns for Rust with algebraic composition.
 
 Nine Lives provides battle-tested resilience patterns (retry, circuit breaker, bulkhead, timeout) as composable [tower](https://github.com/tower-rs/tower) layers with a unique algebraic composition system.
 
-## What's New
-- **Control plane locked in (Phase 2 complete):** runtime config via `ConfigRegistry`, authenticated command router, in-process transport, and cookbook example [`control_plane`](ninelives-cookbook/examples/control_plane.rs) (`cargo run -p ninelives-cookbook --example control_plane`).
-- **Schema enforcement:** transport envelopes and command results validated at runtime against JSON Schemas in [`schemas/`](schemas); contract tests [`schema_transport_envelope.rs`](tests/schema_transport_envelope.rs) / [`schema_command_result.rs`](tests/schema_command_result.rs).
-- **Schemas relocated:** now live under [`schemas/`](schemas) and are included at build time.
+## Roadmap & Status
 
-## What's Next (Phase 3 preview)
-- **Observer/system state aggregation:** ingest `PolicyEvent`s and expose a queryable state for operators and the future Sentinel.
-- **Telemetry-backed decisions:** groundwork for meta-policies that react to breaker states, retry exhaustion, and bulkhead pressure.
-- **Roadmap link:** see [Phase 3](docs/ROADMAP/P3/README.md) in the [ROADMAP](docs/ROADMAP/README.md).
+- **Phase 1 – Observability foundation** ✅ — telemetry events and sinks; see [P1](docs/ROADMAP/P1/README.md).
+- **Phase 2 – Control plane** ✅ — runtime config via `ConfigRegistry`, authenticated command router, in-process transport, runtime schema validation (`schemas/`), and cookbook example [`control_plane`](ninelives-cookbook/examples/control_plane.rs).
+- **Phase 3 – Observer (up next)** 🚧 — aggregate `PolicyEvent`s into queryable state for operators/Sentinel; see [P3](docs/ROADMAP/P3/README.md) in the [ROADMAP](docs/ROADMAP/README.md).
+- **Beyond** — Sentinel/meta-policy engine, crate split, multi-protocol transports (see full [ROADMAP](docs/ROADMAP/README.md)).
 
 > [!warning]
-> This crate will be split into smaller crates soon. The project's organization is not yet considered stable. Breaking changes are anticipated soon.
-
-## Implemented Features (with runnable examples)
-
-- **Retry with backoff + jitter** — cookbook: [`retry_only`](ninelives-cookbook/examples/retry_only.rs)
-- **Timeout guards** — cookbook: [`timeout_fallback`](ninelives-cookbook/examples/timeout_fallback.rs)
-- **Bulkhead concurrency limits** — cookbook: [`bulkhead_concurrency`](ninelives-cookbook/examples/bulkhead_concurrency.rs)
-- **Algebraic composition (`+ | &`)** — cookbook: [`algebra_composition`](ninelives-cookbook/examples/algebra_composition.rs)
-- **Hedged/parallel attempts (fork-join)** — cookbook: [`telemetry_composition`](ninelives-cookbook/examples/telemetry_composition.rs) (shows multicasting/telemetry on forked paths)
-- **Telemetry sinks (log/memory/streaming)** — cookbook: [`telemetry_basic`](ninelives-cookbook/examples/telemetry_basic.rs)
-- **Control plane (live config writes)** — cookbook: [`control_plane`](ninelives-cookbook/examples/control_plane.rs)
-- **Adaptive knobs** — integrated across retry/timeout/bulkhead/circuit breaker; see control_plane example and adaptive tests in [`tests/`](tests).
-- **Adaptive knobs** — integrated across retry/timeout/bulkhead/circuit breaker; see control_plane example and retry/bulkhead adaptive tests.
-
-For more recipes, browse [`ninelives-cookbook/examples/`](ninelives-cookbook/examples) and [`ninelives-cookbook/src/lib.rs`](ninelives-cookbook/src/lib.rs) (`retry_fast`, `api_guardrail`, `hedged_read`, `hedged_then_fallback`, `sensible_defaults`).
-
-## Features
-
-- 🔁 **Retry policies** with exponential/linear/constant backoff and jitter
-- ⚡ **Circuit breakers** with half-open state recovery
-- 🚧 **Bulkheads** for concurrency limiting and resource isolation
-- ⏱️ **Timeout policies** integrated with tokio
-- 🧮 **Algebraic composition** via intuitive operators (`+`, `|`, `&`)
-- 🏎️ **Fork-join** for concurrent racing (Happy Eyeballs pattern)
-- 🔒 **Lock-free implementations** using atomics
-- 🏗️ **Tower-native** - works with any tower `Service`
-- 🌐 **Companion sinks** (OTLP, NATS, Kafka, Elastic, etcd, Prometheus, JSONL) via optional crates
+> This project will be split into smaller crates soon. The organization is not yet stable; expect breaking changes.\n
 
 ## Quick Start
 
