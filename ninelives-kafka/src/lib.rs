@@ -10,29 +10,13 @@ use std::task::{Context, Poll};
 #[derive(Clone, Debug)]
 pub struct KafkaSink {
     topic: String,
-    #[cfg(feature = "client")]
     producer: rdkafka::producer::FutureProducer,
 }
 
 impl KafkaSink {
-    pub fn new<S: Into<String>>(brokers: S, topic: S) -> Result<Self, Box<dyn std::error::Error>> {
-        let topic = topic.into();
-        #[cfg(feature = "client")]
-        {
-            use rdkafka::config::ClientConfig;
-            let producer = ClientConfig::new().set("bootstrap.servers", brokers.into()).create()?;
-            return Ok(Self { topic, producer });
-        }
-        #[cfg(not(feature = "client"))]
-        {
-            let _ = brokers; // silence unused
-            Ok(Self { topic, ..Self::noop() })
-        }
-    }
-
-    #[cfg(not(feature = "client"))]
-    fn noop() -> Self {
-        Self { topic: String::new() }
+    /// Create a sink with an existing Kafka producer.
+    pub fn new(producer: rdkafka::producer::FutureProducer, topic: impl Into<String>) -> Self {
+        Self { topic: topic.into(), producer }
     }
 }
 

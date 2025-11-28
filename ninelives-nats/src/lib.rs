@@ -25,28 +25,13 @@ use std::task::{Context, Poll};
 #[derive(Clone, Debug)]
 pub struct NatsSink {
     subject: String,
-    #[cfg(feature = "client")]
     client: nats::asynk::Connection,
 }
 
 impl NatsSink {
-    pub fn new<S: Into<String>>(server: S, subject: S) -> Result<Self, Box<dyn std::error::Error>> {
-        let subject = subject.into();
-        #[cfg(feature = "client")]
-        {
-            let client = nats::asynk::connect(server.into())?;
-            return Ok(Self { subject, client });
-        }
-        #[cfg(not(feature = "client"))]
-        {
-            let _ = server; // unused
-            Ok(Self { subject, ..Self::noop() })
-        }
-    }
-
-    #[cfg(not(feature = "client"))]
-    fn noop() -> Self {
-        Self { subject: String::new() }
+    /// Create a sink using an existing NATS async connection.
+    pub fn new(client: nats::asynk::Connection, subject: impl Into<String>) -> Self {
+        Self { subject: subject.into(), client }
     }
 }
 
