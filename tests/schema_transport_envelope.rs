@@ -1,3 +1,4 @@
+//! Schema contract test for TransportEnvelope against JSON Schema.
 use jsonschema::JSONSchema;
 use serde_json::json;
 
