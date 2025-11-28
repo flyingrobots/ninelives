@@ -4,7 +4,11 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
+use std::net::TcpStream;
 use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::thread;
+use std::time::Duration;
 use walkdir::WalkDir;
 
 mod plans;
@@ -498,7 +502,94 @@ fn suggest(tasks: &HashMap<String, Task>, scope: &str) -> Result<()> {
     Ok(())
 }
 fn usage() {
-    eprintln!("Usage:\n  cargo run --bin tasks set <TASK_ID> <open|blocked|closed>\n  cargo run --bin tasks block <FROM_ID> <TO_ID>\n  cargo run --bin tasks enrich P2            # apply canned plans to phase 2\n  cargo run --bin tasks sync-dag <PHASE|all> # import DAG.csv edges into blocked_by/blocks\n  cargo run --bin tasks suggest [PHASE|all]  # list ready tasks ranked by value/duration\n  cargo run --bin tasks add <TASK_ID> <TITLE> <EST> <VALUE> <DEP1,DEP2,...|->  # create task and edges");
+    eprintln!("Usage:\n  cargo run --bin tasks set <TASK_ID> <open|blocked|closed>\n  cargo run --bin tasks block <FROM_ID> <TO_ID>\n  cargo run --bin tasks enrich P2            # apply canned plans to phase 2\n  cargo run --bin tasks sync-dag <PHASE|all> # import DAG.csv edges into blocked_by/blocks\n  cargo run --bin tasks suggest [PHASE|all]  # list ready tasks ranked by value/duration\n  cargo run --bin tasks add <TASK_ID> <TITLE> <EST> <VALUE> <DEP1,DEP2,...|->  # create task and edges\n  cargo run --bin tasks it-nats              # spin up NATS via docker compose and run integration tests");
+}
+
+fn run(cmd: &str, args: &[&str], dir: Option<&Path>) -> Result<()> {
+    let status = Command::new(cmd)
+        .args(args)
+        .current_dir(dir.unwrap_or_else(|| Path::new(".")))
+        .status()
+        .with_context(|| format!("failed to run {} {:?}", cmd, args))?;
+    if !status.success() {
+        Err(anyhow!("command {:?} {:?} failed with status {}", cmd, args, status))
+    } else {
+        Ok(())
+    }
+}
+
+fn docker_compose(args: &[&str], dir: &Path) -> Result<()> {
+    // Prefer `docker compose`; fall back to `docker-compose` if needed.
+    let try_docker = Command::new("docker")
+        .args(std::iter::once("compose").chain(args.iter().copied()))
+        .current_dir(dir)
+        .status();
+    match try_docker {
+        Ok(status) if status.success() => Ok(()),
+        Ok(_) | Err(_) => run("docker-compose", args, Some(dir)),
+    }
+}
+
+fn wait_for_host(hostport: &str, attempts: usize, sleep: Duration) -> Result<()> {
+    for i in 0..attempts {
+        if TcpStream::connect(hostport).is_ok() {
+            return Ok(());
+        }
+        if i + 1 == attempts {
+            break;
+        }
+        thread::sleep(sleep);
+    }
+    Err(anyhow!("service at {} did not become ready", hostport))
+}
+
+fn parse_host_port(nats_url: &str) -> Option<String> {
+    // very small parser: nats://host:port[/...]
+    let without_scheme = nats_url.split("//").nth(1)?;
+    let host_port = without_scheme.split('/').next()?;
+    if host_port.is_empty() {
+        None
+    } else {
+        Some(host_port.to_string())
+    }
+}
+
+fn cmd_it_nats() -> Result<()> {
+    let env_var = "NINE_LIVES_TEST_NATS_URL";
+    let compose_dir = Path::new("ninelives-nats");
+
+    let provided = std::env::var(env_var).ok();
+    let url = provided.clone().unwrap_or_else(|| "nats://127.0.0.1:4222".to_string());
+    let host_port = parse_host_port(&url).unwrap_or_else(|| "127.0.0.1:4222".to_string());
+
+    let should_start_compose = provided.is_none();
+    let _guard = if should_start_compose {
+        docker_compose(&["up", "-d"], compose_dir)?;
+        // best-effort cleanup
+        struct Guard<'a> {
+            dir: &'a Path,
+        }
+        impl<'a> Drop for Guard<'a> {
+            fn drop(&mut self) {
+                let _ = docker_compose(&["down", "-v"], self.dir);
+            }
+        }
+        Some(Guard { dir: compose_dir })
+    } else {
+        None
+    };
+
+    wait_for_host(&host_port, 30, Duration::from_millis(250))
+        .with_context(|| format!("waiting for NATS at {}", host_port))?;
+
+    let mut cmd = Command::new("cargo");
+    cmd.args(["test", "-p", "ninelives-nats"]);
+    cmd.env(env_var, &url);
+    let status = cmd.status().context("running cargo test -p ninelives-nats")?;
+    if !status.success() {
+        return Err(anyhow!("tests failed"));
+    }
+    Ok(())
 }
 
 fn main() -> Result<()> {
@@ -584,6 +675,9 @@ fn main() -> Result<()> {
             };
             cmd_add(&mut tasks, &id, &title, &est, &value, deps)?;
             println!("Added task {id}");
+        }
+        "it-nats" => {
+            cmd_it_nats()?;
         }
         _ => {
             usage();
