@@ -288,6 +288,38 @@ fn recompute_blocked(tasks: &mut HashMap<String, Task>) {
     }
 }
 
+fn generate_mermaid(tasks: &HashMap<String, Task>, edges: &[(String, String)]) -> String {
+    let mut out = String::new();
+    out.push_str("graph TD\n");
+    out.push_str("    classDef closed stroke:#28a745,stroke-width:3px;\n");
+    out.push_str("    classDef blocked stroke:#dc3545,stroke-width:3px;\n");
+    out.push_str("    classDef open stroke:#ffc107,stroke-width:3px;\n");
+    for phase in &["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10"] {
+        out.push_str(&format!("    classDef {} fill:#f8f9fa;\n", phase));
+    }
+
+    let mut ids: Vec<_> = tasks.keys().cloned().collect();
+    ids.sort();
+    for id in ids {
+        let t = tasks.get(&id).unwrap();
+        let phase = id.split('.').next().unwrap_or("");
+        let status_class = match t.front.status {
+            Status::Open => "open",
+            Status::Blocked => "blocked",
+            Status::Closed => "closed",
+        };
+        let title = t.front.title.replace('"', "\"");
+        out.push_str(&format!("    {}[\"{}\"]\n", id, title));
+        out.push_str(&format!("    class {} {},{}\n", id, status_class, phase));
+    }
+
+    for (from, to) in edges {
+        out.push_str(&format!("    {} --> {}\n", from, to));
+    }
+
+    out
+}
+
 fn save_all(tasks: &HashMap<String, Task>) -> Result<()> {
     // group by phase README path
     let mut phases: HashMap<PathBuf, Vec<Task>> = HashMap::new();
@@ -429,7 +461,21 @@ fn cmd_sync_dag(tasks: &mut HashMap<String, Task>, phase: &str) -> Result<()> {
         }
     }
     recompute_blocked(tasks);
-    save_all(tasks)
+    save_all(tasks)?;
+
+    // refresh mermaid + svg
+    let edges_all = collect_all_edges()?;
+    let mermaid = generate_mermaid(tasks, &edges_all);
+    let mmd_path = Path::new("docs/ROADMAP/roadmap.mmd");
+    fs::write(mmd_path, mermaid)?;
+    // best-effort SVG if mmdc exists
+    if Command::new("which").arg("mmdc").output().map(|o| o.status.success()).unwrap_or(false) {
+        let _ = Command::new("mmdc")
+            .args(["-i", mmd_path.to_str().unwrap(), "-o", "docs/ROADMAP/roadmap.svg"])
+            .status();
+    }
+
+    Ok(())
 }
 
 fn collect_all_edges() -> Result<Vec<(String, String)>> {
