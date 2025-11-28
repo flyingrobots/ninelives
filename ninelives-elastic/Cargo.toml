@@ -12,6 +12,7 @@ readme = "README.md"
 [dependencies]
 ninelives = { workspace = true }
 tracing = "0.1"
+tower-service = { workspace = true }
 
 # Optional heavy client
 elasticsearch = { version = "8.16.0-alpha.1", optional = true }

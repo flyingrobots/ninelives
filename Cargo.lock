@@ -1747,6 +1747,7 @@ dependencies = [
  "ninelives",
  "reqwest 0.12.24",
  "tokio",
+ "tower-service",
  "tracing",
 ]
 
@@ -1757,7 +1758,9 @@ dependencies = [
  "chrono",
  "etcd-client",
  "ninelives",
+ "serde_json",
  "tokio",
+ "tower-service",
  "tracing",
 ]
 
@@ -1768,6 +1771,7 @@ dependencies = [
  "ninelives",
  "serde_json",
  "tokio",
+ "tower-service",
  "tracing",
 ]
 
@@ -1779,6 +1783,7 @@ dependencies = [
  "rdkafka",
  "serde_json",
  "tokio",
+ "tower-service",
  "tracing",
 ]
 
@@ -1790,6 +1795,7 @@ dependencies = [
  "ninelives",
  "serde_json",
  "tokio",
+ "tower-service",
  "tracing",
 ]
 
@@ -1801,6 +1807,7 @@ dependencies = [
  "opentelemetry",
  "opentelemetry-otlp",
  "tokio",
+ "tower-service",
  "tracing",
 ]
 
@@ -1810,6 +1817,7 @@ version = "0.3.0"
 dependencies = [
  "ninelives",
  "prometheus",
+ "tower-service",
  "tracing",
 ]
 

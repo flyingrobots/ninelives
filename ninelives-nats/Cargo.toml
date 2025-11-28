@@ -12,6 +12,7 @@ readme = "README.md"
 [dependencies]
 ninelives = { workspace = true }
 serde_json.workspace = true
+tower-service = { workspace = true }
 
 # Client dependency is optional to keep core builds light
 nats = { version = "0.25", optional = true }

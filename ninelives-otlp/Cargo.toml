@@ -12,6 +12,7 @@ readme = "README.md"
 [dependencies]
 ninelives = { workspace = true }
 tracing = "0.1"
+tower-service = { workspace = true }
 
 opentelemetry = { version = "0.21", optional = true }
 opentelemetry-otlp = { version = "0.14", optional = true, default-features = true, features = ["grpc-tonic"] }

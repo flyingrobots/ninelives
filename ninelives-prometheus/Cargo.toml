@@ -13,6 +13,7 @@ readme = "README.md"
 ninelives = { workspace = true }
 tracing = "0.1"
 prometheus = { version = "0.13", optional = true }
+tower-service = { workspace = true }
 
 [features]
 client = ["prometheus"]
