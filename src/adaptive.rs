@@ -1,7 +1,22 @@
 //! DynamicConfig handles for live-updatable config.
 //!
-//! Default uses `ArcSwap` for lock-free reads; feature `adaptive-rwlock` can
-//! switch to RwLock if desired.
+//! Provides a mechanism for shared, live-updatable configuration values with configurable backends.
+//!
+//! Two backends are available, controlled by Cargo features:
+//!
+//! -   **Default (no feature)**: Uses `ArcSwap` for lock-free atomic reads and updates.
+//!     *   **Read Performance**: Extremely cheap (pointer copy).
+//!     *   **Write Performance**: `compare_and_swap` loop (optimistic concurrency), retries on collision.
+//!     *   **Thread-Safety**: Lock-free, atomic. Reads are always consistent. Concurrent `update()` calls may lose intermediate states if many threads update rapidly without checking previous value (though `ArcSwap`'s `compare_and_swap` helps mitigate this if used correctly).
+//!     *   **Lock Poisoning**: Not applicable.
+//!
+//! -   **`adaptive-rwlock` feature**: Uses `std::sync::RwLock<Arc<T>>`.
+//!     *   **Read Performance**: Requires acquiring a read lock, cloning an `Arc<T>`. More expensive than `ArcSwap` due to locking overhead and `Arc` clone.
+//!     *   **Write Performance**: Requires acquiring a write lock, performing the update. Writes are serialized.
+//!     *   **Thread-Safety**: Read/write locking. Reads are always consistent. `update()` calls are serialized by the write lock, ensuring intermediate states are not lost, but can block.
+//!     *   **Lock Poisoning**: Follows `std::sync::RwLock` poisoning semantics. If a thread panics while holding a write lock, the lock becomes poisoned. Subsequent lock acquisitions will return an error (which is currently handled by `expect()`, causing panic).
+//!
+//! Choose the backend that best fits your performance and concurrency profile.
 
 use std::sync::Arc;
 
