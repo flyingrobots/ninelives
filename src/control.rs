@@ -746,10 +746,19 @@ impl CommandHandler<BuiltInCommand> for BuiltInHandler {
             BuiltInCommand::Set { key, value } => self.set_or_store(key, value),
             BuiltInCommand::Get { key } => Ok(self.get_from_store_or_config(&key)),
             BuiltInCommand::List => {
-                let mut keys: Vec<String> = self.store.lock().unwrap().keys().cloned().collect();
-                if let Some(reg) = self.config_registry() {
-                    keys.extend(reg.keys());
-                }
+                let store_keys = self
+                    .store
+                    .lock()
+                    .unwrap()
+                    .keys()
+                    .cloned()
+                    .map(|k| format!("store:{k}"));
+                let config_keys = self
+                    .config_registry()
+                    .map(|reg| reg.keys().into_iter().map(|k| format!("config:{k}")))
+                    .into_iter()
+                    .flatten();
+                let mut keys: Vec<String> = store_keys.chain(config_keys).collect();
                 keys.sort();
                 keys.dedup();
                 Ok(CommandResult::List(keys))
@@ -818,7 +827,12 @@ impl CommandHandler<BuiltInCommand> for BuiltInHandler {
                         .collect();
                     let mut root = serde_json::Map::new();
                     root.insert("breakers".into(), serde_json::Value::Object(map));
-                    Ok(CommandResult::Value(serde_json::to_string(&root).unwrap_or_default()))
+                    match serde_json::to_string(&root) {
+                        Ok(s) => Ok(CommandResult::Value(s)),
+                        Err(e) => Ok(CommandResult::Error(format!(
+                            "failed to serialize breaker state: {e}"
+                        ))),
+                    }
                 } else {
                     Ok(CommandResult::Error(
                         "circuit breaker registry not set; cannot get state".into(),

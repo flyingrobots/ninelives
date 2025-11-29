@@ -146,7 +146,6 @@ where
         // Safety: unreachable because loop executes max_attempts times and each iteration
         // either returns or continues. On last iteration (attempt == max_attempts - 1),
         // we always return RetryExhausted for retryable errors.
-        debug_assert!(false, "Retry loop should have returned; this indicates a logic bug");
         unreachable!()
     }
 }
