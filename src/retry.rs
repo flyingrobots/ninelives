@@ -794,10 +794,7 @@ where
                             }),
                         )
                         .await;
-                        Err(ResilienceError::retry_exhausted(
-                            1,
-                            failures.into_iter().collect(),
-                        ))
+                        Err(ResilienceError::retry_exhausted(1, failures.into_iter().collect()))
                     }
                 };
             }

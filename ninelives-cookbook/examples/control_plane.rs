@@ -1,13 +1,12 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use ninelives::ChannelTransport;
 use ninelives::control::{
     AuthMode, AuthPayload, AuthRegistry, BuiltInCommand, BuiltInHandler, CommandEnvelope,
     CommandHistory, CommandMeta, CommandResult, CommandRouter, DefaultConfigRegistry,
     InMemoryHistory, MemoryAuditSink, PassthroughAuth,
 };
-use ninelives::{Backoff, Jitter, RetryPolicy, TokioSleeper};
+use ninelives::{Backoff, ChannelTransport, Jitter, RetryPolicy, TokioSleeper};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

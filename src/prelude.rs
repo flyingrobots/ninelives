@@ -22,8 +22,8 @@ pub use crate::{
 
 #[cfg(feature = "control")]
 pub use crate::control::{
-    AuthMode, AuthPayload, AuthProvider, AuthRegistry, CommandContext, CommandEnvelope, CommandMeta,
-    CommandService,
+    AuthMode, AuthPayload, AuthProvider, AuthRegistry, CommandContext, CommandEnvelope,
+    CommandMeta, CommandService,
 };
 
 /// Simple, ready-to-use helpers.
@@ -55,10 +55,7 @@ pub mod simple {
     where
         E: std::error::Error + Send + Sync + 'static,
     {
-        Ok(RetryPolicy::<E>::builder()
-            .max_attempts(max_attempts)
-            .build()?
-            .into_layer())
+        Ok(RetryPolicy::<E>::builder().max_attempts(max_attempts).build()?.into_layer())
     }
 
     /// Construct a timeout layer with the provided limit.
