@@ -9,11 +9,11 @@ use std::task::{Context, Poll};
 
 #[derive(Clone, Debug)]
 pub struct JsonlSink {
-    path: String,
+    path: std::path::PathBuf,
 }
 
 impl JsonlSink {
-    pub fn new<S: Into<String>>(path: S) -> Self {
+    pub fn new<P: Into<std::path::PathBuf>>(path: P) -> Self {
         Self { path: path.into() }
     }
 }
