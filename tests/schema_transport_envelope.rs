@@ -14,7 +14,7 @@ fn assert_valid(schema: &JSONSchema, value: serde_json::Value) {
 
 /// Asserts that the schema REJECTS the given value.
 fn assert_invalid(schema: &JSONSchema, value: serde_json::Value) {
-    assert!(schema.is_valid(&value) == false, "Schema should have rejected: {}", value);
+    assert!(!schema.is_valid(&value), "Schema should have rejected: {}", value);
 }
 
 #[test]

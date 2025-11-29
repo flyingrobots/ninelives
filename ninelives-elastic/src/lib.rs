@@ -15,8 +15,12 @@ pub struct ElasticSink {
 
 impl ElasticSink {
     /// Create a sink with an existing Elasticsearch client and target index.
-    pub fn new(client: elasticsearch::Elasticsearch, index: impl Into<String>) -> Self {
-        Self { index: index.into(), client }
+    pub fn new(client: elasticsearch::Elasticsearch, index: impl Into<String>) -> Result<Self, String> {
+        let index = index.into();
+        if index.is_empty() {
+            return Err("index name cannot be empty".to_string());
+        }
+        Ok(Self { index, client })
     }
 }
 
@@ -30,17 +34,15 @@ impl tower_service::Service<PolicyEvent> for ElasticSink {
     }
 
     fn call(&mut self, event: PolicyEvent) -> Self::Future {
-        use elasticsearch::indices::IndicesCreateParts;
         use elasticsearch::IndexParts;
 
         let client = self.client.clone();
         let index = self.index.clone();
         Box::pin(async move {
-            // ensure index exists (best-effort)
-            let _ = client.indices().create(IndicesCreateParts::Index(&index)).send().await;
-
             let body = event_to_json(&event);
-            let _ = client.index(IndexParts::Index(&index)).body(body).send().await;
+            if let Err(e) = client.index(IndexParts::Index(&index)).body(body).send().await {
+                tracing::error!("Failed to index event into {}: {}", index, e);
+            }
             Ok(())
         })
     }
