@@ -349,6 +349,7 @@ mod tests {
             let count = self.calls.fetch_add(1, Ordering::SeqCst);
             let fail_first = self.fail_first;
             let delay = self.delay;
+            // TODO: Avoid Box::pin allocation; switch to pin-project + struct future or RPITIT when MSRV allows.
             Box::pin(async move {
                 if fail_first && count == 0 {
                     Err(std::io::Error::new(std::io::ErrorKind::Other, "boom"))
@@ -466,6 +467,7 @@ where
         let clock = self.clock.clone();
         let sink = self.sink.clone();
 
+        // TODO: Avoid Box::pin allocation; switch to pin-project + struct future or RPITIT when MSRV allows.
         Box::pin(async move {
             let start = StdInstant::now();
             let now = clock.now_millis();
