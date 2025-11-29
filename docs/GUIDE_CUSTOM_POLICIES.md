@@ -114,12 +114,11 @@ let resp = svc.ready().await?.call(\"hello\").await?;
 
 ## 3) Tips for Custom Policies
 
-- Keep `Request` bounds aligned with the algebra (`Clone + Send + 'static` common case).
-- If your layer needs state, wrap it in `Arc` so cloned services share counters safely.
+- Keep `Request` and `S::Response` bounds aligned with the algebra (commonly `Clone + Send + 'static`).
+- For state sharing, use `Arc` with `AtomicUsize` for lock-free counters, `tokio::sync::Mutex` for exclusive async access, `tokio::sync::RwLock` when reads dominate, and `tokio::sync::Semaphore` for rate-limiting; avoid `std::sync::Mutex` in async code to prevent blocking the runtime.
 - Emit tracing spans/logs for visibility. Nine Lives does **not** propagate tracing span
   context for you; if you need cross-policy span propagation, attach or re-enter spans in
   your own instrumentation (or carry context on the request) before calling downstream
   services.
-- For async locks, prefer `tokio::sync` primitives to avoid blocking the runtime.
 
 That’s it—drop your layer into `Policy(...)` and compose with `+` (wrap), `|` (fallback), or `&` (race) like any built-in policy. Happy building!`
