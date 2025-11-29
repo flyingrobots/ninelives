@@ -943,6 +943,32 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_streaming_sink_last_drop_updates() {
+        use tower::Service;
+
+        let sink = StreamingSink::new(1);
+        let mut tx = sink.clone();
+
+        // drop once to set last_drop
+        tx.call(PolicyEvent::Retry(RetryEvent::Attempt {
+            attempt: 1,
+            delay: Duration::from_millis(5),
+        }))
+        .await
+        .unwrap();
+
+        assert!(sink.last_drop().is_some());
+    }
+
+    #[test]
+    fn test_policy_event_request_variants_display() {
+        let ok = PolicyEvent::Request(RequestOutcome::Success { duration: Duration::from_millis(5) });
+        let err = PolicyEvent::Request(RequestOutcome::Failure { duration: Duration::from_millis(7) });
+        assert!(format!("{}", ok).contains("Success"));
+        assert!(format!("{}", err).contains("Failure"));
+    }
+
+    #[tokio::test]
     async fn test_log_sink() {
         use tower::Service;
 

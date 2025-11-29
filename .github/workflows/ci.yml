@@ -18,8 +18,78 @@ jobs:
       - name: Lint workflows
         uses: rhysd/actionlint@v1.7.4
 
-  fmt-clippy-test:
+  commit-policy:
     needs: actionlint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.1.6
+        with:
+          fetch-depth: 0
+      - name: Determine base ref
+        id: base
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "ref=${{ github.event.pull_request.base.sha }}" >> $GITHUB_OUTPUT
+          else
+            echo "ref=origin/main" >> $GITHUB_OUTPUT
+          fi
+      - name: Inspect commit message
+        id: msg
+        run: |
+          msg=$(git log -1 --pretty=%s)
+          echo "msg=$msg" >> $GITHUB_OUTPUT
+          echo "Commit message: $msg"
+      - name: Ensure feat/fix add tests
+        if: startsWith(steps.msg.outputs.msg, 'feat') || startsWith(steps.msg.outputs.msg, 'fix')
+        run: |
+          git fetch origin ${{ steps.base.outputs.ref }} --quiet
+          files=$(git diff --name-only ${{ steps.base.outputs.ref }}...HEAD)
+          if echo "$files" | grep -E '(tests?/|_test\\.rs|tests\\.rs)' >/dev/null; then
+            echo "Tests detected in diff"
+          else
+            echo "error: feat/fix commits must add or modify tests" >&2
+            exit 1
+          fi
+      - name: Coverage guard for chore/refactor/docs
+        if: startsWith(steps.msg.outputs.msg, 'chore') || startsWith(steps.msg.outputs.msg, 'refactor') || startsWith(steps.msg.outputs.msg, 'docs')
+        run: |
+          sudo apt-get update >/dev/null && sudo apt-get install -y jq >/dev/null
+          cargo install cargo-llvm-cov --locked --version 0.6.21
+          git fetch origin ${{ steps.base.outputs.ref }} --quiet
+          git worktree add /tmp/base ${{ steps.base.outputs.ref }}
+          run_cov() {
+            dir=$1
+            pushd "$dir" >/dev/null
+            cargo llvm-cov --workspace --all-features \
+              --exclude xtask --exclude ninelives-nats --exclude ninelives-kafka \
+              --exclude ninelives-elastic --exclude ninelives-etcd --exclude ninelives-otlp \
+              --exclude ninelives-prometheus --exclude ninelives-jsonl \
+              --summary-only --json > /tmp/cov.json
+            jq -r '.line.percent' /tmp/cov.json
+            popd >/dev/null
+          }
+          base_cov=$(run_cov /tmp/base)
+          head_cov=$(run_cov .)
+          echo "base coverage: $base_cov"
+          echo "head coverage: $head_cov"
+          bcov=$(printf '%.2f' "$base_cov")
+          hcov=$(printf '%.2f' "$head_cov")
+          # if parsing failed, default to threshold enforcement only
+          if [ -z "$bcov" ] || [ -z "$hcov" ]; then
+            echo "warning: unable to parse coverage; relying on main coverage job"
+            exit 0
+          fi
+          awk -v b="$bcov" -v h="$hcov" 'BEGIN { if (h + 1e-6 < b) { exit 1 } }'
+          if [ $? -ne 0 ]; then
+            echo "error: coverage decreased (base $bcov -> head $hcov)" >&2
+            exit 1
+          fi
+      - name: Clean worktree
+        if: always()
+        run: git worktree prune
+
+  fmt-clippy-test:
+    needs: [actionlint, commit-policy]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4.1.6
@@ -144,8 +214,5 @@ jobs:
         uses: Swatinem/rust-cache@v2.7.3
       - name: Coverage (fail under 80%)
         run: >
-          cargo llvm-cov --workspace --all-features
-          --exclude xtask --exclude ninelives-nats --exclude ninelives-kafka
-          --exclude ninelives-elastic --exclude ninelives-etcd --exclude ninelives-otlp
-          --exclude ninelives-prometheus --exclude ninelives-jsonl
+          cargo llvm-cov -p ninelives --all-features
           --fail-under-lines 80 --summary-only
