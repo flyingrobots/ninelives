@@ -4,12 +4,15 @@
 use ninelives::prelude::{
     BulkheadEvent, CircuitBreakerEvent, RequestOutcome, RetryEvent, TimeoutEvent,
 };
-use ninelives::telemetry::{PolicyEvent, TelemetrySink};
+use ninelives::telemetry::{
+    BulkheadEvent, CircuitBreakerEvent, PolicyEvent, RequestOutcome, RetryEvent, TelemetrySink,
+    TimeoutEvent,
+};
 use prometheus::{IntCounterVec, Registry};
 use std::convert::Infallible;
-use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
+use std::future::{ready, Ready};
 
 #[derive(Clone, Debug)]
 pub struct PrometheusSink {
@@ -22,13 +25,14 @@ impl PrometheusSink {
     ///
     /// # Errors
     /// Returns an error if the metric cannot be registered (e.g. name conflict).
-    pub fn new(registry: Registry) -> Result<Self, prometheus::Error> {
+    pub fn new<R: Into<Arc<Registry>>>(registry: R) -> Result<Self, prometheus::Error> {
+        let registry = registry.into();
         let counter = IntCounterVec::new(
             prometheus::Opts::new("ninelives_events_total", "Policy events"),
             &["policy", "event"],
         )?;
         registry.register(Box::new(counter.clone()))?;
-        Ok(Self { registry: Arc::new(registry), counter })
+        Ok(Self { registry, counter })
     }
 
     /// Expose the registry for HTTP scraping.
@@ -40,7 +44,7 @@ impl PrometheusSink {
 impl tower_service::Service<PolicyEvent> for PrometheusSink {
     type Response = ();
     type Error = Infallible;
-    type Future = Pin<Box<dyn std::future::Future<Output = Result<(), Self::Error>> + Send>>;
+    type Future = Ready<Result<(), Self::Error>>;
 
     fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         Poll::Ready(Ok(()))
@@ -85,10 +89,8 @@ impl tower_service::Service<PolicyEvent> for PrometheusSink {
             ),
         };
         let c = self.counter.clone();
-        Box::pin(async move {
-            c.with_label_values(&[policy_label, event_label]).inc();
-            Ok(())
-        })
+        c.with_label_values(&[policy_label, event_label]).inc();
+        ready(Ok(()))
     }
 }
 
