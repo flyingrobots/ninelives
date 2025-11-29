@@ -5,11 +5,12 @@ This guide shows how to create your own Tower layer/service and compose it with 
 ## 1) Implement a Tower Service + Layer
 
 ```rust
+use std::collections::VecDeque;
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
-    Arc,
+    Arc, Mutex,
 };
-use std::task::{Context, Poll};
+use std::task::{Context, Poll, Waker};
 use tower::{Layer, Service};
 
 #[derive(Clone)]
@@ -27,6 +28,7 @@ impl RateLimitLayer {
 pub struct RateLimitService<S> {
     inner: S,
     in_flight: Arc<AtomicUsize>,
+    waiters: Arc<Mutex<VecDeque<Waker>>>,
     limit: usize,
 }
 
@@ -37,6 +39,7 @@ impl<S> Layer<S> for RateLimitLayer {
         RateLimitService {
             inner,
             in_flight: Arc::new(AtomicUsize::new(0)),
+            waiters: Arc::new(Mutex::new(VecDeque::new())),
             limit: self.limit,
         }
     }
@@ -53,7 +56,9 @@ where
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         if self.in_flight.load(Ordering::SeqCst) >= self.limit {
-            cx.waker().wake_by_ref();
+            if let Ok(mut waiters) = self.waiters.lock() {
+                waiters.push_back(cx.waker().clone());
+            }
             return Poll::Pending;
         }
         self.inner.poll_ready(cx)
@@ -62,11 +67,17 @@ where
     fn call(&mut self, req: Request) -> Self::Future {
         let mut inner = self.inner.clone();
         let in_flight = self.in_flight.clone();
+        let waiters = Arc::clone(&self.waiters);
         in_flight.fetch_add(1, Ordering::SeqCst);
 
         Box::pin(async move {
             let result = inner.call(req).await;
             in_flight.fetch_sub(1, Ordering::SeqCst);
+            if let Ok(mut waiters) = waiters.lock() {
+                while let Some(w) = waiters.pop_front() {
+                    w.wake();
+                }
+            }
             result
         })
     }
