@@ -37,6 +37,27 @@ async fn publishes_events_to_kafka() {
         .create_topics(&[topic], &AdminOptions::new())
         .await
         .expect("Failed to create topic");
+    struct Cleanup {
+        admin: AdminClient<DefaultClientContext>,
+        topic: String,
+        consumer: StreamConsumer,
+        producer: FutureProducer,
+    }
+    impl Drop for Cleanup {
+        fn drop(&mut self) {
+            let admin = self.admin.clone();
+            let topic = self.topic.clone();
+            let _ = admin.delete_topics(&[&topic], &AdminOptions::new());
+            self.consumer.unsubscribe();
+            drop(&self.producer);
+        }
+    }
+    let _cleanup = Cleanup {
+        admin: admin_client.clone(),
+        topic: topic_name.clone(),
+        consumer: consumer.clone(),
+        producer: producer.clone(),
+    };
 
     // --- Producer ---
     let producer: FutureProducer = ClientConfig::new()
@@ -92,13 +113,5 @@ async fn publishes_events_to_kafka() {
     assert_eq!(val["attempt"], 1, "attempt field mismatch");
     assert_eq!(val["delay_ms"], 50, "delay_ms field mismatch");
 
-    // --- Cleanup ---
-    // Ensure consumer is unsubscribed and producer is dropped
-    consumer.unsubscribe();
-    drop(producer); // Producer is dropped implicitly when it goes out of scope
-
-    admin_client
-        .delete_topics(&[&topic_name], &AdminOptions::new())
-        .await
-        .expect("Failed to delete topic");
+    // --- Cleanup handled by Drop guard ---
 }

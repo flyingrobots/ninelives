@@ -20,7 +20,7 @@ async fn publishes_events_to_nats() {
     };
     const SUBJECT: &str = "policy.events";
 
-    let client = async_nats::connect(url.clone())
+    let client = async_nats::connect(url)
         .await
         .expect("failed to connect to NATS broker; ensure NINE_LIVES_TEST_NATS_URL is reachable");
     let mut sink = NatsSink::new(client.clone(), SUBJECT);
@@ -32,9 +32,9 @@ async fn publishes_events_to_nats() {
         attempt: 1,
         delay: std::time::Duration::from_millis(50),
     });
-    sink.call(event.clone())
+    sink.call(event)
         .await
-        .expect(&format!("Failed to publish event to NATS sink: {:?}", event));
+        .expect("Failed to publish event to NATS sink");
 
     let msg = tokio::time::timeout(
         Duration::from_secs(5), // Explicit timeout

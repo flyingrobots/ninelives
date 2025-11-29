@@ -54,9 +54,17 @@ impl tower_service::Service<PolicyEvent> for NatsSink {
     fn call(&mut self, event: PolicyEvent) -> Self::Future {
         let subject = self.subject.clone();
         let client = self.client.clone();
-        let payload = serde_json::to_vec(&event_to_json(&event)).unwrap_or_else(|_| b"{}".to_vec());
+        let payload = match serde_json::to_vec(&event_to_json(&event)) {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::error!("Failed to serialize NATS telemetry event: {e}");
+                b"{}".to_vec()
+            }
+        };
         Box::pin(async move {
-            let _ = client.publish(subject, payload.into()).await;
+            if let Err(e) = client.publish(subject, payload.into()).await {
+                tracing::error!("Failed to publish NATS telemetry event: {e}");
+            }
             Ok(())
         })
     }
