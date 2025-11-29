@@ -17,3 +17,8 @@ services:
       - --check=true
     ports:
       - "9092:9092"
+    healthcheck:
+      test: ["CMD", "bash", "-c", "nc -z localhost 9092 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
