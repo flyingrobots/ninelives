@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use futures::FutureExt;
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
 
@@ -26,10 +27,11 @@ type Tx<C> =
 
 /// A transport that sends commands over a Tokio MPSC channel.
 /// useful for in-process communication or testing.
+#[derive(Clone, Debug)]
 pub struct ChannelTransport<C: Clone> {
     tx: Tx<C>,
-    shutdown_tx: watch::Sender<bool>,
-    worker_handle: Arc<std::sync::Mutex<Option<JoinHandle<()>>>>,
+    shutdown_tx: Arc<watch::Sender<bool>>,
+    worker_handle: Arc<tokio::sync::Mutex<Option<JoinHandle<()>>>>,
 }
 
 impl<C> ChannelTransport<C>
@@ -48,14 +50,25 @@ where
             oneshot::Sender<Result<CommandResult, TransportError>>,
         )>(capacity);
         let (shutdown_tx, mut shutdown_rx) = watch::channel(false);
+        let shutdown_tx = Arc::new(shutdown_tx);
 
         let worker_handle = tokio::spawn(async move {
             tracing::info!("ChannelTransport worker started");
             loop {
                 tokio::select! {
-                    _ = shutdown_rx.changed() => {
-                        tracing::info!("ChannelTransport received shutdown signal");
-                        break;
+                    changed = shutdown_rx.changed() => {
+                        match changed {
+                            Ok(_) => {
+                                if *shutdown_rx.borrow() {
+                                    tracing::info!("ChannelTransport received shutdown signal");
+                                    break;
+                                }
+                            }
+                            Err(_) => {
+                                tracing::info!("ChannelTransport shutdown channel closed");
+                                break;
+                            }
+                        }
                     }
                     msg = rx.recv() => {
                         match msg {
@@ -81,7 +94,7 @@ where
                                     }
                                 };
 
-                                if let Err(_) = reply_tx.send(result) {
+                                if reply_tx.send(result).is_err() {
                                     tracing::warn!("Failed to send response; receiver dropped");
                                 }
                             }
@@ -99,7 +112,7 @@ where
         Self {
             tx,
             shutdown_tx,
-            worker_handle: Arc::new(std::sync::Mutex::new(Some(worker_handle))),
+            worker_handle: Arc::new(tokio::sync::Mutex::new(Some(worker_handle))),
         }
     }
 
@@ -114,7 +127,7 @@ where
     pub async fn shutdown(&self) {
         let _ = self.shutdown_tx.send(true);
         let handle = {
-            let mut lock = self.worker_handle.lock().unwrap();
+            let mut lock = self.worker_handle.lock().await;
             lock.take()
         };
         if let Some(h) = handle {
