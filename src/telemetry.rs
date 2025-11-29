@@ -995,14 +995,19 @@ mod tests {
         }
 
         // Should not panic even though sink errors
-        emit_best_effort(Fails, PolicyEvent::Timeout(TimeoutEvent::Occurred { timeout: Duration::from_millis(1) }))
-            .await;
+        emit_best_effort(
+            Fails,
+            PolicyEvent::Timeout(TimeoutEvent::Occurred { timeout: Duration::from_millis(1) }),
+        )
+        .await;
     }
 
     #[test]
     fn test_policy_event_request_variants_display() {
-        let ok = PolicyEvent::Request(RequestOutcome::Success { duration: Duration::from_millis(5) });
-        let err = PolicyEvent::Request(RequestOutcome::Failure { duration: Duration::from_millis(7) });
+        let ok =
+            PolicyEvent::Request(RequestOutcome::Success { duration: Duration::from_millis(5) });
+        let err =
+            PolicyEvent::Request(RequestOutcome::Failure { duration: Duration::from_millis(7) });
         assert!(format!("{}", ok).contains("Success"));
         assert!(format!("{}", err).contains("Failure"));
     }

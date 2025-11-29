@@ -5,7 +5,12 @@ All notable changes will be documented in this file.
 ## [Unreleased]
 
 ### Added
-- Backoff refactor: concrete strategy types (`Constant`, `Linear`, `Exponential`), `BackoffStrategy` trait, `with_max` validation, helper codes/messages, and monotonic/cap tests.
+- **Control Plane**: Added `ninelives::control` module with `CommandRouter`, `AuthRegistry` (JWT/Signature/mTLS hooks), and `CommandHistory`.
+- **Circuit Breaker Registry**: Global and local registry support (`ninelives::circuit_breaker_registry`) for managing multiple breakers; `CircuitBreakerLayer::with_registry`.
+- **Built-in Commands**: `Set`, `Get`, `List`, `ResetCircuitBreaker`, `GetState`, `ReadConfig`, `WriteConfig`.
+- **Dynamic Configuration**: `ConfigRegistry` to expose `Adaptive<T>` values for runtime updates via the control plane.
+- **Telemetry**: Added `ninelives::telemetry` with `PolicyEvent`, `LogSink`, `MemorySink`, and `StreamingSink`.
+- **Backoff refactor**: concrete strategy types (`Constant`, `Linear`, `Exponential`), `BackoffStrategy` trait, `with_max` validation, helper codes/messages, and monotonic/cap tests.
 - Decorrelated jitter invariants documented; added concurrent/stateful tests and upper-bound checks.
 - Retry builder accepts `Into<Backoff>`; added predicate short-circuit test; zero-attempt validation.
 - Timeout: `new_with_max`, improved error message, boundary tests; executable doctests.
@@ -18,6 +23,7 @@ All notable changes will be documented in this file.
 - rustfmt note on heuristics; gitignore cleaned.
 
 ### Fixed
+- **Bulkhead**: Fixed potential deadlock in tests regarding service cloning and semaphore permits.
 - Removed stray Obsidian files; documentation typos.
 
 ## [0.1.0] - Initial

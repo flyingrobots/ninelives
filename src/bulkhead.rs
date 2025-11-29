@@ -570,9 +570,7 @@ mod tests {
         assert!(first.await.is_err());
 
         // Permit should be free for next call
-        let res = bulkhead
-            .execute(|| async move { Ok::<_, ResilienceError<TestError>>(()) })
-            .await;
+        let res = bulkhead.execute(|| async move { Ok::<_, ResilienceError<TestError>>(()) }).await;
         assert!(res.is_ok());
     }
 
@@ -582,7 +580,9 @@ mod tests {
         use std::pin::Pin;
         use std::task::{Context, Poll};
 
-        struct BlockingSvc(std::sync::Arc<std::sync::Mutex<Option<tokio::sync::oneshot::Receiver<()>>>>);
+        struct BlockingSvc(
+            std::sync::Arc<std::sync::Mutex<Option<tokio::sync::oneshot::Receiver<()>>>>,
+        );
 
         impl Clone for BlockingSvc {
             fn clone(&self) -> Self {
@@ -593,7 +593,8 @@ mod tests {
         impl tower_service::Service<&'static str> for BlockingSvc {
             type Response = &'static str;
             type Error = std::io::Error;
-            type Future = Pin<Box<dyn futures::Future<Output = Result<Self::Response, Self::Error>> + Send>>;
+            type Future =
+                Pin<Box<dyn futures::Future<Output = Result<Self::Response, Self::Error>> + Send>>;
             fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
                 Poll::Ready(Ok(()))
             }

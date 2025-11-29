@@ -257,7 +257,10 @@ mod tests {
         type Response = String;
         type Error = std::io::Error;
         type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
-        fn poll_ready(&mut self, _cx: &mut std::task::Context<'_>) -> std::task::Poll<Result<(), Self::Error>> {
+        fn poll_ready(
+            &mut self,
+            _cx: &mut std::task::Context<'_>,
+        ) -> std::task::Poll<Result<(), Self::Error>> {
             std::task::Poll::Ready(Ok(()))
         }
         fn call(&mut self, req: String) -> Self::Future {
@@ -298,7 +301,6 @@ mod tests {
         let ok = service.clone().call("req".to_string()).await.unwrap();
         assert_eq!(ok, "req");
     }
-
 }
 
 impl<Sink> CircuitBreakerLayer<Sink>

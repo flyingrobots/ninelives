@@ -520,14 +520,14 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::TimeoutLayer;
     use futures::task::noop_waker;
+    use std::pin::Pin;
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::Arc;
-    use std::time::Duration;
     use std::task::{Context, Poll};
-    use std::pin::Pin;
+    use std::time::Duration;
     use tower_service::Service;
-    use crate::TimeoutLayer;
 
     #[derive(Clone, Debug)]
     struct GateService {
@@ -606,7 +606,8 @@ mod tests {
     impl tower_service::Service<&'static str> for SlowService {
         type Response = &'static str;
         type Error = std::io::Error;
-        type Future = Pin<Box<dyn futures::Future<Output = Result<Self::Response, Self::Error>> + Send>>;
+        type Future =
+            Pin<Box<dyn futures::Future<Output = Result<Self::Response, Self::Error>> + Send>>;
         fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
             Poll::Ready(Ok(()))
         }
@@ -717,7 +718,8 @@ mod tests {
 
     #[tokio::test]
     async fn fallback_short_circuits_on_success() {
-        let mut svc = FallbackService { primary: ReadyService::new(), secondary: GateService::new() };
+        let mut svc =
+            FallbackService { primary: ReadyService::new(), secondary: GateService::new() };
         let res = svc.call("ok").await.unwrap();
         assert_eq!(res, "ok");
     }
@@ -751,7 +753,10 @@ mod tests {
             type Response = ();
             type Error = std::io::Error;
             type Future = futures::future::Ready<Result<(), std::io::Error>>;
-            fn poll_ready(&mut self, _cx: &mut std::task::Context<'_>) -> std::task::Poll<Result<(), Self::Error>> {
+            fn poll_ready(
+                &mut self,
+                _cx: &mut std::task::Context<'_>,
+            ) -> std::task::Poll<Result<(), Self::Error>> {
                 std::task::Poll::Ready(Ok(()))
             }
             fn call(&mut self, _req: ()) -> Self::Future {
@@ -774,7 +779,10 @@ mod tests {
             type Response = &'static str;
             type Error = std::io::Error;
             type Future = futures::future::Ready<Result<&'static str, std::io::Error>>;
-            fn poll_ready(&mut self, _cx: &mut std::task::Context<'_>) -> std::task::Poll<Result<(), Self::Error>> {
+            fn poll_ready(
+                &mut self,
+                _cx: &mut std::task::Context<'_>,
+            ) -> std::task::Poll<Result<(), Self::Error>> {
                 std::task::Poll::Ready(Ok(()))
             }
             fn call(&mut self, req: &'static str) -> Self::Future {
