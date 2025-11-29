@@ -22,6 +22,10 @@ if ! cargo fmt --color=always -- --check; then
 fi
 
 echo "[pre-commit] running cargo clippy --all-targets --all-features -- -D warnings -D missing_docs"
-cargo clippy --all-targets --all-features -- -D warnings -D missing_docs
+if ! cargo clippy --all-targets --all-features -- -D warnings -D missing_docs; then
+  status=$?
+  echo "Error: cargo clippy failed with exit code $status." >&2
+  exit $status
+fi
 
 echo "[pre-commit] all checks passed"

@@ -13,6 +13,7 @@ ninelives-otlp = "0.3"
 opentelemetry = { version = "0.31", features = ["logs"] }
 opentelemetry_sdk = { version = "0.31", features = ["logs", "rt-tokio"] }
 opentelemetry-otlp = { version = "0.31", features = ["logs", "http-proto", "reqwest-client", "reqwest-rustls"] }
+anyhow = "1"
 ```
 
 ```rust
@@ -50,7 +51,6 @@ async fn main() -> anyhow::Result<()> {
 ## Integration Test (real OTLP collector)
 
 ```bash
-cd ninelives-otlp
 docker compose up -d
 export NINE_LIVES_TEST_OTLP_ENDPOINT=http://127.0.0.1:4318
 cargo test -p ninelives-otlp
