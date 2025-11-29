@@ -4,6 +4,7 @@
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use tracing::warn;
 
 use crate::circuit_breaker::{CircuitBreakerState, CircuitState};
 
@@ -32,25 +33,37 @@ pub struct CircuitBreakerRegistry {
 }
 
 impl CircuitBreakerRegistry {
+    fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<String, CircuitBreakerHandle>> {
+        match self.inner.lock() {
+            Ok(guard) => guard,
+            Err(poison) => {
+                warn!("CircuitBreakerRegistry mutex poisoned; continuing with inner state");
+                poison.into_inner()
+            }
+        }
+    }
+
     /// Register a new circuit breaker handle with the given ID.
     /// If an entry already exists, it is overwritten.
     pub fn register(&self, id: String, handle: CircuitBreakerHandle) {
-        self.inner.lock().unwrap().insert(id, handle);
+        self.lock().insert(id, handle);
     }
 
     /// Retrieve a handle to a registered circuit breaker by ID.
     pub fn get(&self, id: &str) -> Option<CircuitBreakerHandle> {
-        self.inner.lock().unwrap().get(id).cloned()
+        self.lock().get(id).cloned()
     }
 
     /// Reset a registered circuit breaker by ID.
     /// Returns error if the ID is not found.
     pub fn reset(&self, id: &str) -> Result<(), String> {
-        if let Some(handle) = self.get(id) {
-            handle.reset();
-            Ok(())
-        } else {
-            Err(format!("breaker id not found: {id}"))
+        let mut map = self.lock();
+        match map.get(id) {
+            Some(handle) => {
+                handle.reset();
+                Ok(())
+            }
+            None => Err(format!("breaker id not found: {id}")),
         }
     }
 
@@ -63,7 +76,7 @@ impl CircuitBreakerRegistry {
 
     /// Snapshot of all breaker states (id -> state).
     pub fn snapshot(&self) -> Vec<(String, CircuitState)> {
-        let map = self.inner.lock().unwrap();
+        let map = self.lock();
         let mut entries: Vec<(String, CircuitState)> =
             map.iter().map(|(k, v)| (k.clone(), v.state())).collect();
         entries.sort_by(|a, b| a.0.cmp(&b.0));
