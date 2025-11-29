@@ -13,7 +13,7 @@ async fn writes_events_to_etcd() {
         }
     };
     let mut client = etcd_client::Client::connect([endpoint.as_str()], None).await.expect("client");
-    let mut sink = EtcdSink::new("policy_events", client.clone());
+    let mut sink = EtcdSink::new("policy_events", client.clone()).expect("valid sink");
 
     let event = PolicyEvent::Retry(RetryEvent::Attempt {
         attempt: 1,

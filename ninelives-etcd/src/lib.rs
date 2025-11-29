@@ -24,8 +24,24 @@ impl std::fmt::Debug for EtcdSink {
 
 impl EtcdSink {
     /// Create a sink using an existing etcd client; keys will be `prefix/<nanos>`.
-    pub fn new(prefix: impl Into<String>, client: etcd_client::Client) -> Self {
-        Self { prefix: prefix.into(), client }
+    ///
+    /// # Errors
+    /// Returns `Err` if the prefix is empty, contains control characters, or is otherwise invalid.
+    pub fn new(prefix: impl Into<String>, client: etcd_client::Client) -> Result<Self, String> {
+        let mut p: String = prefix.into();
+        
+        // Normalize: trim whitespace and strip trailing slashes
+        p = p.trim().trim_end_matches('/').to_string();
+
+        // Validate
+        if p.is_empty() {
+            return Err("prefix cannot be empty".to_string());
+        }
+        if p.chars().any(|c| c.is_control()) {
+            return Err("prefix cannot contain control characters".to_string());
+        }
+
+        Ok(Self { prefix: p, client })
     }
 }
 
