@@ -6,16 +6,12 @@ use ninelives::telemetry::{NonBlockingSink, NullSink, PolicyEvent, RetryEvent, S
 use std::time::{Duration, Instant};
 use tower_service::Service;
 
-// Feature-gated to avoid slowing CI. Run with:
-// cargo test --quiet --features bench-telemetry -- --ignored
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore]
 async fn telemetry_overhead_baseline() {
     run_bench(NullSink, 100_000, 4, Duration::from_micros(200)).await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore]
 async fn telemetry_overhead_nonblocking_log() {
     let raw = NullSink; // exercises NonBlockingSink channel path (no actual slow operations)
     let sink = NonBlockingSink::with_capacity(raw, 1024);
@@ -25,7 +21,6 @@ async fn telemetry_overhead_nonblocking_log() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore]
 async fn telemetry_overhead_streaming_drop_visibility() {
     let sink = StreamingSink::new(64);
     let mut handles = Vec::new();
@@ -64,7 +59,7 @@ where
             let mut h = Histogram::new(3).unwrap();
             for _ in 0..count {
                 let start = Instant::now();
-                let _ = s.call(sample_event()).await;
+                s.call(sample_event()).await.expect("sending sample_event failed");
                 h.record(start.elapsed().as_nanos() as u64).unwrap();
             }
             h
@@ -79,5 +74,6 @@ where
 }
 
 fn sample_event() -> PolicyEvent {
+    // Non-zero delay keeps retry semantics realistic and avoids zero-duration edge cases.
     PolicyEvent::Retry(RetryEvent::Attempt { attempt: 1, delay: Duration::from_millis(10) })
 }

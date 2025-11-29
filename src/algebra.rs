@@ -808,6 +808,8 @@ mod tests {
         let fast = Policy(tower::util::MapRequestLayer::new(|req: &'static str| req));
         let slow = Policy(tower::util::MapRequestLayer::new(|req: &'static str| req));
         let layer = fast & slow;
-        let _svc = layer.layer(TestSvc);
+        let mut svc = layer.layer(TestSvc);
+        let resp = svc.ready().await.unwrap().call("ok").await.unwrap();
+        assert_eq!(resp, "ok");
     }
 }
