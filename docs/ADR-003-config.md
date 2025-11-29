@@ -11,6 +11,19 @@ Expose two core control-plane commands:
 - `ReadConfig { path: String }` → returns current value
 - `WriteConfig { path: String, value: String }` → applies update to matching Adaptive
 
+### WriteConfig Semantics
+
+The `WriteConfig` command has specific concurrency, validation, and error propagation semantics:
+
+*   **Concurrency Model (Last-Write-Wins)**: Concurrent `WriteConfig` operations on the same path will race. The system implements a "last-write-wins" model. The `Adaptive` handles (which use atomic operations or `RwLock`) ensure that the underlying value is always consistent, but there is no transactional guarantee across multiple writes or retry mechanism for collisions. Clients are responsible for coordinating concurrent writes if strict ordering or atomicity is required beyond single-value consistency.
+*   **Atomicity**: Updates to a single `Adaptive<T>` value are atomic. The `Adaptive::set()` and `Adaptive::update()` methods provide atomic updates.
+*   **Validation Boundaries**:
+    1.  **Transport Level**: Transports might perform basic syntactic validation (e.g., valid JSON for structured values).
+    2.  **Handler Level (`ConfigRegistry`)**: The `BuiltInHandler` (which uses `ConfigRegistry`) performs validation. It attempts to parse the `value: String` into the `T` type expected by the `Adaptive` handle (`T: FromStr`). This validation occurs *before* sending the value to the `Adaptive` handle. If parsing fails, the write is rejected, and the previous state of the `Adaptive` is preserved.
+    3.  **Adaptive Level**: The `Adaptive` itself (or the `T` type it wraps) may have internal invariants (e.g., `TimeoutDuration` must be > 0). If `Adaptive` `set()` or `update()` would violate such an invariant (which should ideally be checked by the `ConfigRegistry`'s parsing logic), it would typically panic (if `unwrap` is used) or return an error (if `Result` is used internally). The current design relies on `ConfigRegistry` to catch invalid values before `Adaptive` is updated.
+*   **Error Recovery**: If parsing (by `ConfigRegistry`) fails, the operation is rejected, `CommandResult::Error` is returned, and the state of the `Adaptive` handle remains unchanged. There is no partial state applied or rolled back.
+*   **Authorization Failure**: If a `WriteConfig` is denied by the `AuthRegistry` (via `AuthorizationLayer`), it is rejected early, `CommandResult::Error` is returned (mapped to `403 Forbidden` for HTTP), and the denial is logged via the `AuditSink`. Operators can detect denial vs. acceptance via audit logs and `CommandResult` responses.
+
 Paths map to adaptives registered with the `ConfigRegistry` at runtime. The handler uses this registry to dynamically discover, validate, and update configuration paths.
 
 **Path Discovery & Contract**:
@@ -73,6 +86,21 @@ Config command errors (e.g., unknown path, parse error, authorization failure) a
 - Command router needs a config registry mapping paths → Adaptive handles and parsers.
 - Authorization can be applied per path (e.g., restrict writes in prod).
 - Bulkhead currently only grows capacity; shrinking is documented/unsupported until implemented.
+
+### Authorization
+
+Authorization for Config Commands is granular and applied per path:
+
+*   **Mechanism**: The `BuiltInHandler` can be constructed with an `AuthorizationLayer` that enforces policies defined in the `AuthRegistry`. This `AuthRegistry` acts as a policy store.
+*   **Subjects**: Policies can be applied based on the authenticated `principal` (user ID, service account) from the `AuthContext` (derived from JWT claims, mTLS client identity, etc.) and mapped RBAC roles.
+*   **Granularity**: Access Control Lists (ACLs) are defined per config path, distinguishing between `read` and `write` actions.
+    *   **Example**: `ops-lead` role might have `write` access to `circuit.*` paths, while `dev-ops` might have `read` access to all `*` paths.
+*   **Enforcement Point**: Authorization is enforced within the `CommandRouter` *before* the command's payload is parsed or dispatched to the `BuiltInHandler`. This ensures that unauthorized requests are rejected early.
+*   **Failure Response**:
+    *   `401 Unauthorized` (HTTP) / `PERMISSION_DENIED` (gRPC): For unauthenticated requests (missing/invalid credentials).
+    *   `403 Forbidden` (HTTP) / `UNAUTHENTICATED` (gRPC): For authenticated requests where the principal lacks permissions for the requested action on the specific path.
+    *   A structured error code/message will accompany these responses (e.g., `{"code": "FORBIDDEN_WRITE", "message": "user 'alice' cannot write to 'circuit.failure_threshold'"}`).
+*   **Deployment/Update Process**: Authorization policies are versioned within the service's configuration. Changes to authorization policies are rolled out via the `ConfigRegistry` (using `WriteConfig` on a special `auth.policy` path) or through service restarts. Atomic updates to policies are ensured by the `Adaptive` handles. All authorization decisions (success/failure) are logged via the `AuditSink`.
 
 ## Open Questions
 - Do we allow batch writes/reads? (future extension)
