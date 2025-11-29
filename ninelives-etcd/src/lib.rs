@@ -41,9 +41,12 @@ impl tower_service::Service<PolicyEvent> for EtcdSink {
     fn call(&mut self, event: PolicyEvent) -> Self::Future {
         let mut client = self.client.clone();
         let key = format!(
-            "{}/{}",
+            "{}/{}-{}",
             self.prefix,
-            chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
+            chrono::Utc::now()
+                .timestamp_nanos_opt()
+                .expect("valid timestamp"),
+            uuid::Uuid::new_v4()
         );
         let value = event_to_json(&event);
         Box::pin(async move {
