@@ -17,5 +17,8 @@ opentelemetry = { version = "0.31", features = ["logs"] }
 opentelemetry_sdk = { version = "0.31", features = ["logs", "testing", "rt-tokio"] }
 tokio = { version = "1", features = ["rt", "macros"] }
 
+[dev-dependencies]
+opentelemetry-otlp = { version = "0.31", features = ["logs", "http-proto", "reqwest-client", "reqwest-rustls"] }
+
 [features]
 default = []

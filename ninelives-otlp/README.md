@@ -1,41 +1,57 @@
 # ninelives-otlp
 
-OTLP telemetry sink for the `ninelives` resilience library. Bring your own `opentelemetry::logs::Logger`; events are emitted as log records (export destination is up to your pipeline).
+OTLP telemetry sink for the `ninelives` resilience library. Bring your own `opentelemetry_sdk::logs::SdkLoggerProvider`; events are emitted as OTLP log records (export destination is up to your pipeline).
 
 ## Usage
 
 ```toml
 ninelives = "0.3"
 ninelives-otlp = { path = "../ninelives-otlp" }
-opentelemetry = { version = "0.22", features = ["logs"] }
-opentelemetry_sdk = { version = "0.22", features = ["logs"] }
+opentelemetry = { version = "0.31", features = ["logs"] }
+opentelemetry_sdk = { version = "0.31", features = ["logs", "rt-tokio"] }
+opentelemetry-otlp = { version = "0.31", features = ["logs", "http-proto", "reqwest-client", "reqwest-rustls"] }
 ```
 
 ```rust
 use ninelives::telemetry::NonBlockingSink;
 use ninelives_otlp::OtlpSink;
-use opentelemetry::logs::Logger;
-use opentelemetry_sdk::logs::{LoggerProvider, SimpleLogProcessor};
-use opentelemetry_sdk::export::logs::LogExporter;
+use opentelemetry_otlp::WithExportConfig;
+use std::time::Duration;
 
-// build your own exporter/pipeline, then get a Logger
-# struct NoopExporter;
-# impl LogExporter for NoopExporter {
-#     fn export(&self, _: Vec<opentelemetry_sdk::export::logs::LogData>) -> opentelemetry::export::logs::ExportResult { opentelemetry::export::logs::ExportResult::Success }
-#     fn shutdown(&self) {}
-# }
-let provider = LoggerProvider::builder()
-    .with_log_processor(SimpleLogProcessor::new(Box::new(NoopExporter)))
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let exporter = opentelemetry_otlp::new_exporter()
+        .http()
+        .with_endpoint("http://127.0.0.1:4318")
+        .with_timeout(Duration::from_secs(5))
+        .build_log_exporter()
+        .await?;
+
+    let processor = opentelemetry_sdk::logs::BatchLogProcessor::builder(
+        exporter,
+        opentelemetry_sdk::runtime::Tokio,
+    )
     .build();
-let logger: Logger = provider.logger_builder("ninelives-otlp").build();
-let raw = OtlpSink::new(logger);
-let sink = NonBlockingSink::with_capacity(raw, 1024);
+
+    let provider = opentelemetry_sdk::logs::SdkLoggerProvider::builder()
+        .with_log_processor(processor)
+        .build();
+
+    let raw = OtlpSink::new(provider);
+    let sink = NonBlockingSink::with_capacity(raw, 1024);
+    // attach via .with_sink(...) on your policy layer
+    Ok(())
+}
 ```
 
-## Test
+## Integration Test (real OTLP collector)
 
 ```bash
+cd ninelives-otlp
+docker compose up -d
+export NINE_LIVES_TEST_OTLP_ENDPOINT=http://127.0.0.1:4318
 cargo test -p ninelives-otlp
+docker compose down
 ```
 
-The integration test builds an in-memory exporter and asserts a log record is emitted.
+The test builds an OTLP HTTP log exporter pointed at the collector from `docker-compose.yml` and verifies a `PolicyEvent` is exported successfully.

@@ -98,6 +98,18 @@ Most recipes are adaptive: retry/timeout/circuit/bulkhead knobs can be updated l
 
 See [`ninelives-cookbook/examples/`](ninelives-cookbook/examples) for runnable demos.
 
+## Appendix: Environment Variables
+
+All project/test environment variables are prefixed with `NINE_LIVES_`.
+
+| Name | Purpose | Used by | Default / Example |
+| --- | --- | --- | --- |
+| `NINE_LIVES_TEST_NATS_URL` | NATS endpoint for integration tests | `ninelives-nats` tests, `xtask it-nats` | `nats://127.0.0.1:4222` |
+| `NINE_LIVES_TEST_KAFKA_BROKERS` | Kafka bootstrap list for integration tests | `ninelives-kafka` tests, `xtask it-kafka` | `127.0.0.1:9092` |
+| `NINE_LIVES_TEST_ETCD_ENDPOINT` | etcd HTTP endpoint for integration tests | `ninelives-etcd` tests, `xtask it-etcd` | `http://127.0.0.1:2379` |
+| `NINE_LIVES_TEST_ELASTIC_URL` | Elasticsearch URL for integration tests | `ninelives-elastic` tests, `xtask it-elastic` | `http://127.0.0.1:9200` |
+| `NINE_LIVES_TEST_OTLP_ENDPOINT` | OTLP HTTP endpoint for integration tests | `ninelives-otlp` tests, `xtask it-otlp` | `http://127.0.0.1:4318` |
+
 ---
 
 ## 🔋 Features
