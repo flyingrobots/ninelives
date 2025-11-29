@@ -150,14 +150,24 @@ impl BulkheadPolicy {
 
     fn sync_capacity(&self) {
         let desired = *self.max_concurrent.get();
-        let current = self.capacity.load(Ordering::Acquire);
-        if desired > current {
-            let add = desired - current;
-            self.semaphore.add_permits(add);
-            self.capacity.store(desired, Ordering::Release);
-        } else if desired == 0 {
-            // prevent deadlock: keep at least 1
-            self.capacity.store(1, Ordering::Release);
+        loop {
+            let current = self.capacity.load(Ordering::Acquire);
+            let target = desired.max(1); // enforce minimum of 1
+            if current == target {
+                break;
+            }
+            // CAS to avoid double-adding permits
+            if self.capacity
+                .compare_exchange_weak(current, target, Ordering::AcqRel, Ordering::Relaxed)
+                .is_ok()
+            {
+                if target > current {
+                    self.semaphore.add_permits(target - current);
+                }
+                // Note: decreasing capacity requires draining permits over time
+                // or implementing a "forget" mechanism if tokio::sync::Semaphore supports it
+                break;
+            }
         }
     }
 }
