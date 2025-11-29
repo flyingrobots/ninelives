@@ -40,7 +40,13 @@ let strategy = fast_path | (retry + breaker + slow_path);
 
 ## 🚀 Quick Start
 
-Add to `Cargo.toml`:
+After cloning, run a single bootstrap to install toolchains, npm deps, and git hooks:
+
+```bash
+./scripts/bootstrap.sh
+```
+
+Then add to `Cargo.toml`:
 
 ```toml
 [dependencies]
@@ -101,6 +107,7 @@ Pick a recipe from [`ninelives-cookbook`](https://docs.rs/ninelives-cookbook/lat
 * **Hedge + fallback (god tier):** [`hedged_then_fallback`](https://docs.rs/ninelives-cookbook/latest/ninelives_cookbook/fn.hedged_then_fallback.html) — race two fast paths, then fall back to a sturdy stack.
 * **Sensible defaults:** [`sensible_defaults`](https://docs.rs/ninelives-cookbook/latest/ninelives_cookbook/fn.sensible_defaults.html) — timeout + retry + bulkhead starter pack.
 
+Advanced: see `docs/custom-policy-layer.md` for building and wiring your own Tower layer into the algebra and control plane.
 Most recipes are adaptive: retry/timeout/circuit/bulkhead knobs can be updated live via the `Adaptive<T>` handles.
 
 See [`ninelives-cookbook/examples/`](ninelives-cookbook/examples) for runnable demos.

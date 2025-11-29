@@ -205,7 +205,7 @@ pub struct CircuitBreakerLayer<Sink = NullSink> {
     config: CircuitBreakerConfig,
     clock: Arc<dyn Clock>,
     sink: Sink,
-    registry: Option<CircuitBreakerRegistry>,
+    registry: Option<Arc<dyn CircuitBreakerRegistry>>,
 }
 
 impl CircuitBreakerLayer<NullSink> {
@@ -239,6 +239,14 @@ impl CircuitBreakerLayer<NullSink> {
     ) -> Result<Self, CircuitBreakerError> {
         config.validate()?;
         Ok(Self { config, clock: Arc::new(clock), sink: NullSink, registry: None })
+    }
+}
+
+impl<Sink> CircuitBreakerLayer<Sink> {
+    /// Attach a registry for external reset/inspection.
+    pub fn with_registry<R: CircuitBreakerRegistry + 'static>(mut self, registry: R) -> Self {
+        self.registry = Some(Arc::new(registry));
+        self
     }
 }
 
@@ -338,14 +346,8 @@ where
             config: self.config,
             clock: self.clock,
             sink,
-            registry: self.registry,
+            registry: self.registry.clone(),
         }
-    }
-
-    /// Attach a registry for control-plane management.
-    pub fn with_registry(mut self, registry: CircuitBreakerRegistry) -> Self {
-        self.registry = Some(registry);
-        self
     }
 }
 
@@ -365,15 +367,13 @@ impl<S, Sink> CircuitBreakerService<S, Sink> {
         config: CircuitBreakerConfig,
         clock: Arc<dyn Clock>,
         sink: Sink,
-        registry: Option<CircuitBreakerRegistry>,
+        registry: Option<Arc<dyn CircuitBreakerRegistry>>,
     ) -> Self {
         let state = Arc::new(CircuitBreakerState::new());
 
-        if let Some(id) = config.id() {
-            if let Some(reg) = registry {
-                let handle = CircuitBreakerHandle { state: state.clone() };
-                reg.register(id.to_string(), handle);
-            }
+        if let (Some(id), Some(reg)) = (config.id(), registry) {
+            let handle = CircuitBreakerHandle { state: state.clone() };
+            reg.register(id.to_string(), handle);
         }
 
         Self { inner, state, config, clock, sink }

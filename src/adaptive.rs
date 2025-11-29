@@ -104,9 +104,9 @@ impl<T> DynamicConfig<T> {
         }
         #[cfg(feature = "adaptive-rwlock")]
         {
-            let cur_arc = self.inner.read().expect("adaptive config lock poisoned").clone();
-            let new_val = f(&cur_arc);
-            *self.inner.write().expect("adaptive config lock poisoned") = Arc::new(new_val);
+            let mut guard = self.inner.write().expect("adaptive config lock poisoned");
+            let new_val = f(&guard);
+            *guard = Arc::new(new_val);
         }
     }
 }

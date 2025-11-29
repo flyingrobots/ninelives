@@ -445,6 +445,12 @@ pub struct ForkJoinService<S1, S2> {
     right: S2,
 }
 
+#[derive(Debug)]
+pub struct ForkJoinError<E> {
+    pub left: Option<E>,
+    pub right: Option<E>,
+}
+
 impl<S1, S2, Request> tower_service::Service<Request> for ForkJoinService<S1, S2>
 where
     Request: Clone + Send + 'static,
@@ -461,7 +467,7 @@ where
     S2::Error: Send + 'static,
 {
     type Response = S1::Response;
-    type Error = S1::Error;
+    type Error = ForkJoinError<S1::Error>;
     type Future = futures::future::BoxFuture<'static, Result<Self::Response, Self::Error>>;
 
     fn poll_ready(
@@ -474,8 +480,12 @@ where
             (std::task::Poll::Ready(Ok(_)), std::task::Poll::Ready(Ok(_))) => {
                 std::task::Poll::Ready(Ok(()))
             }
-            (std::task::Poll::Ready(Err(e)), _) => std::task::Poll::Ready(Err(e)),
-            (_, std::task::Poll::Ready(Err(e))) => std::task::Poll::Ready(Err(e)),
+            (std::task::Poll::Ready(Err(e)), _) => {
+                std::task::Poll::Ready(Err(ForkJoinError { left: Some(e), right: None }))
+            }
+            (_, std::task::Poll::Ready(Err(e))) => {
+                std::task::Poll::Ready(Err(ForkJoinError { left: None, right: Some(e) }))
+            }
             _ => std::task::Poll::Pending,
         }
     }
@@ -507,10 +517,10 @@ where
                             tracing::debug!(
                                 left_error = ?left_err,
                                 right_error = ?right_err,
-                                "ForkJoinService: both paths failed; returning left error"
+                                "ForkJoinService: both paths failed; returning combined error"
                             );
-                            Err(left_err)
-                        } // Both failed, return left error
+                            Err(ForkJoinError { left: Some(left_err), right: Some(right_err) })
+                        } // Both failed, return combined error
                     }
                 }
                 Either::Right((Err(right_err), left_fut)) => {
@@ -521,10 +531,10 @@ where
                             tracing::debug!(
                                 left_error = ?left_err,
                                 right_error = ?right_err,
-                                "ForkJoinService: both paths failed; returning left error"
+                                "ForkJoinService: both paths failed; returning combined error"
                             );
-                            Err(left_err)
-                        } // Both failed, return deterministic left error
+                            Err(ForkJoinError { left: Some(left_err), right: Some(right_err) })
+                        } // Both failed, return combined error
                     }
                 }
             }
@@ -542,6 +552,7 @@ mod tests {
     use std::sync::Arc;
     use std::task::{Context, Poll};
     use std::time::Duration;
+    use tower::ServiceExt;
     use tower_service::Service;
 
     #[derive(Clone, Debug)]
@@ -708,7 +719,8 @@ mod tests {
 
         let mut svc = ForkJoinService { left: LeftErr, right: RightErr };
         let err = svc.call(()).await.unwrap_err();
-        assert_eq!(err, "left");
+        assert_eq!(err.left, Some("left"));
+        assert_eq!(err.right, Some("right"));
     }
 
     #[test]
@@ -780,8 +792,10 @@ mod tests {
         let right = Policy(tower::util::MapRequestLayer::new(|_: ()| ()));
         let layer = left | right;
         let mut svc = layer.layer(TestSvc);
-        Service::poll_ready(&mut svc, &mut Context::from_waker(&noop_waker()))
-            .expect("poll_ready should succeed");
+        assert!(matches!(
+            Service::poll_ready(&mut svc, &mut Context::from_waker(&noop_waker())),
+            Poll::Ready(Ok(()))
+        ));
         let res = svc.call(()).await.unwrap();
         assert_eq!(res, ());
     }
@@ -812,5 +826,35 @@ mod tests {
         let mut svc = layer.layer(TestSvc);
         let resp = svc.ready().await.unwrap().call("ok").await.unwrap();
         assert_eq!(resp, "ok");
+    }
+
+    #[tokio::test]
+    async fn fork_join_returns_both_errors_on_dual_failure() {
+        #[derive(Clone)]
+        struct FailSvc(&'static str);
+        impl tower_service::Service<&'static str> for FailSvc {
+            type Response = &'static str;
+            type Error = &'static str;
+            type Future = futures::future::Ready<Result<&'static str, &'static str>>;
+            fn poll_ready(
+                &mut self,
+                _cx: &mut std::task::Context<'_>,
+            ) -> std::task::Poll<Result<(), Self::Error>> {
+                std::task::Poll::Ready(Ok(()))
+            }
+            fn call(&mut self, _req: &'static str) -> Self::Future {
+                futures::future::ready(Err(self.0))
+            }
+        }
+
+        let left = Policy(tower::util::MapRequestLayer::new(|req: &'static str| req))
+            .layer(FailSvc("left"));
+        let right = Policy(tower::util::MapRequestLayer::new(|req: &'static str| req))
+            .layer(FailSvc("right"));
+        let mut svc = ForkJoinService { left, right };
+
+        let err = svc.call("req").await.unwrap_err();
+        assert_eq!(err.left, Some("left"));
+        assert_eq!(err.right, Some("right"));
     }
 }

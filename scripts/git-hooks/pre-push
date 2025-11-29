@@ -17,8 +17,8 @@ fi
 echo "[pre-push] running cargo fmt -- --check"
 cargo fmt -- --check
 
-echo "[pre-push] running markdownlint-cli2"
-npx markdownlint-cli2 "**/*.md"
+echo "[pre-push] running markdownlint (npm run lint:md)"
+npm run --silent lint:md
 
 echo "[pre-push] running cargo clippy --all-targets --all-features -- -D warnings -D missing_docs"
 cargo clippy --all-targets --all-features -- -D warnings -D missing_docs

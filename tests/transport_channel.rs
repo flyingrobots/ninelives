@@ -6,6 +6,7 @@ use ninelives::control::{
 };
 use ninelives::ChannelTransport;
 use std::sync::Arc;
+use std::time::Duration;
 
 fn env(cmd: BuiltInCommand) -> CommandEnvelope<BuiltInCommand> {
     CommandEnvelope {

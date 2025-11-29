@@ -4,8 +4,8 @@ use std::time::Duration;
 use ninelives::control::transport_channel::ChannelTransport;
 use ninelives::control::{
     AuthMode, AuthPayload, AuthRegistry, BuiltInCommand, BuiltInHandler, CommandEnvelope,
-    CommandHistory, CommandMeta, CommandResult, CommandRouter, ConfigRegistry, InMemoryHistory,
-    MemoryAuditSink, PassthroughAuth,
+    CommandHistory, CommandMeta, CommandResult, CommandRouter, DefaultConfigRegistry,
+    InMemoryHistory, MemoryAuditSink, PassthroughAuth,
 };
 use ninelives::{Backoff, Jitter, RetryPolicy, TokioSleeper};
 
@@ -22,7 +22,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Initial retry.max_attempts = {}", adaptive_attempts.get());
 
     // Register adaptive knob with the config registry
-    let mut cfg = ConfigRegistry::new();
+    let mut cfg = DefaultConfigRegistry::new();
     cfg.register_fromstr("retry.max_attempts", adaptive_attempts);
 
     // Wire command router with passthrough auth, audit, and history

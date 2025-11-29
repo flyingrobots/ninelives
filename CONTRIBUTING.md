@@ -6,10 +6,10 @@ Thanks for wanting to improve Nine Lives! This document provides guidelines for 
 
 1. Install the latest stable Rust (see <https://rustup.rs/>).
 2. Clone and Branch: git checkout -b feature/your-idea.
-3. Enable repo hooks so fmt/clippy/tests/docs run before pushes:
+3. Bootstrap once to install toolchains, npm deps, and git hooks:
 
 ```bash
-./scripts/setup-hooks.sh
+./scripts/bootstrap.sh
 ```
 
 4. Run Checks Locally:
@@ -24,7 +24,7 @@ cargo llvm-cov --workspace --all-features --lcov --output-path coverage/lcov.inf
 We use `git` hooks to enforce code quality (formatting, linting, tests) before every commit and push. This prevents broken code from reaching the repository.
 
 **Option 1: Automatic Setup (Recommended)**
-Run the helper script to safely configure your local git repository:
+Run the helper script (or the top-level `./scripts/bootstrap.sh`, which calls it) to safely configure your local git repository:
 
 ```bash
 ./scripts/setup-hooks.sh

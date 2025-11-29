@@ -47,6 +47,7 @@ async fn run_bench<S>(sink: S, iter: usize, concurrency: usize, p99_budget: Dura
 where
     S: tower_service::Service<PolicyEvent> + Clone + Send + 'static,
     S::Future: Send,
+    <S as tower_service::Service<PolicyEvent>>::Error: std::fmt::Debug,
 {
     let mut hist: Histogram<u64> = Histogram::new(3).unwrap();
     let mut tasks = Vec::new();

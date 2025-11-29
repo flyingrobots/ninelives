@@ -3,7 +3,7 @@
 use ninelives::adaptive::Adaptive;
 use ninelives::control::{
     AuthMode, AuthRegistry, BuiltInCommand, CommandEnvelope, CommandMeta, CommandResult,
-    ConfigRegistry, InMemoryHistory, PassthroughAuth,
+    DefaultConfigRegistry, InMemoryHistory, PassthroughAuth,
 };
 use ninelives::{Transport, TransportEnvelope, TransportRouter};
 use serde_json::json;
@@ -84,7 +84,7 @@ fn env_to_command(
                 std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap()
-                    .as_millis() as i64,
+                    .as_millis(),
             ),
         },
     };
@@ -192,7 +192,7 @@ async fn transport_router_get_unknown_errors() {
 async fn transport_router_write_and_read_config() {
     let mut auth = AuthRegistry::new(AuthMode::First);
     auth.register(Arc::new(PassthroughAuth));
-    let mut cfg = ConfigRegistry::new();
+    let mut cfg = DefaultConfigRegistry::new();
     cfg.register_fromstr("retry.max_attempts", Adaptive::new(3usize));
     let history = Arc::new(InMemoryHistory::default());
     let handler = Arc::new(ninelives::control::BuiltInHandler::default().with_config_registry(cfg));
@@ -239,9 +239,8 @@ async fn transport_router_write_config_errors_without_registry() {
         "auth": null
     })
     .to_string();
-    let bytes = t_router.handle(raw_write.as_bytes()).await.unwrap();
-    let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-    assert_eq!(v["result"], "error");
+    let err = t_router.handle(raw_write.as_bytes()).await.unwrap_err();
+    assert!(err.contains("config registry missing"), "expected missing registry error, got {err}");
 }
 
 #[tokio::test]

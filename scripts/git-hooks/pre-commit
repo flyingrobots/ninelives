@@ -27,9 +27,9 @@ git stash push --quiet --keep-index --include-untracked -m "$STASH_NAME"
 # Ensure stash is popped on exit
 trap 'git stash pop --quiet 2>/dev/null || true' EXIT
 
-echo "[pre-commit] running markdownlint-cli2 --fix"
-if ! npx markdownlint-cli2 --fix "**/*.md"; then
-  echo "Error: markdownlint-cli2 reported issues." >&2
+echo "[pre-commit] running markdownlint (npm run lint:md:fix)"
+if ! npm run --silent lint:md:fix; then
+  echo "Error: markdownlint reported issues. Run 'npm ci' then retry or fix lint errors." >&2
   exit 1
 fi
 

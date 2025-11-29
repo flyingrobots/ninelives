@@ -1,12 +1,14 @@
 #![allow(missing_docs)]
 
 use ninelives::adaptive::Adaptive;
-use ninelives::circuit_breaker_registry::CircuitBreakerRegistry;
+use ninelives::circuit_breaker_registry::{CircuitBreakerRegistry, DefaultCircuitBreakerRegistry};
 use ninelives::control::{
-    AuthMode, AuthPayload, AuthRegistry, CommandEnvelope, CommandMeta, CommandResult,
-    ConfigRegistry, InMemoryHistory,
+    AuthContext, AuthMode, AuthPayload, AuthRegistry, CommandEnvelope, CommandError, CommandMeta,
+    CommandResult, DefaultConfigRegistry, InMemoryHistory,
 };
-use ninelives::control::{BuiltInCommand, BuiltInHandler, CommandRouter, PassthroughAuth};
+use ninelives::control::{
+    BuiltInCommand, BuiltInHandler, CommandHandler, CommandRouter, PassthroughAuth,
+};
 use ninelives::{Backoff, Jitter, RetryPolicy};
 use ninelives::{CircuitBreakerConfig, CircuitBreakerLayer, CircuitState};
 use std::future::Ready;
@@ -26,7 +28,7 @@ async fn config_commands_update_retry_adaptive() {
 
     let adapt = policy.adaptive_max_attempts();
 
-    let mut registry = ConfigRegistry::new();
+    let mut registry = DefaultConfigRegistry::new();
     registry.register_fromstr("max_attempts", adapt.clone());
 
     let handler = BuiltInHandler::default().with_config_registry(registry);
@@ -46,8 +48,25 @@ async fn config_commands_update_retry_adaptive() {
 }
 
 #[tokio::test]
+async fn read_config_without_registry_returns_error_variant() {
+    let handler = BuiltInHandler::default();
+    let env = CommandEnvelope {
+        cmd: BuiltInCommand::ReadConfig { path: "missing".into() },
+        auth: None,
+        meta: CommandMeta::default(),
+    };
+    let err = handler
+        .handle(
+            env,
+            AuthContext { principal: "p".into(), provider: "test", attributes: Default::default() },
+        )
+        .await;
+    assert!(matches!(err, Err(CommandError::ConfigRegistryMissing { .. })));
+}
+
+#[tokio::test]
 async fn list_config_returns_registered_keys() {
-    let mut registry = ConfigRegistry::new();
+    let mut registry = DefaultConfigRegistry::new();
     registry.register_fromstr("max_attempts", Adaptive::new(1usize));
     registry.register_fromstr("timeout_ms", Adaptive::new(100usize));
 
@@ -68,7 +87,7 @@ async fn list_config_returns_registered_keys() {
 
 #[tokio::test]
 async fn get_state_reports_open_breaker() {
-    let registry = CircuitBreakerRegistry::default();
+    let registry = DefaultCircuitBreakerRegistry::default();
 
     // Create breaker and force it to open.
     let cfg =
@@ -99,7 +118,7 @@ async fn get_state_reports_open_breaker() {
 
 #[tokio::test]
 async fn reset_circuit_breaker_command() {
-    let registry = CircuitBreakerRegistry::default();
+    let registry = DefaultCircuitBreakerRegistry::default();
     registry.register_new("cb1".into());
 
     let handler = BuiltInHandler::default().with_circuit_breaker_registry(registry);
@@ -136,7 +155,7 @@ impl Service<()> for FailingSvc {
 
 #[tokio::test]
 async fn reset_command_closes_open_breaker() {
-    let registry = CircuitBreakerRegistry::default();
+    let registry = DefaultCircuitBreakerRegistry::default();
 
     let cfg =
         CircuitBreakerConfig::new(1, Duration::from_millis(1), 1).unwrap().with_id("cb_reset");

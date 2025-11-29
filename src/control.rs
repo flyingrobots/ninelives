@@ -12,12 +12,13 @@ pub mod transport_channel;
 use crate::circuit_breaker_registry::CircuitBreakerRegistry;
 use std::collections::HashMap;
 use std::fmt::Display;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use futures::future::BoxFuture;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
+use tokio::sync::Mutex;
 use tower::Service;
 use tracing::info;
 
@@ -327,6 +328,9 @@ pub enum CommandError {
     /// Handler execution failed.
     #[error("handler: {0}")]
     Handler(String),
+    /// Missing config registry when requested by a command.
+    #[error("config registry missing: {hint}")]
+    ConfigRegistryMissing { hint: &'static str },
     /// Audit recording failed.
     #[error("audit: {0}")]
     Audit(String),
@@ -398,15 +402,15 @@ pub struct InMemoryHistory {
 #[async_trait]
 impl CommandHistory for InMemoryHistory {
     async fn append(&self, meta: &CommandMeta, _result: &CommandResult) {
-        self.entries.lock().expect("history lock poisoned").push(meta.clone());
+        self.entries.lock().await.push(meta.clone());
     }
 
     async fn list(&self) -> Vec<CommandMeta> {
-        self.entries.lock().expect("history lock poisoned").clone()
+        self.entries.lock().await.clone()
     }
 
     async fn clear(&self) {
-        self.entries.lock().expect("history lock poisoned").clear();
+        self.entries.lock().await.clear();
     }
 }
 
@@ -423,20 +427,16 @@ impl MemoryAuditSink {
     }
     /// Retrieve recorded audit records.
     pub fn records(&self) -> Vec<AuditRecord> {
-        self.records.lock().expect("audit lock poisoned").clone()
+        futures::executor::block_on(async { self.records.lock().await.clone() })
     }
 }
 
 #[async_trait]
 impl AuditSink for MemoryAuditSink {
     async fn record(&self, record: AuditRecord) -> Result<(), CommandError> {
-        match self.records.lock() {
-            Ok(mut guard) => {
-                guard.push(record);
-                Ok(())
-            }
-            Err(poison) => Err(CommandError::Audit(format!("audit lock poisoned: {}", poison))),
-        }
+        let mut guard = self.records.lock().await;
+        guard.push(record);
+        Ok(())
     }
 }
 
@@ -576,17 +576,33 @@ impl CommandLabel for BuiltInCommand {
 }
 
 /// Registry of live config bindings (Adaptive values).
-pub struct ConfigRegistry {
+pub trait ConfigRegistry: Send + Sync + std::fmt::Debug {
+    fn write(&self, path: &str, raw: &str) -> Result<(), String>;
+    fn read(&self, path: &str) -> Result<String, String>;
+    fn keys(&self) -> Vec<String>;
+    fn contains(&self, path: &str) -> bool;
+}
+
+/// In-memory implementation of a config registry.
+pub struct InMemoryConfigRegistry {
     entries: HashMap<String, Box<dyn ConfigEntry>>,
 }
 
-impl Default for ConfigRegistry {
+impl std::fmt::Debug for InMemoryConfigRegistry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "InMemoryConfigRegistry{{entries:{}}}", self.entries.len())
+    }
+}
+
+pub type DefaultConfigRegistry = InMemoryConfigRegistry;
+
+impl Default for InMemoryConfigRegistry {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl ConfigRegistry {
+impl InMemoryConfigRegistry {
     /// Create a new config registry.
     pub fn new() -> Self {
         Self { entries: HashMap::new() }
@@ -654,6 +670,21 @@ impl ConfigRegistry {
     }
 }
 
+impl ConfigRegistry for InMemoryConfigRegistry {
+    fn write(&self, path: &str, raw: &str) -> Result<(), String> {
+        InMemoryConfigRegistry::write(self, path, raw)
+    }
+    fn read(&self, path: &str) -> Result<String, String> {
+        InMemoryConfigRegistry::read(self, path)
+    }
+    fn keys(&self) -> Vec<String> {
+        InMemoryConfigRegistry::keys(self)
+    }
+    fn contains(&self, path: &str) -> bool {
+        InMemoryConfigRegistry::contains(self, path)
+    }
+}
+
 trait ConfigEntry: Send + Sync {
     fn write(&self, raw: &str) -> Result<(), String>;
     fn read(&self) -> Result<String, String>;
@@ -684,37 +715,76 @@ where
     }
 }
 
+/// Async store service for built-in handler.
+#[derive(Clone, Default)]
+pub struct StoreService {
+    inner: Arc<tokio::sync::RwLock<HashMap<String, String>>>,
+}
+
+impl StoreService {
+    async fn insert(&self, key: String, value: String) {
+        self.inner.write().await.insert(key, value);
+    }
+
+    async fn get(&self, key: &str) -> Option<String> {
+        self.inner.read().await.get(key).cloned()
+    }
+
+    async fn keys(&self) -> Vec<String> {
+        let mut keys: Vec<String> = self.inner.read().await.keys().cloned().collect();
+        keys.sort();
+        keys
+    }
+
+    async fn clear(&self) {
+        self.inner.write().await.clear();
+    }
+}
+
 /// Built-in handler for basic commands.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct BuiltInHandler {
-    store: Arc<Mutex<HashMap<String, String>>>,
-    config_registry: Option<ConfigRegistry>,
-    circuit_breaker_registry: Option<CircuitBreakerRegistry>,
+    store: StoreService,
+    config_registry: Option<Arc<dyn ConfigRegistry>>,
+    circuit_breaker_registry: Option<Arc<dyn CircuitBreakerRegistry>>,
 }
 
 impl BuiltInHandler {
     /// Attach a config registry to the handler.
-    pub fn with_config_registry(mut self, registry: ConfigRegistry) -> Self {
-        self.config_registry = Some(registry);
+    pub fn with_config_registry<R>(mut self, registry: R) -> Self
+    where
+        R: ConfigRegistry + 'static,
+    {
+        self.config_registry = Some(Arc::new(registry));
         self
     }
 
     /// Attach a circuit breaker registry to the handler.
-    pub fn with_circuit_breaker_registry(mut self, registry: CircuitBreakerRegistry) -> Self {
-        self.circuit_breaker_registry = Some(registry);
+    pub fn with_circuit_breaker_registry<R>(mut self, registry: R) -> Self
+    where
+        R: CircuitBreakerRegistry + 'static,
+    {
+        self.circuit_breaker_registry = Some(Arc::new(registry));
         self
     }
 
     /// Set the config registry.
-    pub fn set_config_registry(&mut self, registry: ConfigRegistry) {
-        self.config_registry = Some(registry);
+    pub fn set_config_registry<R>(&mut self, registry: R)
+    where
+        R: ConfigRegistry + 'static,
+    {
+        self.config_registry = Some(Arc::new(registry));
     }
 
-    fn config_registry(&self) -> Option<&ConfigRegistry> {
+    fn config_registry(&self) -> Option<&Arc<dyn ConfigRegistry>> {
         self.config_registry.as_ref()
     }
 
-    fn set_or_store(&self, key: String, value: String) -> Result<CommandResult, CommandError> {
+    async fn set_or_store(
+        &self,
+        key: String,
+        value: String,
+    ) -> Result<CommandResult, CommandError> {
         if let Some(reg) = self.config_registry() {
             if reg.contains(&key) {
                 return match reg.write(&key, &value) {
@@ -723,11 +793,11 @@ impl BuiltInHandler {
                 };
             }
         }
-        self.store.lock().unwrap().insert(key, value);
+        self.store.insert(key, value).await;
         Ok(CommandResult::Ack)
     }
 
-    fn get_from_store_or_config(&self, key: &str) -> CommandResult {
+    async fn get_from_store_or_config(&self, key: &str) -> CommandResult {
         if let Some(reg) = self.config_registry() {
             if reg.contains(key) {
                 return match reg.read(key) {
@@ -736,7 +806,7 @@ impl BuiltInHandler {
                 };
             }
         }
-        let val = self.store.lock().unwrap().get(key).cloned().unwrap_or_default();
+        let val = self.store.get(key).await.unwrap_or_default();
         CommandResult::Value(val)
     }
 }
@@ -749,96 +819,88 @@ impl CommandHandler<BuiltInCommand> for BuiltInHandler {
         _ctx: AuthContext,
     ) -> Result<CommandResult, CommandError> {
         match cmd.cmd {
-            BuiltInCommand::Set { key, value } => self.set_or_store(key, value),
-            BuiltInCommand::Get { key } => Ok(self.get_from_store_or_config(&key)),
+            BuiltInCommand::Set { key, value } => self.set_or_store(key, value).await,
+            BuiltInCommand::Get { key } => Ok(self.get_from_store_or_config(&key).await),
             BuiltInCommand::List => {
-                let store_keys: Vec<String> = {
-                    let store = self.store.lock().unwrap();
-                    store.keys().cloned().map(|k| format!("store:{k}")).collect()
-                };
+                let store_keys: Vec<String> =
+                    self.store.keys().await.into_iter().map(|k| format!("store:{k}")).collect();
                 let config_keys: Vec<String> = self
                     .config_registry()
-                    .map(|reg| reg.keys().into_iter().map(|k| format!("config:{k}"))).map(|iter| iter.collect())
+                    .map(|reg| reg.keys().into_iter().map(|k| format!("config:{k}")))
+                    .map(|iter| iter.collect())
                     .unwrap_or_default();
-                let mut keys: Vec<String> = store_keys.into_iter().chain(config_keys.into_iter()).collect();
+                let mut keys: Vec<String> =
+                    store_keys.into_iter().chain(config_keys.into_iter()).collect();
                 keys.sort();
                 keys.dedup();
                 Ok(CommandResult::List(keys))
             }
             BuiltInCommand::Reset => {
-                self.store.lock().unwrap().clear();
+                self.store.clear().await;
                 Ok(CommandResult::Reset)
             }
             BuiltInCommand::WriteConfig { path, value } => {
-                if let Some(reg) = self.config_registry() {
-                    match reg.write(&path, &value) {
-                        Ok(()) => Ok(CommandResult::Ack),
-                        Err(e) => Ok(CommandResult::Error(e)),
-                    }
-                } else {
-                    Ok(CommandResult::Error("config registry not set".into()))
+                let reg = self.config_registry().ok_or(CommandError::ConfigRegistryMissing {
+                    hint: "Inject via ControlBuilder::with_config_registry()",
+                })?;
+                match reg.write(&path, &value) {
+                    Ok(()) => Ok(CommandResult::Ack),
+                    Err(e) => Ok(CommandResult::Error(e)),
                 }
             }
             BuiltInCommand::ListConfig => {
-                if let Some(reg) = self.config_registry() {
-                    Ok(CommandResult::List(reg.keys()))
-                } else {
-                    Ok(CommandResult::Error("config registry not set".into()))
-                }
+                let reg = self.config_registry().ok_or(CommandError::ConfigRegistryMissing {
+                    hint: "Inject via ControlBuilder::with_config_registry()",
+                })?;
+                Ok(CommandResult::List(reg.keys()))
             }
             BuiltInCommand::ReadConfig { path } => {
-                if let Some(reg) = self.config_registry() {
-                    Ok(match reg.read(&path) {
-                        Ok(val) => CommandResult::Value(val),
-                        Err(e) => CommandResult::Error(e),
-                    })
-                } else {
-                    Ok(CommandResult::Error("config registry not set".into()))
-                }
+                let reg = self.config_registry().ok_or(CommandError::ConfigRegistryMissing {
+                    hint: "Inject via ControlBuilder::with_config_registry()",
+                })?;
+                Ok(match reg.read(&path) {
+                    Ok(val) => CommandResult::Value(val),
+                    Err(e) => CommandResult::Error(e),
+                })
             }
             BuiltInCommand::ResetCircuitBreaker { id } => {
-                if let Some(reg) = &self.circuit_breaker_registry {
-                    match reg.reset(&id) {
-                        Ok(()) => Ok(CommandResult::Ack),
-                        Err(e) => Ok(CommandResult::Error(e)),
-                    }
-                } else {
-                    Ok(CommandResult::Error("circuit breaker registry not set".into()))
+                let reg = self
+                    .circuit_breaker_registry
+                    .as_ref()
+                    .ok_or(CommandError::Handler("circuit breaker registry not set".into()))?;
+                match reg.reset(&id) {
+                    Ok(()) => Ok(CommandResult::Ack),
+                    Err(e) => Ok(CommandResult::Error(e)),
                 }
             }
             BuiltInCommand::GetState => {
-                if let Some(reg) = &self.circuit_breaker_registry {
-                    let breakers = reg.snapshot();
-                    let map: serde_json::Map<String, serde_json::Value> = breakers
-                        .into_iter()
-                        .map(|(id, state)| {
-                            (
-                                id,
-                                serde_json::Value::String(
-                                    match state {
-                                        crate::circuit_breaker::CircuitState::Closed => "Closed",
-                                        crate::circuit_breaker::CircuitState::Open => "Open",
-                                        crate::circuit_breaker::CircuitState::HalfOpen => {
-                                            "HalfOpen"
-                                        }
-                                    }
-                                    .into(),
-                                ),
-                            )
-                        })
-                        .collect();
-                    let mut root = serde_json::Map::new();
-                    root.insert("breakers".into(), serde_json::Value::Object(map));
-                    match serde_json::to_string(&root) {
-                        Ok(s) => Ok(CommandResult::Value(s)),
-                        Err(e) => Ok(CommandResult::Error(format!(
-                            "failed to serialize breaker state: {e}"
-                        ))),
+                let reg = self.circuit_breaker_registry.as_ref().ok_or(CommandError::Handler(
+                    "circuit breaker registry not set; cannot get state".into(),
+                ))?;
+                let breakers = reg.snapshot();
+                let map: serde_json::Map<String, serde_json::Value> = breakers
+                    .into_iter()
+                    .map(|(id, state)| {
+                        (
+                            id,
+                            serde_json::Value::String(
+                                match state {
+                                    crate::circuit_breaker::CircuitState::Closed => "Closed",
+                                    crate::circuit_breaker::CircuitState::Open => "Open",
+                                    crate::circuit_breaker::CircuitState::HalfOpen => "HalfOpen",
+                                }
+                                .into(),
+                            ),
+                        )
+                    })
+                    .collect();
+                let mut root = serde_json::Map::new();
+                root.insert("breakers".into(), serde_json::Value::Object(map));
+                match serde_json::to_string(&root) {
+                    Ok(s) => Ok(CommandResult::Value(s)),
+                    Err(e) => {
+                        Ok(CommandResult::Error(format!("failed to serialize breaker state: {e}")))
                     }
-                } else {
-                    Ok(CommandResult::Error(
-                        "circuit breaker registry not set; cannot get state".into(),
-                    ))
                 }
             }
         }
@@ -935,7 +997,7 @@ mod tests {
 
     #[test]
     fn config_registry_keys_sorted() {
-        let mut reg = ConfigRegistry::new();
+        let mut reg = DefaultConfigRegistry::new();
         reg.register_fromstr("b", crate::adaptive::Adaptive::new(1usize));
         reg.register_fromstr("a", crate::adaptive::Adaptive::new(2usize));
         assert_eq!(reg.keys(), vec!["a".to_string(), "b".to_string()]);
@@ -943,7 +1005,7 @@ mod tests {
 
     #[test]
     fn breaker_snapshot_sorted_and_states() {
-        let reg = crate::circuit_breaker_registry::CircuitBreakerRegistry::default();
+        let reg = crate::circuit_breaker_registry::DefaultCircuitBreakerRegistry::default();
         reg.register_new("cb_a".into());
         reg.register_new("cb_b".into());
         let snap = reg.snapshot();

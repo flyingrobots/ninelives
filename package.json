@@ -18,6 +18,6 @@
   },
   "homepage": "https://github.com/flyingrobots/ninelives#readme",
   "devDependencies": {
-    "markdownlint-cli2": "^0.19.1"
+    "markdownlint-cli2": "0.19.1"
   }
 }

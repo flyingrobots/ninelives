@@ -3,8 +3,7 @@
 //! Allows global access and control (reset/inspection) of circuit breakers by ID.
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
-use tracing::warn;
+use std::sync::{Arc, RwLock};
 
 use crate::circuit_breaker::{CircuitBreakerState, CircuitState};
 
@@ -26,39 +25,40 @@ impl CircuitBreakerHandle {
     }
 }
 
-/// Registry keyed by breaker id.
-#[derive(Default, Clone, Debug)]
-pub struct CircuitBreakerRegistry {
-    inner: Arc<Mutex<HashMap<String, CircuitBreakerHandle>>>,
+/// Trait for breaker registries (injectable into control plane).
+pub trait CircuitBreakerRegistry: Send + Sync + std::fmt::Debug {
+    fn register(&self, id: String, handle: CircuitBreakerHandle);
+    fn get(&self, id: &str) -> Option<CircuitBreakerHandle>;
+    fn reset(&self, id: &str) -> Result<(), String>;
+    fn register_new(&self, id: String);
+    fn snapshot(&self) -> Vec<(String, CircuitState)>;
 }
 
-impl CircuitBreakerRegistry {
-    fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<String, CircuitBreakerHandle>> {
-        match self.inner.lock() {
-            Ok(guard) => guard,
-            Err(poison) => {
-                warn!("CircuitBreakerRegistry mutex poisoned; continuing with inner state");
-                poison.into_inner()
-            }
-        }
+/// In-memory implementation backed by a Mutex.
+#[derive(Default, Clone, Debug)]
+pub struct InMemoryCircuitBreakerRegistry {
+    inner: Arc<RwLock<HashMap<String, CircuitBreakerHandle>>>,
+}
+
+pub type DefaultCircuitBreakerRegistry = InMemoryCircuitBreakerRegistry;
+
+impl CircuitBreakerRegistry for InMemoryCircuitBreakerRegistry {
+    #[allow(unused_mut)]
+    fn register(&self, id: String, handle: CircuitBreakerHandle) {
+        let guard = self.inner.write().expect("circuit breaker registry poisoned");
+        // allow shadowing to keep scope small
+        let mut map = guard;
+        map.insert(id, handle);
     }
 
-    /// Register a new circuit breaker handle with the given ID.
-    /// If an entry already exists, it is overwritten.
-    pub fn register(&self, id: String, handle: CircuitBreakerHandle) {
-        self.lock().insert(id, handle);
+    fn get(&self, id: &str) -> Option<CircuitBreakerHandle> {
+        let guard = self.inner.read().expect("circuit breaker registry poisoned");
+        guard.get(id).cloned()
     }
 
-    /// Retrieve a handle to a registered circuit breaker by ID.
-    pub fn get(&self, id: &str) -> Option<CircuitBreakerHandle> {
-        self.lock().get(id).cloned()
-    }
-
-    /// Reset a registered circuit breaker by ID.
-    /// Returns error if the ID is not found.
-    pub fn reset(&self, id: &str) -> Result<(), String> {
-        let map = self.lock();
-        match map.get(id) {
+    fn reset(&self, id: &str) -> Result<(), String> {
+        let guard = self.inner.write().expect("circuit breaker registry poisoned");
+        match guard.get(id) {
             Some(handle) => {
                 handle.reset();
                 Ok(())
@@ -67,17 +67,14 @@ impl CircuitBreakerRegistry {
         }
     }
 
-    /// Convenience: create and register a fresh state with the given id.
-    /// Register a breaker with default configuration (duplicate ids overwrite previous handles; last writer wins).
-    pub fn register_new(&self, id: String) {
+    fn register_new(&self, id: String) {
         let state = Arc::new(CircuitBreakerState::new());
         let handle = CircuitBreakerHandle { state };
         self.register(id, handle);
     }
 
-    /// Snapshot of all breaker states (id -> state).
-    pub fn snapshot(&self) -> Vec<(String, CircuitState)> {
-        let map = self.lock();
+    fn snapshot(&self) -> Vec<(String, CircuitState)> {
+        let map = self.inner.read().expect("circuit breaker registry poisoned");
         let mut entries: Vec<(String, CircuitState)> =
             map.iter().map(|(k, v)| (k.clone(), v.state())).collect();
         entries.sort_by(|a, b| a.0.cmp(&b.0));
