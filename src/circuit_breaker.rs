@@ -99,13 +99,17 @@ impl CircuitBreakerConfig {
         half_open_max_calls: usize,
     ) -> Result<Self, CircuitBreakerError> {
         if failure_threshold == 0 {
-            return Err(CircuitBreakerError::InvalidFailureThreshold { provided: failure_threshold });
+            return Err(CircuitBreakerError::InvalidFailureThreshold {
+                provided: failure_threshold,
+            });
         }
         if recovery_timeout.is_zero() {
             return Err(CircuitBreakerError::InvalidRecoveryTimeout(recovery_timeout));
         }
         if half_open_max_calls == 0 {
-            return Err(CircuitBreakerError::InvalidHalfOpenLimit { provided: half_open_max_calls });
+            return Err(CircuitBreakerError::InvalidHalfOpenLimit {
+                provided: half_open_max_calls,
+            });
         }
         let cfg = Self {
             id: None,
@@ -412,8 +416,7 @@ where
             let recovery_timeout = *config.recovery_timeout.get();
             let failure_threshold = (*config.failure_threshold.get()).max(1);
             let half_open_max_calls = (*config.half_open_max_calls.get()).max(1);
-            let recovery_timeout_ms =
-                recovery_timeout.as_millis().min(u128::from(u64::MAX)) as u64;
+            let recovery_timeout_ms = recovery_timeout.as_millis().min(u128::from(u64::MAX)) as u64;
 
             match current {
                 CircuitState::Open => {

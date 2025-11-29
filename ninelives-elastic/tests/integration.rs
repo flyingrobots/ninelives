@@ -41,7 +41,7 @@ async fn indexes_policy_events() {
     let transport =
         elasticsearch::http::transport::Transport::single_node(&url).expect("transport");
     let client = Elasticsearch::new(transport);
-    let mut sink = ElasticSink::new(client.clone(), index.clone());
+    let mut sink = ElasticSink::new(client.clone(), index.clone()).expect("valid sink");
     let _guard = Cleanup { client: client.clone(), index: index.clone() };
 
     let event = PolicyEvent::Retry(RetryEvent::Attempt {

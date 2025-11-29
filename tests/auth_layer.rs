@@ -47,10 +47,9 @@ impl AuthProvider for DenyAuth {
 }
 
 fn env(cmd: BuiltInCommand) -> CommandEnvelope<BuiltInCommand> {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_millis() as i64;
+    let now =
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis()
+            as i64;
     CommandEnvelope {
         cmd,
         auth: Some(AuthPayload::Opaque(vec![])),

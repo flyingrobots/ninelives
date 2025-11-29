@@ -76,10 +76,13 @@ fn transport_envelope_matches_schema() {
         }),
     );
 
-    assert_invalid(&compiled, json!({
-        "id": "cmd-123",
-        "cmd": "test",
-        "args": {},
-        "unknown_field": "hack"
-    }));
+    assert_invalid(
+        &compiled,
+        json!({
+            "id": "cmd-123",
+            "cmd": "test",
+            "args": {},
+            "unknown_field": "hack"
+        }),
+    );
 }

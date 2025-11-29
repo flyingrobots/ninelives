@@ -32,9 +32,7 @@ async fn publishes_events_to_nats() {
         attempt: 1,
         delay: std::time::Duration::from_millis(50),
     });
-    sink.call(event)
-        .await
-        .expect("Failed to publish event to NATS sink");
+    sink.call(event).await.expect("Failed to publish event to NATS sink");
 
     let msg = tokio::time::timeout(
         Duration::from_secs(5), // Explicit timeout

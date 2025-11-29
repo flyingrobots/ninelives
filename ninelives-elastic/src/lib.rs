@@ -1,8 +1,7 @@
 //! Elasticsearch telemetry sink for `ninelives`.
 //! Bring your own `elasticsearch::Elasticsearch` client; events are indexed as JSON.
 
-use ninelives::telemetry::{PolicyEvent, TelemetrySink};
-use serde_json::json;
+use ninelives::telemetry::{event_to_json, PolicyEvent, TelemetrySink};
 use std::convert::Infallible;
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -15,7 +14,10 @@ pub struct ElasticSink {
 
 impl ElasticSink {
     /// Create a sink with an existing Elasticsearch client and target index.
-    pub fn new(client: elasticsearch::Elasticsearch, index: impl Into<String>) -> Result<Self, String> {
+    pub fn new(
+        client: elasticsearch::Elasticsearch,
+        index: impl Into<String>,
+    ) -> Result<Self, String> {
         let index = index.into();
         if index.is_empty() {
             return Err("index name cannot be empty".to_string());
