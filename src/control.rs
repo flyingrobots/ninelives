@@ -424,19 +424,30 @@ pub trait CommandHistory: Send + Sync {
 }
 
 /// In-memory history (for tests / defaults).
-#[derive(Default, Clone)]
+#[derive(Clone)]
 pub struct InMemoryHistory {
-    entries: Arc<Mutex<Vec<CommandMeta>>>,
+    entries: Arc<Mutex<std::collections::VecDeque<CommandMeta>>>,
+    capacity: usize,
+}
+
+impl Default for InMemoryHistory {
+    fn default() -> Self {
+        Self { entries: Arc::new(Mutex::new(std::collections::VecDeque::new())), capacity: 1_000 }
+    }
 }
 
 #[async_trait]
 impl CommandHistory for InMemoryHistory {
     async fn append(&self, meta: &CommandMeta, _result: &CommandResult) {
-        self.entries.lock().await.push(meta.clone());
+        let mut guard = self.entries.lock().await;
+        guard.push_back(meta.clone());
+        if guard.len() > self.capacity {
+            guard.pop_front();
+        }
     }
 
     async fn list(&self) -> Vec<CommandMeta> {
-        self.entries.lock().await.clone()
+        self.entries.lock().await.iter().cloned().collect()
     }
 
     async fn clear(&self) {
