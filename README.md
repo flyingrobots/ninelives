@@ -43,7 +43,7 @@ let strategy = fast_path | (retry + breaker + slow_path);
 Add to `Cargo.toml`:
 ```toml
 [dependencies]
-ninelives = "latest"
+ninelives = "0.3"
 tower = "0.5.2"
 tokio = { version = "1", features = ["full"] }
 ```
@@ -98,6 +98,16 @@ Most recipes are adaptive: retry/timeout/circuit/bulkhead knobs can be updated l
 
 See [`ninelives-cookbook/examples/`](ninelives-cookbook/examples) for runnable demos.
 
+---
+
+## 🧭 Repo Layout (workspace)
+
+- `src/` — core policies, algebra, control plane.
+- `schemas/` — JSON Schemas for control-plane envelopes/results.
+- `ninelives-*` — integration crates (nats, kafka, elastic, etcd, prometheus, otlp, jsonl).
+- `ninelives-cookbook/` — ready-made policy recipes + examples.
+- `xtask/` — dev automation and integration test runners (`xtask it-*`).
+
 ## Appendix: Environment Variables
 
 All project/test environment variables are prefixed with `NINE_LIVES_`.
@@ -122,6 +132,26 @@ All project/test environment variables are prefixed with `NINE_LIVES_`.
 
 ### 🎛️ Control Plane (Adaptive)
 Turn static configs into live knobs. Nine Lives includes a runtime configuration system (`ConfigRegistry`, `CommandRouter`) that lets you adjust max retries, timeouts, or circuit breaker thresholds without restarting the service.
+
+### 🛰️ Control Plane Wire Format
+
+- Canonical wire envelope: `TransportEnvelope { id, cmd, args, auth }`
+- Auth payload matches the Rust enum shape, e.g.:
+  ```json
+  {
+    "id": "cmd-1",
+    "cmd": "write_config",
+    "args": { "path": "max_attempts", "value": "5" },
+    "auth": { "Jwt": { "token": "your-jwt" } }
+  }
+  ```
+  Other variants: `Signatures`, `Mtls`, `Opaque`.
+- Schemas live in `schemas/transport-envelope.schema.json`; design rationale in `docs/ADR-004-transport-formats.md`.
+- Built-in commands (see `src/control.rs`):
+  - `set`, `get`, `list`, `reset`
+  - `read_config`, `write_config`, `list_config`
+  - `reset_circuit_breaker`, `get_state` (returns `{"breakers": { id: "Open" | "Closed" | "HalfOpen" }}`)
+- Transport glue lives in `src/control/transport.rs`.
 
 ### 📡 Telemetry & Observability
 Unified event system. Every layer emits structured `PolicyEvent`s (e.g., `RetryAttempt`, `CircuitOpen`).
