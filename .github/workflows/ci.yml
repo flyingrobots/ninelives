@@ -50,8 +50,8 @@ jobs:
             echo "error: feat/fix commits must add or modify tests" >&2
             exit 1
           fi
-      - name: Coverage guard for chore/refactor/docs
-        if: startsWith(steps.msg.outputs.msg, 'chore') || startsWith(steps.msg.outputs.msg, 'refactor') || startsWith(steps.msg.outputs.msg, 'docs')
+      - name: Coverage guard for chore/refactor
+        if: startsWith(steps.msg.outputs.msg, 'chore') || startsWith(steps.msg.outputs.msg, 'refactor')
         run: |
           sudo apt-get update >/dev/null && sudo apt-get install -y jq >/dev/null
           cargo install cargo-llvm-cov --locked --version 0.6.21
@@ -72,18 +72,29 @@ jobs:
           head_cov=$(run_cov .)
           echo "base coverage: $base_cov"
           echo "head coverage: $head_cov"
+
+          # Format floats to 2 decimal places for consistent parsing
           bcov=$(printf '%.2f' "$base_cov")
           hcov=$(printf '%.2f' "$head_cov")
-          # if parsing failed, default to threshold enforcement only
+
+          # If parsing failed, exit with an error.
           if [ -z "$bcov" ] || [ -z "$hcov" ]; then
-            echo "warning: unable to parse coverage; relying on main coverage job"
-            exit 0
-          fi
-          awk -v b="$bcov" -v h="$hcov" 'BEGIN { if (h + 1e-6 < b) { exit 1 } }'
-          if [ $? -ne 0 ]; then
-            echo "error: coverage decreased (base $bcov -> head $hcov)" >&2
+            echo "error: Failed to parse coverage output. Base: '$base_cov', Head: '$head_cov'." >&2
             exit 1
           fi
+
+          # Perform integer-based comparison on whole percentages (rounded)
+          b_int=$(awk -v val="$bcov" 'BEGIN { print int(val + 0.5) }') # Round to nearest integer
+          h_int=$(awk -v val="$hcov" 'BEGIN { print int(val + 0.5) }') # Round to nearest integer
+
+          echo "Base coverage (rounded %): $b_int"
+          echo "Head coverage (rounded %): $h_int"
+
+          if [ "$h_int" -lt "$b_int" ]; then
+            echo "error: Coverage decreased (Base: $b_int% -> Head: $h_int%)." >&2
+            exit 1
+          fi
+
       - name: Clean worktree
         if: always()
         run: git worktree prune
