@@ -18,14 +18,14 @@ These operators are recursive: a composed `Policy` is just another `Policy`, all
 
 Nine Lives introduces three intuitive operators to compose `Policy` layers:
 
-*   **`Policy(A) + Policy(B)` (Wrap):** `A` wraps `B` to create a sequential pipeline. This is standard Tower layering, where the outer layer `A` processes requests before passing them to the inner layer `B`.
-    *   *Example:* `Retry + Timeout` implies a Timeout mechanism applied *after* an operation has potentially retried.
+* **`Policy(A) + Policy(B)` (Wrap):** `A` wraps `B` to create a sequential pipeline. This is standard Tower layering, where the outer layer `A` processes requests before passing them to the inner layer `B`.
+  * *Example:* `Retry + Timeout` implies a Timeout mechanism applied *after* an operation has potentially retried.
 
-*   **`Policy(A) | Policy(B)` (Fallback):** Tries `A` first. If `A` fails, `B` is then attempted with the original request. This enables graceful degradation.
-    *   *Example:* `FastCache | SlowDatabase` will try to fetch from a fast cache, and only if that fails, query a slower database.
+* **`Policy(A) | Policy(B)` (Fallback):** Tries `A` first. If `A` fails, `B` is then attempted with the original request. This enables graceful degradation.
+  * *Example:* `FastCache | SlowDatabase` will try to fetch from a fast cache, and only if that fails, query a slower database.
 
-*   **`Policy(A) & Policy(B)` (Race):** Runs `A` and `B` concurrently. The first successful response from either `A` or `B` is returned. If both fail, an error is returned. This is useful for "Happy Eyeballs" patterns or redundant requests.
-    *   *Example:* `RegionA & RegionB` to race requests to two different regions, using the quicker response.
+* **`Policy(A) & Policy(B)` (Race):** Runs `A` and `B` concurrently. The first successful response from either `A` or `B` is returned. If both fail, an error is returned. This is useful for "Happy Eyeballs" patterns or redundant requests.
+  * *Example:* `RegionA & RegionB` to race requests to two different regions, using the quicker response.
 
 ### Expressive Composition
 

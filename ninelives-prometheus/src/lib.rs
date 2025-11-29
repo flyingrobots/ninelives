@@ -1,6 +1,9 @@
 //! Prometheus metrics sink for `ninelives`.
 //! Bring your own `prometheus::Registry`; counters are registered and incremented.
 
+use ninelives::prelude::{
+    BulkheadEvent, CircuitBreakerEvent, RequestOutcome, RetryEvent, TimeoutEvent,
+};
 use ninelives::telemetry::{PolicyEvent, TelemetrySink};
 use prometheus::{IntCounterVec, Registry};
 use std::convert::Infallible;
