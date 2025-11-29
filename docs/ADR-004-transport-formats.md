@@ -61,7 +61,7 @@ A clear separation is established between the wire-format `TransportEnvelope` an
         fn encode(&self, ctx: &CommandContext, result: &CommandResult) -> Result<Vec<u8>, Self::Error>;
 
         /// Maps transport-specific errors to a generic string.
-        fn map_error(err: Self::Error) -> String;
+        fn map_error(err: &Self::Error) -> String;
     }
     ```
 -   The `encode` method takes `CommandContext` and `CommandResult` because the wire format for *responses* is transport-specific and might depend on `CommandContext` metadata (e.g., `response_channel`).

@@ -83,7 +83,7 @@ pub trait Transport: Send + Sync {
     ) -> Result<Vec<u8>, Self::Error>;
 
     /// Map transport-specific errors into router-visible strings.
-    fn map_error(err: Self::Error) -> String;
+    fn map_error(err: &Self::Error) -> String;
 }
 
 /// Bridges raw transport frames to a CommandRouter using a decoder/encoder pair.
@@ -121,7 +121,7 @@ where
         if raw.len() > Self::MAX_REQUEST_SIZE {
             return Err("request exceeds maximum size".into());
         }
-        let env = self.transport.decode(raw).map_err(T::map_error)?;
+        let env = self.transport.decode(raw).map_err(|e| T::map_error(&e))?;
 
         // Runtime validation of incoming envelope against JSON Schema
         let env_val = serde_json::to_value(&env).map_err(|e| e.to_string())?;
@@ -135,6 +135,6 @@ where
         let res_val = command_result_to_schema_value(&res);
         validate(command_result_schema(), &res_val)?;
 
-        self.transport.encode(&ctx, &res).map_err(T::map_error)
+        self.transport.encode(&ctx, &res).map_err(|e| T::map_error(&e))
     }
 }

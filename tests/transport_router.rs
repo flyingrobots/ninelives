@@ -34,7 +34,7 @@ impl Transport for JsonTransport {
         serde_json::to_vec(&out)
     }
 
-    fn map_error(err: Self::Error) -> String {
+    fn map_error(err: &Self::Error) -> String {
         err.to_string()
     }
 }
