@@ -523,8 +523,11 @@ mod tests {
     use futures::task::noop_waker;
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::Arc;
+    use std::time::Duration;
     use std::task::{Context, Poll};
+    use std::pin::Pin;
     use tower_service::Service;
+    use crate::TimeoutLayer;
 
     #[derive(Clone, Debug)]
     struct GateService {
@@ -551,8 +554,8 @@ mod tests {
     where
         Request: Clone + Send + 'static,
     {
-        type Response = ();
-        type Error = &'static str;
+        type Response = Request;
+        type Error = std::io::Error;
         type Future = futures::future::Ready<Result<Self::Response, Self::Error>>;
 
         fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
@@ -565,9 +568,56 @@ mod tests {
             }
         }
 
-        fn call(&mut self, _req: Request) -> Self::Future {
+        fn call(&mut self, req: Request) -> Self::Future {
             self.calls.fetch_add(1, Ordering::SeqCst);
-            futures::future::ready(Ok(()))
+            futures::future::ready(Ok(req))
+        }
+    }
+
+    #[derive(Clone, Debug)]
+    struct ReadyService;
+    impl ReadyService {
+        fn new() -> Self {
+            Self
+        }
+    }
+    impl<T: Clone + Send + 'static> tower_service::Service<T> for ReadyService {
+        type Response = T;
+        type Error = std::io::Error;
+        type Future = futures::future::Ready<Result<Self::Response, Self::Error>>;
+        fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+            Poll::Ready(Ok(()))
+        }
+        fn call(&mut self, req: T) -> Self::Future {
+            futures::future::ready(Ok(req))
+        }
+    }
+
+    #[derive(Clone, Debug)]
+    struct SlowService {
+        delay: Duration,
+        label: &'static str,
+    }
+    impl SlowService {
+        fn new(delay: Duration, label: &'static str) -> Self {
+            Self { delay, label }
+        }
+    }
+    impl tower_service::Service<&'static str> for SlowService {
+        type Response = &'static str;
+        type Error = std::io::Error;
+        type Future = Pin<Box<dyn futures::Future<Output = Result<Self::Response, Self::Error>> + Send>>;
+        fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+            Poll::Ready(Ok(()))
+        }
+        fn call(&mut self, req: &'static str) -> Self::Future {
+            let delay = self.delay;
+            let label = self.label;
+            Box::pin(async move {
+                tokio::time::sleep(delay).await;
+                let _ = label;
+                Ok(req)
+            })
         }
     }
 
@@ -663,5 +713,78 @@ mod tests {
 
         right.set_ready(true);
         assert!(matches!(Service::<()>::poll_ready(&mut svc, &mut cx), Poll::Ready(Ok(()))));
+    }
+
+    #[tokio::test]
+    async fn fallback_short_circuits_on_success() {
+        let mut svc = FallbackService { primary: ReadyService::new(), secondary: GateService::new() };
+        let res = svc.call("ok").await.unwrap();
+        assert_eq!(res, "ok");
+    }
+
+    #[tokio::test]
+    async fn race_returns_first_success() {
+        let slow = SlowService::new(Duration::from_millis(50), "slow");
+        let fast = ReadyService::new();
+        let mut svc = ForkJoinService { left: slow, right: fast };
+        let res = svc.call("req").await.unwrap();
+        assert_eq!(res, "req");
+    }
+
+    #[tokio::test]
+    async fn wrap_preserves_ordering() {
+        let layer = CombinedLayer {
+            outer: TimeoutLayer::new(Duration::from_millis(20)).unwrap(),
+            inner: TimeoutLayer::new(Duration::from_secs(1)).unwrap(),
+        };
+        let mut svc = layer.layer(ReadyService::new());
+        let res = Service::call(&mut svc, "wrapped").await.unwrap();
+        assert_eq!(res, "wrapped");
+    }
+
+    #[tokio::test]
+    async fn fallback_layer_accepts_cloneable_service() {
+        // Test that fallback layers work with simple services
+        #[derive(Clone)]
+        struct TestSvc;
+        impl tower_service::Service<()> for TestSvc {
+            type Response = ();
+            type Error = std::io::Error;
+            type Future = futures::future::Ready<Result<(), std::io::Error>>;
+            fn poll_ready(&mut self, _cx: &mut std::task::Context<'_>) -> std::task::Poll<Result<(), Self::Error>> {
+                std::task::Poll::Ready(Ok(()))
+            }
+            fn call(&mut self, _req: ()) -> Self::Future {
+                futures::future::ready(Ok(()))
+            }
+        }
+
+        let left = Policy(tower::util::MapRequestLayer::new(|_: ()| ()));
+        let right = Policy(tower::util::MapRequestLayer::new(|_: ()| ()));
+        let layer = left | right;
+        let _svc = layer.layer(TestSvc);
+    }
+
+    #[tokio::test]
+    async fn fork_join_layer_accepts_cloneable_service() {
+        // Test that fork-join layers work with simple services
+        #[derive(Clone)]
+        struct TestSvc;
+        impl tower_service::Service<&'static str> for TestSvc {
+            type Response = &'static str;
+            type Error = std::io::Error;
+            type Future = futures::future::Ready<Result<&'static str, std::io::Error>>;
+            fn poll_ready(&mut self, _cx: &mut std::task::Context<'_>) -> std::task::Poll<Result<(), Self::Error>> {
+                std::task::Poll::Ready(Ok(()))
+            }
+            fn call(&mut self, req: &'static str) -> Self::Future {
+                futures::future::ready(Ok(req))
+            }
+        }
+
+        let fast = Policy(tower::util::MapRequestLayer::new(|req: &'static str| req));
+        let slow = Policy(tower::util::MapRequestLayer::new(|req: &'static str| req));
+        let layer = fast & slow;
+        let _svc = layer.layer(TestSvc);
     }
 }

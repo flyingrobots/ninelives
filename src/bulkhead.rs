@@ -334,7 +334,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::Arc;
     use std::time::Duration;
 
@@ -558,5 +558,71 @@ mod tests {
             ResilienceError::Inner(e) => assert_eq!(e.0, "operation failed"),
             e => panic!("Expected Inner error, got {:?}", e),
         }
+    }
+
+    #[tokio::test]
+    async fn test_permit_released_after_error() {
+        let bulkhead = BulkheadPolicy::new(1).unwrap();
+        let bh = bulkhead.clone();
+        let first = bh.execute(|| async move {
+            Err::<(), ResilienceError<TestError>>(ResilienceError::BulkheadClosed)
+        });
+        assert!(first.await.is_err());
+
+        // Permit should be free for next call
+        let res = bulkhead
+            .execute(|| async move { Ok::<_, ResilienceError<TestError>>(()) })
+            .await;
+        assert!(res.is_ok());
+    }
+
+    #[tokio::test]
+    async fn bulkhead_layer_rejects_when_full() {
+        use crate::telemetry::NullSink;
+        use std::pin::Pin;
+        use std::task::{Context, Poll};
+
+        struct BlockingSvc(std::sync::Arc<std::sync::Mutex<Option<tokio::sync::oneshot::Receiver<()>>>>);
+
+        impl Clone for BlockingSvc {
+            fn clone(&self) -> Self {
+                Self(self.0.clone())
+            }
+        }
+
+        impl tower_service::Service<&'static str> for BlockingSvc {
+            type Response = &'static str;
+            type Error = std::io::Error;
+            type Future = Pin<Box<dyn futures::Future<Output = Result<Self::Response, Self::Error>> + Send>>;
+            fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+                Poll::Ready(Ok(()))
+            }
+            fn call(&mut self, req: &'static str) -> Self::Future {
+                let rx = self.0.lock().unwrap().take().expect("receiver");
+                Box::pin(async move {
+                    let _ = rx.await;
+                    Ok(req)
+                })
+            }
+        }
+
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        let layer = BulkheadLayer::new(1).unwrap().with_sink(NullSink);
+        let svc = layer.layer(BlockingSvc(std::sync::Arc::new(std::sync::Mutex::new(Some(rx)))));
+
+        // First call holds permit
+        let mut svc1 = svc.clone();
+        let hold = tokio::spawn(async move { svc1.call("held").await });
+
+        // Yield to let the spawned task run and acquire the permit
+        tokio::task::yield_now().await;
+
+        // Second call should be rejected immediately
+        let mut svc2 = svc.clone();
+        let err = svc2.call("rejected").await.unwrap_err();
+        assert!(matches!(err, ResilienceError::Bulkhead { .. }));
+
+        let _ = tx.send(());
+        let _ = hold.await;
     }
 }

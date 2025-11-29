@@ -844,6 +844,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::future::Future;
 
     #[test]
     fn test_retry_event_display() {
@@ -958,6 +959,44 @@ mod tests {
         .unwrap();
 
         assert!(sink.last_drop().is_some());
+    }
+
+    #[tokio::test]
+    async fn test_streaming_sink_delivers_to_subscriber() {
+        use tower::Service;
+        let sink = StreamingSink::new(8);
+        let mut rx = sink.subscribe();
+        let mut tx = sink.clone();
+
+        tx.call(PolicyEvent::Timeout(TimeoutEvent::Occurred { timeout: Duration::from_millis(5) }))
+            .await
+            .unwrap();
+        let got = rx.recv().await.expect("message");
+        assert!(matches!(got, PolicyEvent::Timeout(_)));
+    }
+
+    #[tokio::test]
+    async fn test_emit_best_effort_swallows_errors() {
+        #[derive(Clone)]
+        struct Fails;
+        impl TelemetrySink for Fails {
+            type SinkError = std::io::Error;
+        }
+        impl tower_service::Service<PolicyEvent> for Fails {
+            type Response = ();
+            type Error = std::io::Error;
+            type Future = Pin<Box<dyn Future<Output = Result<(), Self::Error>> + Send>>;
+            fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+                Poll::Ready(Ok(()))
+            }
+            fn call(&mut self, _req: PolicyEvent) -> Self::Future {
+                Box::pin(async { Err(std::io::Error::new(std::io::ErrorKind::Other, "fail")) })
+            }
+        }
+
+        // Should not panic even though sink errors
+        emit_best_effort(Fails, PolicyEvent::Timeout(TimeoutEvent::Occurred { timeout: Duration::from_millis(1) }))
+            .await;
     }
 
     #[test]
