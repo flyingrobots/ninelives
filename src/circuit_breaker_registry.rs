@@ -49,7 +49,11 @@ impl std::error::Error for CircuitBreakerRegistryError {}
 
 /// Trait for breaker registries (injectable into control plane).
 pub trait CircuitBreakerRegistry: Send + Sync + std::fmt::Debug {
-    /// Register or overwrite a circuit breaker handle by id.
+    /// Register a circuit breaker handle by id, overwriting any existing handle.
+    ///
+    /// Overwrite is deliberate: when multiple services share an ID, the last
+    /// registration wins. Callers should normally use unique IDs per breaker and
+    /// treat overwrites as a replacement, not a merge of state.
     fn register(&self, id: String, handle: CircuitBreakerHandle);
     /// Get a breaker handle by id.
     fn get(&self, id: &str) -> Option<CircuitBreakerHandle>;
