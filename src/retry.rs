@@ -132,11 +132,7 @@ where
                         ));
                     }
 
-                    let mut delay = backoff.delay(attempt + 1);
-                    delay = match &*jitter {
-                        Jitter::Decorrelated(_) => jitter.apply_stateful(),
-                        _ => jitter.apply(delay),
-                    };
+                    let delay = jitter.apply_to(backoff.delay(attempt + 1));
                     self.sleeper.sleep(delay).await;
                 }
                 Err(e) => return Err(e),
@@ -803,11 +799,7 @@ where
                             .await;
                             return Err(ResilienceError::retry_exhausted(max_attempts, failures));
                         }
-                        let mut delay = backoff.delay(attempt + 1);
-                        delay = match &*jitter {
-                            Jitter::Decorrelated(_) => jitter.apply_stateful(),
-                            _ => jitter.apply(delay),
-                        };
+                        let delay = jitter.apply_to(backoff.delay(attempt + 1));
 
                         // Emit retry attempt event
                         emit_best_effort(

@@ -206,8 +206,8 @@ pub struct TimeoutService<S, Sink = NullSink> {
 }
 
 impl<S, Sink> TimeoutService<S, Sink> {
-    fn new(inner: S, duration: Duration, sink: Sink) -> Self {
-        Self { inner, duration: Adaptive::new(duration), sink }
+    fn new(inner: S, duration: Adaptive<Duration>, sink: Sink) -> Self {
+        Self { inner, duration, sink }
     }
 }
 
@@ -282,7 +282,7 @@ where
 {
     type Service = TimeoutService<S, Sink>;
     fn layer(&self, service: S) -> Self::Service {
-        TimeoutService::new(service, *self.duration.get(), self.sink.clone())
+        TimeoutService::new(service, self.duration.clone(), self.sink.clone())
     }
 }
 

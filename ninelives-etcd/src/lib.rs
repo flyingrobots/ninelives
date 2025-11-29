@@ -55,9 +55,7 @@ impl tower_service::Service<PolicyEvent> for EtcdSink {
 
     fn call(&mut self, event: PolicyEvent) -> Self::Future {
         let mut client = self.client.clone();
-        let ts = chrono::Utc::now()
-            .timestamp_nanos_opt()
-            .unwrap_or(i64::MAX); // chrono overflows near year 2262; clamp to max
+        let ts = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(i64::MAX); // chrono overflows near year 2262; clamp to max
         let key = format!("{}/{}-{}", self.prefix, ts, uuid::Uuid::new_v4());
         let value = event_to_json(&event);
         Box::pin(async move {

@@ -746,13 +746,8 @@ impl CommandHandler<BuiltInCommand> for BuiltInHandler {
             BuiltInCommand::Set { key, value } => self.set_or_store(key, value),
             BuiltInCommand::Get { key } => Ok(self.get_from_store_or_config(&key)),
             BuiltInCommand::List => {
-                let store_keys = self
-                    .store
-                    .lock()
-                    .unwrap()
-                    .keys()
-                    .cloned()
-                    .map(|k| format!("store:{k}"));
+                let store_keys =
+                    self.store.lock().unwrap().keys().cloned().map(|k| format!("store:{k}"));
                 let config_keys = self
                     .config_registry()
                     .map(|reg| reg.keys().into_iter().map(|k| format!("config:{k}")))
