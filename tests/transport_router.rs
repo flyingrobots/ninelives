@@ -77,7 +77,16 @@ fn env_to_command(
     let envelope = CommandEnvelope {
         cmd,
         auth: env.auth,
-        meta: CommandMeta { id: ctx.id.clone(), correlation_id: None, timestamp_millis: None },
+        meta: CommandMeta {
+            id: ctx.id.clone(),
+            correlation_id: Some(ctx.id.clone()),
+            timestamp_millis: Some(
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_millis() as i64,
+            ),
+        },
     };
     Ok((envelope, ctx))
 }

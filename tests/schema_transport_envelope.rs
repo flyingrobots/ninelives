@@ -76,25 +76,10 @@ fn transport_envelope_matches_schema() {
         }),
     );
 
-    // 6. Negative Case: Extra unknown field (if schema strictly forbids them, e.g. additionalProperties: false)
-    // Check schema content to be sure. If not strict, skip this or update schema.
-    // Assuming we want strictness for safety:
-    /*
     assert_invalid(&compiled, json!({
         "id": "cmd-123",
         "cmd": "test",
         "args": {},
         "unknown_field": "hack"
     }));
-    */
-
-    // 7. Boundary: Empty string for required field
-    // If schema enforces minLength: 1 for id/cmd
-    /*
-    assert_invalid(&compiled, json!({
-        "id": "",
-        "cmd": "test",
-        "args": {}
-    }));
-    */
 }
