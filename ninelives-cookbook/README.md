@@ -22,6 +22,7 @@ ninelives-cookbook = { path = "../ninelives-cookbook" }
 | `sensible_defaults(max)` | General I/O starter pack | Timeout + Retry + Bulkhead | Safe defaults; pass your concurrency budget |
 
 ### Adaptive knobs
+
 All recipes above support runtime tuning without restarting. Use these methods:
 - `retry_fast`: call `policy.adaptive_max_attempts()`, `adaptive_backoff_base()`, `adaptive_jitter()` to tune retry behavior live.
 - `timeout_p95`: call `policy.adaptive_duration()` to adjust the timeout.

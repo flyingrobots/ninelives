@@ -10,9 +10,9 @@ use ninelives::telemetry::{
 };
 use prometheus::{IntCounterVec, Registry};
 use std::convert::Infallible;
+use std::future::{ready, Ready};
 use std::sync::Arc;
 use std::task::{Context, Poll};
-use std::future::{ready, Ready};
 
 #[derive(Clone, Debug)]
 pub struct PrometheusSink {
