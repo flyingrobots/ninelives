@@ -89,7 +89,7 @@ jobs:
         run: git worktree prune
 
   fmt-clippy-test:
-    needs: [actionlint, commit-policy]
+    needs: actionlint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4.1.6
