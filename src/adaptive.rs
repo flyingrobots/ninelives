@@ -6,14 +6,14 @@
 //!
 //! -   **Default (no feature)**: Uses `ArcSwap` for lock-free atomic reads and updates.
 //!     *   **Read Performance**: Extremely cheap (pointer copy).
-//!     *   **Write Performance**: `compare_and_swap` loop (optimistic concurrency), retries on collision.
-//!     *   **Thread-Safety**: Lock-free, atomic. Reads are always consistent. Concurrent `update()` calls may lose intermediate states if many threads update rapidly without checking previous value (though `ArcSwap`'s `compare_and_swap` helps mitigate this if used correctly).
+//!     *   **Write Performance**: `compare_and_swap` loop (optimistic concurrency), retries on collision until success; concurrent `update()` calls do not lose intermediate states (see `concurrent_updates_no_lost_updates` test) but high contention can cause more retries.
+//!     *   **Thread-Safety**: Lock-free, atomic.
 //!     *   **Lock Poisoning**: Not applicable.
 //!
 //! -   **`adaptive-rwlock` feature**: Uses `std::sync::RwLock<Arc<T>>`.
 //!     *   **Read Performance**: Requires acquiring a read lock, cloning an `Arc<T>`. More expensive than `ArcSwap` due to locking overhead and `Arc` clone.
 //!     *   **Write Performance**: Requires acquiring a write lock, performing the update. Writes are serialized.
-//!     *   **Thread-Safety**: Read/write locking. Reads are always consistent. `update()` calls are serialized by the write lock, ensuring intermediate states are not lost, but can block.
+//!     *   **Thread-Safety**: Read/write locking. `update()` calls are serialized by the write lock; follows `RwLock` poisoning semantics.
 //!     *   **Lock Poisoning**: Follows `std::sync::RwLock` poisoning semantics. If a thread panics while holding a write lock, the lock becomes poisoned. Subsequent lock acquisitions will return an error (which is currently handled by `expect()`, causing panic).
 //!
 //! Choose the backend that best fits your performance and concurrency profile.
@@ -27,7 +27,7 @@ use std::sync::RwLock;
 use arc_swap::ArcSwap;
 
 /// `DynamicConfig<T>` gives cheap reads and controlled updates for shared config.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DynamicConfig<T> {
     #[cfg(not(feature = "adaptive-rwlock"))]
     inner: Arc<ArcSwap<T>>,
@@ -38,12 +38,6 @@ pub struct DynamicConfig<T> {
 // Back-compat alias for existing code/tests referencing Adaptive.
 /// Alias for `DynamicConfig` for backward compatibility and easier typing.
 pub type Adaptive<T> = DynamicConfig<T>;
-
-impl<T> Clone for DynamicConfig<T> {
-    fn clone(&self) -> Self {
-        Self { inner: self.inner.clone() }
-    }
-}
 
 impl<T> DynamicConfig<T> {
     /// Create a new `DynamicConfig` with the given initial value.
@@ -84,10 +78,16 @@ impl<T> DynamicConfig<T> {
     }
 
     /// Update via closure.
+    ///
+    /// Notes:
+    /// - ArcSwap backend: `f` may run multiple times per call under contention due to the CAS loop;
+    ///   it must be pure/side-effect free and reasonably cheap. CAS retries until success, so
+    ///   concurrent updates are not lost.
+    /// - `adaptive-rwlock` backend: `f` runs while holding the write lock; keep it fast and do not
+    ///   re-enter this `DynamicConfig` from within `f`. Standard RwLock poisoning semantics apply.
     pub fn update<F>(&self, f: F)
     where
         F: Fn(&T) -> T,
-        T: Clone,
     {
         #[cfg(not(feature = "adaptive-rwlock"))]
         {

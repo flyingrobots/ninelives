@@ -81,7 +81,7 @@ let blob_fetcher = ServiceBuilder::new()
         .should_retry(|e| matches!(e, BlobError::NetworkTimeout | BlobError::ServiceUnavailable))
         .build()?)
     .service(s3_client);
-```text
+```
 
 #### 2. **Circuit Breaker** (`CircuitBreakerLayer`)
 
@@ -127,7 +127,7 @@ let git_remote = ServiceBuilder::new()
         )?
     )?)
     .service(git_push_service);
-```text
+```
 
 #### 3. **Bulkhead** (`BulkheadLayer`)
 
@@ -428,7 +428,7 @@ router.execute(cmd).await?;
 
 ### Architecture Overview
 
-```text
+```
 ┌─────────────────────────────────────────────────────────┐
 │                    GATOS Application                     │
 │  ┌────────────┐  ┌────────────┐  ┌────────────┐        │
@@ -480,7 +480,7 @@ use ninelives::prelude::*;
 use tower::ServiceBuilder;
 
 pub struct JobWorker {
-    executor: Box<dyn Service<Job, Response = ProofOfExecution, Error = JobError>>,
+    executor: tower::util::BoxService<Job, ProofOfExecution, JobError>,
 }
 
 impl JobWorker {
@@ -502,7 +502,7 @@ impl JobWorker {
             .layer(policy)
             .service(raw_executor);
 
-        Ok(Self { executor: Box::new(executor) })
+        Ok(Self { executor: tower::util::BoxService::new(executor) })
     }
 
     pub async fn execute(&mut self, job: Job) -> Result<ProofOfExecution, JobError> {
@@ -539,7 +539,7 @@ let retry = RetryPolicy::builder()
 use ninelives::prelude::*;
 
 pub struct PolicyGate {
-    evaluator: Box<dyn Service<Intent, Response = Decision, Error = PolicyError>>,
+    evaluator: tower::util::BoxService<Intent, Decision, PolicyError>,
     config: Adaptive<GateConfig>,
 }
 
@@ -563,7 +563,7 @@ impl PolicyGate {
             .service(vm);
 
         Ok(Self {
-            evaluator: Box::new(evaluator),
+            evaluator: tower::util::BoxService::new(evaluator),
             config: Adaptive::new(GateConfig::default()),
         })
     }
@@ -586,7 +586,7 @@ impl PolicyGate {
 use ninelives::prelude::*;
 
 pub struct MessagePublisher {
-    git_writer: Box<dyn Service<Message, Response = CommitId, Error = PublishError>>,
+    git_writer: tower::util::BoxService<Message, CommitId, PublishError>,
 }
 
 impl MessagePublisher {
@@ -604,7 +604,7 @@ impl MessagePublisher {
             .layer(policy)
             .service(git_client);
 
-        Ok(Self { git_writer: Box::new(git_writer) })
+        Ok(Self { git_writer: tower::util::BoxService::new(git_writer) })
     }
 
     pub async fn publish(&mut self, msg: Message) -> Result<CommitId, PublishError> {
@@ -625,8 +625,8 @@ impl MessagePublisher {
 use ninelives::prelude::*;
 
 pub struct OpaquePointerResolver {
-    blob_fetcher: Box<dyn Service<OpaquePointer, Response = Vec<u8>, Error = ResolveError>>,
-    kms_client: Box<dyn Service<KeyRequest, Response = Key, Error = KmsError>>,
+    blob_fetcher: tower::util::BoxService<OpaquePointer, Vec<u8>, ResolveError>,
+    kms_client: tower::util::BoxService<KeyRequest, Key, KmsError>,
 }
 
 impl OpaquePointerResolver {
@@ -661,8 +661,8 @@ impl OpaquePointerResolver {
             .service(kms);
 
         Ok(Self {
-            blob_fetcher: Box::new(blob_fetcher),
-            kms_client: Box::new(kms_client),
+            blob_fetcher: tower::util::BoxService::new(blob_fetcher),
+            kms_client: tower::util::BoxService::new(kms_client),
         })
     }
 }
