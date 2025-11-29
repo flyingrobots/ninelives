@@ -46,19 +46,13 @@ async fn publishes_events_to_kafka() {
         .expect("failed to create Kafka producer");
 
     let mut sink = KafkaSink::new(producer.clone(), &topic_name);
-    let event = PolicyEvent::Retry(RetryEvent::Attempt {
-        attempt: 1,
-        delay: Duration::from_millis(50),
-    });
+    let event =
+        PolicyEvent::Retry(RetryEvent::Attempt { attempt: 1, delay: Duration::from_millis(50) });
 
-    sink.call(event.clone())
-        .await
-        .expect("failed to sink policy event to Kafka");
+    sink.call(event.clone()).await.expect("failed to sink policy event to Kafka");
 
     // Flush producer to ensure message is sent
-    producer
-        .flush(Duration::from_secs(5))
-        .expect("Failed to flush producer");
+    producer.flush(Duration::from_secs(5)).expect("Failed to flush producer");
 
     // --- Consumer ---
     let consumer: StreamConsumer = ClientConfig::new()
@@ -82,18 +76,17 @@ async fn publishes_events_to_kafka() {
     }
     assert!(assigned, "Consumer failed to get partition assignment within timeout");
 
-
     let msg = tokio::time::timeout(
         Duration::from_secs(10), // Timeout for receiving message
-        consumer.recv()
+        consumer.recv(),
     )
     .await
     .expect("timeout waiting for message") // Timeout from tokio::time::timeout
     .expect("failed to receive message from Kafka"); // Error from consumer.recv()
 
     let payload = msg.payload().expect("message has no payload");
-    let val: serde_json::Value = serde_json::from_slice(payload)
-        .expect("failed to parse payload as JSON");
+    let val: serde_json::Value =
+        serde_json::from_slice(payload).expect("failed to parse payload as JSON");
 
     assert_eq!(val["kind"], "retry_attempt");
     assert_eq!(val["attempt"], 1, "attempt field mismatch");

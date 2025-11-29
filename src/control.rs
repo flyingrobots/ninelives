@@ -347,7 +347,6 @@ pub enum CommandResult {
     Error(String),
 }
 
-
 /// Audit record emitted after command execution.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct AuditRecord {

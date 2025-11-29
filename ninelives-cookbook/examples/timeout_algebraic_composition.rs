@@ -48,7 +48,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let fast = Policy(TimeoutLayer::new(Duration::from_millis(50))?);
     let slow = Policy(TimeoutLayer::new(Duration::from_secs(2))?);
     let policy = fast | slow; // Try fast first, fallback to slow on timeout
-    // Note: The first attempt is cancelled when it times out
+                              // Note: The first attempt is cancelled when it times out
 
     let mut fallback_svc =
         ServiceBuilder::new().layer(policy).service_fn(|req: &'static str| async move {

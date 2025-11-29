@@ -21,7 +21,8 @@ pub enum TransportError {
 }
 
 /// In-process channel-based transport for the control plane.
-type Tx<C> = mpsc::Sender<(CommandEnvelope<C>, oneshot::Sender<Result<CommandResult, TransportError>>)>;
+type Tx<C> =
+    mpsc::Sender<(CommandEnvelope<C>, oneshot::Sender<Result<CommandResult, TransportError>>)>;
 
 /// A transport that sends commands over a Tokio MPSC channel.
 /// useful for in-process communication or testing.

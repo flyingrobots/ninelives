@@ -25,9 +25,7 @@ async fn indexes_policy_events() {
         attempt: 1,
         delay: std::time::Duration::from_millis(50),
     });
-    sink.call(event.clone())
-        .await
-        .expect("failed to sink policy event to Elasticsearch");
+    sink.call(event.clone()).await.expect("failed to sink policy event to Elasticsearch");
 
     // refresh index then search
     client

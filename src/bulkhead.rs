@@ -157,7 +157,8 @@ impl BulkheadPolicy {
                 break;
             }
             // CAS to avoid double-adding permits
-            if self.capacity
+            if self
+                .capacity
                 .compare_exchange_weak(current, target, Ordering::AcqRel, Ordering::Relaxed)
                 .is_ok()
             {

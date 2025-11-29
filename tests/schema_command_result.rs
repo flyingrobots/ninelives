@@ -21,11 +21,11 @@ fn command_result_matches_schema_variants() {
     }
 
     let invalid_samples = [
-        json!({"result": "ack", "extra": true}),                     // extra field
-        json!({"result": "value"}),                                  // missing value
-        json!({"result": "error"}),                                  // missing message
-        json!({"result": "unknown"}),                                // unknown result variant
-        json!({}),                                                   // empty object
+        json!({"result": "ack", "extra": true}), // extra field
+        json!({"result": "value"}),              // missing value
+        json!({"result": "error"}),              // missing message
+        json!({"result": "unknown"}),            // unknown result variant
+        json!({}),                               // empty object
     ];
 
     for sample in invalid_samples {

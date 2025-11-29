@@ -78,7 +78,8 @@ impl<T> DynamicConfig<T> {
         }
         #[cfg(feature = "adaptive-rwlock")]
         {
-            *self.inner.write().expect("adaptive config lock poisoned") = Arc::new(value); // Store Arc<T>
+            *self.inner.write().expect("adaptive config lock poisoned") = Arc::new(value);
+            // Store Arc<T>
         }
     }
 
@@ -101,7 +102,7 @@ impl<T> DynamicConfig<T> {
                 // CAS failed, retry with new current value
             }
         }
-        #[cfg(feature = "adaptive-rwlock") ]
+        #[cfg(feature = "adaptive-rwlock")]
         {
             let cur_arc = self.inner.read().expect("adaptive config lock poisoned").clone();
             let new_val = f(&cur_arc);
@@ -204,7 +205,7 @@ mod tests {
         // which is handled by a later task. I'll add the test assuming that change.
         // This test should assert `!StdArc::ptr_eq(&first_arc, &second_arc)` for current.
         // Once the internal storage is Arc<T>, this should assert `StdArc::ptr_eq`.
-        
+
         // For now, I'll add the test, it might fail, and I'll fix it in the next task.
         // Or I can add the test expecting `false` for current behavior, and invert later.
         // Let's implement this test as requested, asserting `ptr_eq`. It will fail until next task.

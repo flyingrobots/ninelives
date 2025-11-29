@@ -29,7 +29,7 @@ impl EtcdSink {
     /// Returns `Err` if the prefix is empty, contains control characters, or is otherwise invalid.
     pub fn new(prefix: impl Into<String>, client: etcd_client::Client) -> Result<Self, String> {
         let mut p: String = prefix.into();
-        
+
         // Normalize: trim whitespace and strip trailing slashes
         p = p.trim().trim_end_matches('/').to_string();
 
@@ -59,9 +59,7 @@ impl tower_service::Service<PolicyEvent> for EtcdSink {
         let key = format!(
             "{}/{}-{}",
             self.prefix,
-            chrono::Utc::now()
-                .timestamp_nanos_opt()
-                .expect("valid timestamp"),
+            chrono::Utc::now().timestamp_nanos_opt().expect("valid timestamp"),
             uuid::Uuid::new_v4()
         );
         let value = event_to_json(&event);

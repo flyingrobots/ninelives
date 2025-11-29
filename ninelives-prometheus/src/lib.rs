@@ -48,26 +48,41 @@ impl tower_service::Service<PolicyEvent> for PrometheusSink {
 
     fn call(&mut self, event: PolicyEvent) -> Self::Future {
         let (policy_label, event_label) = match &event {
-            PolicyEvent::Retry(r) => ("retry", match r {
-                RetryEvent::Attempt { .. } => "attempt",
-                RetryEvent::Exhausted { .. } => "exhausted",
-            }),
-            PolicyEvent::CircuitBreaker(c) => ("circuit_breaker", match c {
-                CircuitBreakerEvent::Opened { .. } => "opened",
-                CircuitBreakerEvent::HalfOpen => "half_open",
-                CircuitBreakerEvent::Closed => "closed",
-            }),
-            PolicyEvent::Bulkhead(b) => ("bulkhead", match b {
-                BulkheadEvent::Acquired { .. } => "acquired",
-                BulkheadEvent::Rejected { .. } => "rejected",
-            }),
-            PolicyEvent::Timeout(t) => ("timeout", match t {
-                TimeoutEvent::Occurred { .. } => "occurred",
-            }),
-            PolicyEvent::Request(r) => ("request", match r {
-                RequestOutcome::Success { .. } => "success",
-                RequestOutcome::Failure { .. } => "failure",
-            }),
+            PolicyEvent::Retry(r) => (
+                "retry",
+                match r {
+                    RetryEvent::Attempt { .. } => "attempt",
+                    RetryEvent::Exhausted { .. } => "exhausted",
+                },
+            ),
+            PolicyEvent::CircuitBreaker(c) => (
+                "circuit_breaker",
+                match c {
+                    CircuitBreakerEvent::Opened { .. } => "opened",
+                    CircuitBreakerEvent::HalfOpen => "half_open",
+                    CircuitBreakerEvent::Closed => "closed",
+                },
+            ),
+            PolicyEvent::Bulkhead(b) => (
+                "bulkhead",
+                match b {
+                    BulkheadEvent::Acquired { .. } => "acquired",
+                    BulkheadEvent::Rejected { .. } => "rejected",
+                },
+            ),
+            PolicyEvent::Timeout(t) => (
+                "timeout",
+                match t {
+                    TimeoutEvent::Occurred { .. } => "occurred",
+                },
+            ),
+            PolicyEvent::Request(r) => (
+                "request",
+                match r {
+                    RequestOutcome::Success { .. } => "success",
+                    RequestOutcome::Failure { .. } => "failure",
+                },
+            ),
         };
         let c = self.counter.clone();
         Box::pin(async move {

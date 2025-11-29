@@ -52,14 +52,14 @@ where
 {
     let mut hist: Histogram<u64> = Histogram::new(3).unwrap();
     let mut tasks = Vec::new();
-    
+
     let base_iter = iter / concurrency;
     let remainder = iter % concurrency;
 
     for i in 0..concurrency {
         let mut s = sink.clone();
         let count = if i < remainder { base_iter + 1 } else { base_iter };
-        
+
         tasks.push(tokio::spawn(async move {
             let mut h = Histogram::new(3).unwrap();
             for _ in 0..count {

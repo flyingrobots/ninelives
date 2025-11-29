@@ -1,8 +1,8 @@
+use futures_util::StreamExt; // Required for sub.next()
 use ninelives::telemetry::{PolicyEvent, RetryEvent};
 use ninelives_nats::NatsSink;
-use tower_service::Service;
-use futures_util::StreamExt; // Required for sub.next()
-use std::time::Duration; // Required for tokio::time::timeout
+use std::time::Duration;
+use tower_service::Service; // Required for tokio::time::timeout
 
 /// Tests end-to-end event publishing to a NATS broker via NatsSink.
 ///
@@ -26,9 +26,7 @@ async fn publishes_events_to_nats() {
     let mut sink = NatsSink::new(client.clone(), SUBJECT);
 
     // Subscribe before publishing to prevent message drops
-    let mut sub = client.subscribe(SUBJECT)
-        .await
-        .expect("failed to subscribe to NATS subject");
+    let mut sub = client.subscribe(SUBJECT).await.expect("failed to subscribe to NATS subject");
 
     let event = PolicyEvent::Retry(RetryEvent::Attempt {
         attempt: 1,
@@ -40,7 +38,7 @@ async fn publishes_events_to_nats() {
 
     let msg = tokio::time::timeout(
         Duration::from_secs(5), // Explicit timeout
-        sub.next()
+        sub.next(),
     )
     .await
     .expect("timeout waiting for published message") // Timeout from tokio::time::timeout
@@ -50,19 +48,22 @@ async fn publishes_events_to_nats() {
         .expect(&format!("failed to parse message payload as JSON: {:?}", msg.payload));
 
     // Assertions for payload content
-    let kind = payload.get("kind")
+    let kind = payload
+        .get("kind")
         .expect("JSON payload missing 'kind' field")
         .as_str()
         .expect("JSON 'kind' field is not a string");
     assert_eq!(kind, "retry_attempt");
 
-    let attempt = payload.get("attempt")
+    let attempt = payload
+        .get("attempt")
         .expect("JSON payload missing 'attempt' field")
         .as_u64()
         .expect("JSON 'attempt' field is not a number");
     assert_eq!(attempt, 1);
 
-    let delay_ms = payload.get("delay_ms")
+    let delay_ms = payload
+        .get("delay_ms")
         .expect("JSON payload missing 'delay_ms' field")
         .as_u64()
         .expect("JSON 'delay_ms' field is not a number");
