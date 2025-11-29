@@ -12,8 +12,9 @@ readme = "README.md"
 [dependencies]
 ninelives = { workspace = true }
 tracing = "0.1"
-prometheus = { version = "0.13", optional = true }
+prometheus = { version = "0.13" }
 tower-service = { workspace = true }
+tokio = { version = "1", features = ["rt", "macros"] }
 
 [features]
-client = ["prometheus"]
+default = []
