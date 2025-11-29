@@ -19,6 +19,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_sleeper(TokioSleeper::default())
         .build()?;
     let adaptive_attempts = retry.adaptive_max_attempts();
+    println!("Initial retry.max_attempts = {}", adaptive_attempts.get());
 
     // Register adaptive knob with the config registry
     let mut cfg = ConfigRegistry::new();
@@ -42,7 +43,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         auth: Some(AuthPayload::Opaque(vec![])),
         meta: CommandMeta { id: "cmd-write".into(), correlation_id: None, timestamp_millis: None },
     };
-    transport.send(write_cmd).await?;
+    let write_result = transport.send(write_cmd).await?;
+    match write_result {
+        CommandResult::Ack => println!("✓ Config write succeeded"),
+        other => panic!("Expected Ack, got {:?}", other),
+    }
 
     // Read it back to verify
     let read_cmd = CommandEnvelope {
@@ -51,7 +56,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         meta: CommandMeta { id: "cmd-read".into(), correlation_id: None, timestamp_millis: None },
     };
     match transport.send(read_cmd).await? {
-        CommandResult::Value(val) => println!("retry.max_attempts is now {}", val),
+        CommandResult::Value(val) => {
+            assert_eq!(val, "5", "Expected value to be '5', got '{}'", val);
+            println!("✓ retry.max_attempts is now {}", val);
+            assert_eq!(adaptive_attempts.get(), 5, "Adaptive handle should reflect new value");
+            println!("✓ Adaptive handle updated to {}", adaptive_attempts.get());
+        }
         other => println!("unexpected response: {:?}", other),
     }
 

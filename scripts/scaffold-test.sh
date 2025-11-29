@@ -17,6 +17,10 @@ if [[ "$TEST_NAME" == /* || "$TEST_NAME" == .* || "$TEST_NAME" == *"/"* || "$TES
     echo "Error: test name must be a simple snake_case identifier (no slashes, dots, or traversal)." >&2
     exit 1
 fi
+if ! [[ "$TEST_NAME" =~ ^[a-z][a-z0-9_]*$ ]]; then
+    echo "Error: test name must be snake_case (lowercase letters, digits, underscores) and start with a letter." >&2
+    exit 1
+fi
 
 mkdir -p tests
 FILE_PATH="tests/${TEST_NAME}.rs"
@@ -29,7 +33,7 @@ fi
 
 if [ -f "$FILE_PATH" ]; then
     echo "Test file $FILE_PATH already exists."
-    echo "To add a new test case, open it and add a #[tokio::test] async fn."
+    echo "To add another test, open $FILE_PATH and append a new #[tokio::test] async fn."
 else
     echo "Creating $FILE_PATH..."
     cat <<-EOF > "$FILE_PATH"

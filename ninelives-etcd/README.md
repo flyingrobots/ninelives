@@ -6,7 +6,10 @@ etcd telemetry sink for the `ninelives` resilience library. Bring your own `etcd
 
 ```toml
 ninelives = "0.3"
-ninelives-etcd = { path = "../ninelives-etcd" }
+# Published crate usage
+ninelives-etcd = "0.3"
+# For local workspace development:
+# ninelives-etcd = { path = "../ninelives-etcd" }
 etcd-client = { version = "0.11", features = ["tls"] }
 ```
 
