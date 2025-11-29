@@ -3,7 +3,7 @@ name: Roadmap Consistency
 on:
   pull_request:
   push:
-    branches: [main, feat/control-plane]
+    branches: [main, 'feat/**']
 
 jobs:
   roadmap-check:

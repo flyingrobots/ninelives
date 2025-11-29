@@ -20,6 +20,12 @@ fi
 
 mkdir -p tests
 FILE_PATH="tests/${TEST_NAME}.rs"
+RUST_FN_NAME="${TEST_NAME}_placeholder"
+
+if ! [[ "$RUST_FN_NAME" =~ ^[a-z_][a-z0-9_]*$ ]]; then
+    echo "Error: generated function name '$RUST_FN_NAME' is not a valid Rust identifier." >&2
+    exit 1
+fi
 
 if [ -f "$FILE_PATH" ]; then
     echo "Test file $FILE_PATH already exists."
@@ -31,7 +37,7 @@ else
 
 	#[ignore]
 	#[tokio::test]
-	async fn ${TEST_NAME}_placeholder() {
+	async fn ${RUST_FN_NAME}() {
 	    // TODO: implement and remove #[ignore]
 	    panic!("Test not yet implemented");
 	}
