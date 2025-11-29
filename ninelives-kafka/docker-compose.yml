@@ -17,6 +17,8 @@ services:
       - --check=true
     ports:
       - "9092:9092"
+      - "9644:9644"
+      - "8081:8081"
     healthcheck:
       test: ["CMD", "bash", "-c", "nc -z localhost 9092 || exit 1"]
       interval: 30s
