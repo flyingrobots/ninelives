@@ -96,10 +96,10 @@ fn event_to_json(event: &PolicyEvent) -> serde_json::Value {
     match event {
         PolicyEvent::Retry(r) => match r {
             RetryEvent::Attempt { attempt, delay } => {
-                json!({ "kind": "retry_attempt", "attempt": attempt, "delay_ms": delay.as_millis() })
+                json!({ "kind": "retry_attempt", "attempt": attempt, "delay_ms": delay.as_millis() as u64 })
             }
             RetryEvent::Exhausted { total_attempts, total_duration } => {
-                json!({ "kind": "retry_exhausted", "attempts": total_attempts, "duration_ms": total_duration.as_millis() })
+                json!({ "kind": "retry_exhausted", "attempts": total_attempts, "duration_ms": total_duration.as_millis() as u64 })
             }
         },
         PolicyEvent::CircuitBreaker(c) => match c {
@@ -119,15 +119,15 @@ fn event_to_json(event: &PolicyEvent) -> serde_json::Value {
         },
         PolicyEvent::Timeout(t) => match t {
             TimeoutEvent::Occurred { timeout } => {
-                json!({ "kind": "timeout", "timeout_ms": timeout.as_millis() })
+                json!({ "kind": "timeout", "timeout_ms": timeout.as_millis() as u64 })
             }
         },
         PolicyEvent::Request(r) => match r {
             RequestOutcome::Success { duration } => {
-                json!({ "kind": "request_success", "duration_ms": duration.as_millis() })
+                json!({ "kind": "request_success", "duration_ms": duration.as_millis() as u64 })
             }
             RequestOutcome::Failure { duration } => {
-                json!({ "kind": "request_failure", "duration_ms": duration.as_millis() })
+                json!({ "kind": "request_failure", "duration_ms": duration.as_millis() as u64 })
             }
         },
     }
