@@ -611,11 +611,10 @@ mod tests {
     #[derive(Clone, Debug)]
     struct SlowService {
         delay: Duration,
-        label: &'static str,
     }
     impl SlowService {
-        fn new(delay: Duration, label: &'static str) -> Self {
-            Self { delay, label }
+        fn new(delay: Duration) -> Self {
+            Self { delay }
         }
     }
     impl tower_service::Service<&'static str> for SlowService {
@@ -628,10 +627,8 @@ mod tests {
         }
         fn call(&mut self, req: &'static str) -> Self::Future {
             let delay = self.delay;
-            let label = self.label;
             Box::pin(async move {
                 tokio::time::sleep(delay).await;
-                let _ = label;
                 Ok(req)
             })
         }
@@ -741,7 +738,7 @@ mod tests {
 
     #[tokio::test]
     async fn race_returns_first_success() {
-        let slow = SlowService::new(Duration::from_millis(50), "slow");
+        let slow = SlowService::new(Duration::from_millis(50));
         let fast = ReadyService::new();
         let mut svc = ForkJoinService { left: slow, right: fast };
         let res = svc.call("req").await.unwrap();
@@ -782,7 +779,11 @@ mod tests {
         let left = Policy(tower::util::MapRequestLayer::new(|_: ()| ()));
         let right = Policy(tower::util::MapRequestLayer::new(|_: ()| ()));
         let layer = left | right;
-        let _svc = layer.layer(TestSvc);
+        let mut svc = layer.layer(TestSvc);
+        Service::poll_ready(&mut svc, &mut Context::from_waker(&noop_waker()))
+            .expect("poll_ready should succeed");
+        let res = svc.call(()).await.unwrap();
+        assert_eq!(res, ());
     }
 
     #[tokio::test]

@@ -6,11 +6,13 @@ use ninelives::telemetry::{NonBlockingSink, NullSink, PolicyEvent, RetryEvent, S
 use std::time::{Duration, Instant};
 use tower_service::Service;
 
+#[cfg(feature = "bench-telemetry")]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn telemetry_overhead_baseline() {
     run_bench(NullSink, 100_000, 4, Duration::from_micros(200)).await;
 }
 
+#[cfg(feature = "bench-telemetry")]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn telemetry_overhead_nonblocking_log() {
     let raw = NullSink; // exercises NonBlockingSink channel path (no actual slow operations)
@@ -20,6 +22,7 @@ async fn telemetry_overhead_nonblocking_log() {
     println!("NonBlockingSink dropped {} events", dropped);
 }
 
+#[cfg(feature = "bench-telemetry")]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn telemetry_overhead_streaming_drop_visibility() {
     let sink = StreamingSink::new(64);
