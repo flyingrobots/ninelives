@@ -227,9 +227,60 @@ function AuthRegistry.authenticate(envelope):
     return merged_context
 ```
 
-### Transport integration
-- Transports do not parse credentials; they only populate `AuthPayload` from the incoming channel (HTTP header → Jwt, gRPC metadata → Jwt/Mtls, JSONL stdin → Signatures/Opaque, in-proc → Opaque).
-- Command router calls the registry; failures return auth errors; success yields an `AuthContext` for handlers.
+### Transport Integration: Canonical Mappings and Fallback
+
+Transports are responsible for extracting raw authentication credentials from the incoming channel (e.g., HTTP headers, gRPC metadata, JSONL fields) and mapping them to a canonical `AuthPayload` variant within the `CommandEnvelope`. Transports **do not** perform verification; they merely populate the `AuthPayload`. The `AuthRegistry` expects a consistent `AuthPayload` format regardless of the originating transport.
+
+#### **1. HTTP/REST Transport**
+
+*   **JWT**:
+    *   **Source**: `Authorization: Bearer <token>` header.
+    *   **Mapping**: `<token>` maps to `AuthPayload::Jwt { token: <token> }`.
+    *   **Precedence**: If multiple `Authorization: Bearer` headers are present, the first one encountered (or a configurable transport-specific policy) is used.
+*   **Basic Auth**:
+    *   **Source**: `Authorization: Basic <credentials>` header.
+    *   **Mapping**: The base64-decoded `<credentials>` (e.g., `user:password`) are mapped to `AuthPayload::Opaque(<Vec<u8> of user:password>)`. A dedicated BasicAuth provider (if enabled via `auth-basic-auth` feature) is responsible for parsing this opaque data. Direct mapping to JWT is *not* supported; Basic Auth is primarily for legacy clients and should be explicitly handled.
+*   **Multiple Creds**: If both `Bearer` and `Basic` headers are present, `Bearer` takes precedence.
+
+#### **2. gRPC Transport**
+
+*   **JWT**:
+    *   **Source**: `authorization` metadata key with value `Bearer <token>`.
+    *   **Mapping**: `<token>` maps to `AuthPayload::Jwt { token: <token> }`.
+*   **mTLS**:
+    *   **Source**: Peer certificate presented during TLS handshake.
+    *   **Mapping**: The transport extracts the peer certificate chain and its Distinguished Name (DN) from the TLS context. Maps to `AuthPayload::Mtls { peer_dn: <peer_dn>, cert_chain: <Vec<Vec<u8>> of DER-encoded certs> }`. This requires `tonic::transport::Server` to be configured with mTLS and client certificate negotiation.
+
+#### **3. JSONL (Stdin/File) Transport**
+
+*   **Schema**: JSON objects read from input are expected to contain a top-level `auth` field.
+*   **Example**:
+    ```json
+    {
+      "id": "cmd-456",
+      "cmd": "get_state",
+      "args": {},
+      "auth": {
+        "type": "signatures",
+        "payload_hash": "sha256:...",
+        "signatures": [
+          {"algorithm": "ed25519", "signature": "...", "key_id": "..."}
+        ]
+      }
+    }
+    ```
+*   **Mapping**: The `auth` field is directly deserialized into the `AuthPayload` enum. The `type` field in JSON (e.g., `"signatures"`, `"opaque"`, `"jwt"`, `"mtls"`) maps to the corresponding `AuthPayload` variant.
+*   **Parsing Rules**: Strict JSON parsing is used. Invalid `auth` structures will result in deserialization errors.
+
+#### **4. In-Process Transport**
+
+*   **Mapping**: For direct programmatic access within the same process, it is recommended to pass `AuthPayload::Opaque` containing a native `AuthContext` or an `Identity` struct (e.g., `AuthPayload::Opaque(bincode::serialize(&my_identity)?)`) directly in the `CommandEnvelope`. A dedicated in-process `AuthProvider` (e.g., `PassthroughAuth` or a `LocalIdentityAuth`) can then deserialize and validate this.
+*   **Alternative**: In trusted scenarios, the in-process transport could directly construct and inject an already verified `AuthContext` alongside `auth: None` in the `CommandEnvelope::meta`. *Decision: For consistency, all transports should populate `AuthPayload` if possible. Direct `AuthContext` injection is reserved for highly trusted internal bypasses, which should be explicitly documented within `CommandEnvelope::meta` if used.*
+
+#### **Fallback Behavior & Precedence (General)**
+
+*   **Missing Credentials**: If a transport receives no authentication credentials (e.g., no `Authorization` header), it maps to `auth: None` in the `CommandEnvelope`. The `AuthRegistry` will then determine if `AuthPayload::None` is permitted (e.g., by a `PassthroughAuth` provider configured for that purpose).
+*   **Multiple Creds (within a single request/transport)**: If a single incoming request contains multiple types of credentials (e.g., both HTTP `Bearer` token and mTLS client cert), the transport should prioritize one over the other based on a predefined or configurable precedence policy (e.g., mTLS > Bearer). If a choice cannot be made or is ambiguous, the transport should typically return an error. The `AuthPayload` enum currently captures only one primary credential type.
 
 ### Trust/quorum specifics
 - Config: roster (identities), threshold, mode (`chain` | `attestation`), `require_signed` (envelope must be signed), trust source (file/ref). FF-only updates after bootstrap.
