@@ -1,15 +1,63 @@
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+  pprof:
+    endpoint: 0.0.0.0:1777
+
 receivers:
   otlp:
     protocols:
       grpc:
+        endpoint: 0.0.0.0:4317
+        tls:
+          client_auth_type: require_and_verify
+          cert_file: /etc/ssl/certs/server.crt
+          key_file: /etc/ssl/certs/server.key
+          client_ca_file: /etc/ssl/certs/ca.crt
+        read_timeout: 5s
+        write_timeout: 5s
+        max_concurrent_streams: 1000
       http:
+        endpoint: 0.0.0.0:4318
+        tls:
+          client_auth_type: require_and_verify
+          cert_file: /etc/ssl/certs/server.crt
+          key_file: /etc/ssl/certs/server.key
+          client_ca_file: /etc/ssl/certs/ca.crt
+        read_timeout: 5s
+        write_timeout: 5s
+
+processors:
+  batch:
+    send_batch_size: 1024
+    timeout: 5s
+  resource:
+    attributes:
+      - key: service.name
+        value: ninelives-otel-collector
+        action: upsert
+      - key: resource.label
+        value: default
+        action: upsert
 
 exporters:
-  logging:
-    loglevel: debug
+  otlp:
+    endpoint: "otel-collector:4317" # Replace with your actual OTLP endpoint (e.g., Jaeger, Tempo, Lightstep)
+    tls:
+      insecure: true # WARNING: Use false and configure client_ca_file/client_auth_type for production deployments
 
 service:
+  extensions: [health_check, pprof]
   pipelines:
     logs:
       receivers: [otlp]
-      exporters: [logging]
+      processors: [resource, batch]
+      exporters: [otlp]
+    traces:
+      receivers: [otlp]
+      processors: [resource, batch]
+      exporters: [otlp]
+    metrics:
+      receivers: [otlp]
+      processors: [resource, batch]
+      exporters: [otlp]
