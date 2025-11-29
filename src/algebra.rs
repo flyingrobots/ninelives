@@ -687,7 +687,7 @@ mod tests {
         assert_eq!(err, "primary failed");
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn fork_join_returns_left_error_if_both_fail() {
         #[derive(Clone, Debug)]
         struct LeftErr;
@@ -719,6 +719,7 @@ mod tests {
         }
 
         let mut svc = ForkJoinService { left: LeftErr, right: RightErr };
+        tokio::time::advance(Duration::from_millis(1)).await;
         let err = svc.call(()).await.unwrap_err();
         assert_eq!(err.left, Some("left"));
         assert_eq!(err.right, Some("right"));
