@@ -1,3 +1,27 @@
+%% --------------------------------------------------------------------------
+%% Nine Lives Roadmap Diagram
+%% This diagram illustrates the phased development roadmap for the Nine Lives
+%% resilience framework, showing dependencies between tasks and phases.
+%%
+%% Phases:
+%% P1: Core Primitives (Resilience Foundation) - Basic patterns (Retry, Circuit Breaker, Bulkhead, Timeout)
+%% P2: Control Plane (Configuration & Management) - Command router, auth/authz, audit, dynamic config
+%% P3: Observation Plane (Metrics & Aggregation) - Telemetry sinks, event aggregation, control laws
+%% P4: Algebraic Composition (Advanced Policy Patterns) - Fork-Join, Race operators
+%% P5: Autonomous Control Loop (Sentinel Core) - Sentinel, Rhai scripting, meta-policy loop, hot-reload
+%% P6: Safe Policy Promotion (Shadowing & Safety) - Shadowing, shadow events, atomic promotion
+%% P7: Modularization (Crate & Workspace Split) - Extract core, control, observer, sentinel crates
+%% P8: Transport Adapters (External Integration) - HTTP/REST, gRPC, JSONL transports
+%% P9: Advanced Recipes (Operational Patterns) - Canary, Blue/Green, Failover, Auto-Scale scripts
+%% P10: Performance & Stability (Optimization) - Benchmarking, lock/alloc review, chaos tools, tracing
+%%
+%% Status Legend:
+%%   - closed: Task completed (green)
+%%   - blocked: Task is blocked by dependencies (red)
+%%   - open: Task is ready to be picked up (yellow)
+%%
+%% Diagram Direction: TD (Top-Down)
+%% --------------------------------------------------------------------------
 graph TD
     classDef closed stroke:#28a745,stroke-width:3px;
     classDef blocked stroke:#dc3545,stroke-width:3px;
