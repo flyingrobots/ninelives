@@ -2,6 +2,46 @@
 semver_check = true
 pr_labels = ["release", "release-ready"]
 
-[package]
+[[package]]
 name = "ninelives"
 release = true
+
+[[package]]
+name = "ninelives-nats"
+release = false
+publish = false
+
+[[package]]
+name = "ninelives-kafka"
+release = false
+publish = false
+
+[[package]]
+name = "ninelives-otlp"
+release = false
+publish = false
+
+[[package]]
+name = "ninelives-prometheus"
+release = false
+publish = false
+
+[[package]]
+name = "ninelives-jsonl"
+release = false
+publish = false
+
+[[package]]
+name = "ninelives-elastic"
+release = false
+publish = false
+
+[[package]]
+name = "ninelives-etcd"
+release = false
+publish = false
+
+[[package]]
+name = "ninelives-cookbook"
+release = false
+publish = false

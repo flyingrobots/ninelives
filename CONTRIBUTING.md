@@ -10,6 +10,7 @@ Thanks for wanting to improve Nine Lives! This document provides guidelines for 
 
 ```bash
 cargo test --all-features --all-targets
+cargo llvm-cov --workspace --all-features --lcov --output-path coverage/lcov.info
 ```
 
 ### Git Hooks (Recommended)
@@ -42,6 +43,14 @@ If the setup script fails, ensure you are in the project root and have write per
 **Determinism**: Avoid real sleeps and wall-clock reliance. Use the provided testing utilities for time manipulation.
 
 Use the Sleeper utilities (e.g., `InstantSleeper` to skip delays, `TrackingSleeper` to assert calculated waits) and the Clock abstraction (e.g., inject `MonotonicClock` or a manual clock) via constructor/builder injection.
+
+**Coverage locally**: Install the tool once with `cargo install cargo-llvm-cov --locked` and run:
+
+```bash
+cargo llvm-cov --workspace --all-features --lcov --output-path coverage/lcov.info
+```
+
+This mirrors the CI coverage job; artifacts land under `coverage/`.
 
 **Example Usage**: For details on available APIs and injection, see the module documentation for the testing utilities, specifically `ninelives::testing::Sleeper` and `ninelives::testing::Clock`. To avoid real delays in a retry test, you would build a policy with `with_sleeper(InstantSleeper)`.
 

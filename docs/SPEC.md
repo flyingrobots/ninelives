@@ -1,6 +1,18 @@
 # Nine Lives v4: The Algebraic Resilience Framework Specification
 
-*Version 4.0 (Final)*
+*Status: Draft aligned to roadmap (Nov 2025)*
+
+**What’s implemented today (feat/telemetry branch, v0.2 planned):**
+- Tower-native layers: retry, timeout, circuit-breaker, bulkhead, algebraic `+ | &` composition.
+- Telemetry sinks: in-crate sinks (Null/Log/Memory/Streaming) plus companion sinks (otlp, nats, kafka, etc.).
+- CI: fmt, clippy, tests, coverage via cargo-llvm-cov.
+
+**Not yet implemented (future work per ROADMAP):**
+- Control plane (`Adaptive`, command router), Observer, Sentinel meta-policy engine, shadow evaluation.
+- Workspace split into `ninelives-core`, `-control`, `-observer`, `-sentinel` (currently a single crate plus adapter crates).
+- Control-plane transports (REST/gRPC/GraphQL) and state backends (redis, etcd) beyond the skeletal adapter stubs.
+
+This document captures the target architecture; items marked above as “Not yet implemented” are roadmap work, not current behavior.
 
 ---
 

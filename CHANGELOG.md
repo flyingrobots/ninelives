@@ -4,6 +4,25 @@ All notable changes will be documented in this file.
 
 ## [Unreleased]
 
+
+## [0.2.0] - 2025-11-25
+
+### Added
+- Telemetry sinks with best-effort emission; sink composition (Multicast/Fallback).
+- Retry telemetry pipeline (`execute_with_sink`) sharing core logic.
+- Bulkhead telemetry reasons (`Saturated` vs `Closed`) and closed event.
+- Coverage workflow (`cargo llvm-cov`) and documented local coverage command.
+- Adapter changelogs (nats/kafka/otlp/prometheus/jsonl/elastic/etcd/cookbook).
+
+### Changed
+- Bulkhead half-open probe counting fixed; closed state distinguishes telemetry.
+- Release workflows pin toolchain action commit.
+- README roadmap snapshot; examples point to cookbook crate and 0.2 usage.
+
+### Fixed
+- release-plz config aligned with non-published adapters; skips adapter publishing.
+- Clippy `let-unit-value` warning resolved in telemetry.
+
 ### Added
 - **Control Plane**: Added `ninelives::control` module with `CommandRouter`, `AuthRegistry` (JWT/Signature/mTLS hooks), and `CommandHistory`.
 - **Circuit Breaker Registry**: Global and local registry support (`ninelives::circuit_breaker_registry`) for managing multiple breakers; `CircuitBreakerLayer::with_registry`.
@@ -35,5 +54,6 @@ All notable changes will be documented in this file.
 
 - Initial crate scaffolding with retries, circuit breaker, bulkhead, timeout, stack builder, and helper sleepers/clocks.
 
-[Unreleased]: https://github.com/flyingrobots/ninelives/compare/0.1.0...HEAD
+[Unreleased]: https://github.com/flyingrobots/ninelives/compare/0.2.0...HEAD
+[0.2.0]: https://github.com/flyingrobots/ninelives/compare/0.1.0...0.2.0
 [0.1.0]: https://github.com/flyingrobots/ninelives/releases/tag/0.1.0
