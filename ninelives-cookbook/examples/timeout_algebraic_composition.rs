@@ -33,16 +33,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // This should timeout (1s > 50ms timeout)
     println!("Calling service (will timeout)...");
     match slow_svc.ready().await?.call("slow-request").await {
-        Ok(_) => println!("Unexpected success"),
-        Err(e) => println!("✗ Timeout: {:?}\n", e),
-    }
-
+        Ok(_) => panic!("Expected timeout but request succeeded!"),
+        Err(e) => {
+            println!("✗ Timeout occurred as expected: {:?}\n", e);
+            // In production: match on specific error types for recovery
     // Demonstrate algebraic composition: fallback strategy
     println!("=== Algebraic Composition: Fallback ===\n");
 
+    // Policy is a wrapper that enables algebraic composition operators
+    // The | operator creates a fallback: try left, if it fails, try right
     let fast = Policy(TimeoutLayer::new(Duration::from_millis(50))?);
     let slow = Policy(TimeoutLayer::new(Duration::from_secs(2))?);
-    let policy = fast | slow; // Try fast first, fallback to slow
+    let policy = fast | slow; // Try fast first, fallback to slow on timeout
+    // Note: The first attempt is cancelled when it times out
 
     let mut fallback_svc =
         ServiceBuilder::new().layer(policy).service_fn(|req: &'static str| async move {
@@ -51,6 +54,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
 
     println!("Using fallback policy (fast 50ms | slow 2s)...");
+    println!("Request takes 100ms - fast will timeout, slow will succeed");
+    let response = fallback_svc.ready().await?.call("request").await?;
+    println!("✓ Success via fallback: {}", response);
     println!("Request takes 100ms - fast will timeout, slow will succeed");
     let response = fallback_svc.ready().await?.call("request").await?;
     println!("✓ Success via fallback: {}", response);

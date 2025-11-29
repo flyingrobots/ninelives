@@ -17,5 +17,8 @@ serde_json.workspace = true
 elasticsearch = { version = "8.19.0-alpha.1", default-features = false, features = ["rustls-tls"] }
 tokio = { version = "1", features = ["rt", "macros"] }
 
+[dev-dependencies]
+uuid = { version = "1", features = ["v4"] }
+
 [features]
 default = []

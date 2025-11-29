@@ -3,6 +3,7 @@ use ninelives::telemetry::{PolicyEvent, RetryEvent};
 use ninelives_elastic::ElasticSink;
 use serde_json::json;
 use tower_service::Service;
+use uuid::Uuid; // Added for unique index generation
 
 // Requires Elasticsearch running. If NINE_LIVES_TEST_ELASTIC_URL is unset, the test skips.
 #[tokio::test]
@@ -14,33 +15,54 @@ async fn indexes_policy_events() {
             return;
         }
     };
-    let index = "policy-events";
+    let index = format!("policy-events-{}", Uuid::new_v4()); // Use a unique index
     let transport =
         elasticsearch::http::transport::Transport::single_node(&url).expect("transport");
     let client = Elasticsearch::new(transport);
-    let mut sink = ElasticSink::new(client.clone(), index);
+    let mut sink = ElasticSink::new(client.clone(), index.clone());
 
     let event = PolicyEvent::Retry(RetryEvent::Attempt {
         attempt: 1,
         delay: std::time::Duration::from_millis(50),
     });
-    sink.call(event).await.unwrap();
+    sink.call(event.clone())
+        .await
+        .expect("failed to sink policy event to Elasticsearch");
 
     // refresh index then search
-    let _ = client
+    client
         .indices()
-        .refresh(elasticsearch::indices::IndicesRefreshParts::Index(&[index]))
+        .refresh(elasticsearch::indices::IndicesRefreshParts::Index(&[&index])) // Use the unique index
         .send()
-        .await;
+        .await
+        .expect("Failed to refresh index after event ingestion");
+
     let res = client
-        .search(SearchParts::Index(&[index]))
+        .search(SearchParts::Index(&[&index])) // Use the unique index
         .body(json!({"query": {"match_all": {}}}))
         .send()
         .await
-        .expect("search")
+        .expect("failed to execute search query")
         .json::<serde_json::Value>()
         .await
-        .expect("json");
-    let hits = res["hits"]["hits"].as_array().cloned().unwrap_or_default();
-    assert!(!hits.is_empty(), "expected at least one indexed event");
+        .expect("failed to parse search response JSON");
+
+    let hits = res["hits"]["hits"]
+        .as_array()
+        .expect("expected 'hits.hits' to be an array in search response")
+        .clone();
+    assert_eq!(hits.len(), 1, "expected exactly one indexed event, found {}", hits.len());
+
+    let source = &hits[0]["_source"];
+    assert_eq!(source["kind"], "retry_attempt", "kind mismatch");
+    assert_eq!(source["attempt"], 1, "attempt mismatch");
+    assert_eq!(source["delay_ms"], 50, "delay_ms mismatch");
+
+    // Cleanup: delete the unique index
+    client
+        .indices()
+        .delete(elasticsearch::indices::IndicesDeleteParts::Index(&[&index]))
+        .send()
+        .await
+        .expect("Failed to delete index after test");
 }

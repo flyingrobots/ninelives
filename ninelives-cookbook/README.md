@@ -4,7 +4,7 @@ Ready-to-use policy recipes and runnable examples for the `ninelives` resilience
 
 ## Install
 ```toml
-ninelives = "0.1"
+ninelives = "0.3"
 ninelives-cookbook = { path = "../ninelives-cookbook" }
 ```
 
@@ -22,10 +22,11 @@ ninelives-cookbook = { path = "../ninelives-cookbook" }
 | `sensible_defaults(max)` | General I/O starter pack | Timeout + Retry + Bulkhead | Safe defaults; pass your concurrency budget |
 
 ### Adaptive knobs
-- `retry_fast`: adjust max_attempts/backoff/jitter live via `policy.adaptive_max_attempts()` and friends.
-- `timeout_p95`: adjust duration with `adaptive_duration()`.
-- `api_guardrail` / `hedged_then_fallback`: underlying layers are adaptive-capable; expose handles if you plumb them through your builder.
-- `bulkhead_isolate`: `adaptive_max_concurrent()` lets you raise the cap; semaphore grows dynamically on increase.
+All recipes above support runtime tuning without restarting. Use these methods:
+- `retry_fast`: call `policy.adaptive_max_attempts()`, `adaptive_backoff_base()`, `adaptive_jitter()` to tune retry behavior live.
+- `timeout_p95`: call `policy.adaptive_duration()` to adjust the timeout.
+- `api_guardrail` / `hedged_then_fallback`: component policies are adaptive-capable; wire their handles into your builder (see `control_plane` example).
+- `bulkhead_isolate`: call `policy.adaptive_max_concurrent(new_cap)` to raise the concurrency limit (up to system resource limits).
 
 Use them like:
 ```rust
@@ -39,7 +40,7 @@ let svc = ServiceBuilder::new().layer(policy).service_fn(|req: &str| async move 
 ## Examples (bin)
 Run from this crate:
 ```bash
-cargo run -p ninelives-cookbook --example retry_fast
+cargo run -p ninelives-cookbook --example timeout_algebraic_composition
 cargo run -p ninelives-cookbook --example control_plane   # control-plane quickstart
 ```
 
