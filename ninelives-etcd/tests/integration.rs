@@ -12,8 +12,12 @@ async fn writes_events_to_etcd() {
             return;
         }
     };
-    let mut client = etcd_client::Client::connect([endpoint.as_str()], None).await.expect("client");
-    let mut sink = EtcdSink::new("policy_events", client.clone()).expect("valid sink");
+    let mut client = etcd_client::Client::connect([endpoint.as_str()], None)
+        .await
+        .unwrap_or_else(|e| panic!("Failed to connect to etcd at '{}': {}", endpoint, e));
+
+    let prefix = format!("policy_events/{}", uuid::Uuid::new_v4());
+    let mut sink = EtcdSink::new(prefix.clone(), client.clone()).expect("valid sink");
 
     let event = PolicyEvent::Retry(RetryEvent::Attempt {
         attempt: 1,
@@ -23,9 +27,14 @@ async fn writes_events_to_etcd() {
 
     // read back latest key under prefix
     let resp = client
-        .get("policy_events", Some(etcd_client::GetOptions::new().with_prefix()))
+        .get(prefix.as_str(), Some(etcd_client::GetOptions::new().with_prefix()))
         .await
         .expect("get");
     let kvs = resp.kvs();
     assert!(!kvs.is_empty(), "expected at least one kv");
+
+    // Cleanup
+    client.delete(prefix.as_str(), Some(etcd_client::DeleteOptions::new().with_prefix()))
+        .await
+        .expect("cleanup failed");
 }
