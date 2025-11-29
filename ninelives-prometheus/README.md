@@ -11,14 +11,39 @@ prometheus = "0.13"
 ```
 
 ```rust
-use ninelives::telemetry::NonBlockingSink;
+use ninelives::telemetry::{NonBlockingSink, PolicyEvent, RetryEvent};
 use ninelives_prometheus::PrometheusSink;
-use prometheus::Registry;
+use prometheus::{Registry, Encoder, TextEncoder};
+use std::time::Duration;
+use tower::Service;
 
+// 1. Create Registry and Sink
 let registry = Registry::new();
-let raw = PrometheusSink::new(registry);
-let sink = NonBlockingSink::with_capacity(raw, 1024);
-// expose registry via /metrics using prometheus::TextEncoder
+let prom_sink = PrometheusSink::new(registry.clone());
+let mut sink = NonBlockingSink::with_capacity(prom_sink, 1024);
+
+// 2. Emit an event (normally done automatically by policies)
+let event = PolicyEvent::Retry(RetryEvent::Attempt {
+    attempt: 1,
+    delay: Duration::from_millis(50),
+});
+sink.call(event).await.unwrap();
+
+// 3. Verify Metrics (e.g. for serving at /metrics)
+let metric_families = registry.gather();
+assert!(!metric_families.is_empty());
+
+// Encode to text format
+let mut buffer = vec![];
+let encoder = TextEncoder::new();
+encoder.encode(&metric_families, &mut buffer).unwrap();
+let output = String::from_utf8(buffer).unwrap();
+
+println!("{}", output);
+// Output:
+// # HELP ninelives_events_total Total number of policy events
+// # TYPE ninelives_events_total counter
+// ninelives_events_total{event="Retry::Attempt",policy="retry"} 1
 ```
 
 ## Test
