@@ -3,6 +3,16 @@
 //! Bring your own async `async_nats::Client`; events are serialized to
 //! JSON and published to the configured subject.
 //!
+//! **Error Handling Note**: `NatsSink` is a best-effort telemetry sink. Publish
+//! failures (e.g., NATS connection lost, network issues) are currently
+//! **silently ignored** (`let _ = client.publish(...).await`). This prevents
+//! blocking application logic but means telemetry events may be lost without
+//! explicit handling. For production use-cases where publish guarantees are
+//! important, consider:
+//! - Wrapping `NatsSink` with a `ninelives::telemetry::NonBlockingSink` and monitoring its `dropped()` count.
+//! - Implementing custom error handling directly in `NatsSink` (e.g., logging publish errors).
+//! - Monitoring the `async_nats::Client` health externally.
+//!
 //! ```rust
 //! use ninelives_nats::NatsSink;
 //! # use ninelives::telemetry::PolicyEvent;
