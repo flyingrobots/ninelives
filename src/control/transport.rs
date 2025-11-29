@@ -37,6 +37,8 @@ pub struct TransportEnvelope {
 fn transport_envelope_schema() -> &'static JSONSchema {
     static SCHEMA: OnceLock<JSONSchema> = OnceLock::new();
     SCHEMA.get_or_init(|| {
+        // Panic is intentional: schema is embedded at compile time and must be valid.
+        // Invalid schemas are a build/CI failure, not a runtime condition.
         let raw = include_str!("../../schemas/transport-envelope.schema.json");
         let value: JsonValue = serde_json::from_str(raw).expect("valid transport-envelope schema");
         JSONSchema::compile(&value).expect("transport-envelope schema compiles")
@@ -81,7 +83,7 @@ fn validate_result(_res: &super::CommandResult) -> Result<(), String> {
 fn validate(schema: &JSONSchema, value: &JsonValue) -> Result<(), String> {
     schema
         .validate(value)
-        .map_err(|errs| errs.map(|e| e.to_string()).collect::<Vec<_>>().join(", "))
+        .map_err(|errs| errs.map(|e| e.to_string()).collect::<Vec<_>>().join(" | "))
 }
 
 fn command_result_to_schema_value(res: &super::CommandResult) -> JsonValue {
@@ -90,7 +92,9 @@ fn command_result_to_schema_value(res: &super::CommandResult) -> JsonValue {
         super::CommandResult::Value(v) => json!({ "result": "value", "value": v }),
         super::CommandResult::List(items) => json!({ "result": "list", "items": items }),
         super::CommandResult::Reset => json!({ "result": "reset" }),
-        super::CommandResult::Error(msg) => json!({ "result": "error", "message": msg }),
+        super::CommandResult::Error(err) => {
+            json!({ "result": "error", "kind": err, "message": err.to_string() })
+        }
     }
 }
 

@@ -76,7 +76,6 @@ hdrhistogram.workspace = true
 
 [features]
 control = ["serde", "serde_json", "jsonschema"]
-bench-telemetry = []
 adaptive-rwlock = []
 schema-validation = ["jsonschema"]
 default = ["arc-swap"]

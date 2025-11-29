@@ -303,6 +303,7 @@ impl CircuitBreakerState {
                     );
                     if res.is_ok() {
                         self.opened_at_millis.store(now, Ordering::Release);
+                        self.half_open_calls.store(0, Ordering::Release);
                         Err(CircuitBreakerEvent::Opened { failure_count: failures })
                     } else {
                         // Lost the race; another thread opened it or state changed. Treat as no-op.
@@ -602,14 +603,16 @@ where
                             }
                         }
                         CircuitState::HalfOpen => {
-                            let _ = state.state.compare_exchange(
+                            let res = state.state.compare_exchange(
                                 CircuitState::HalfOpen.to_u8(),
                                 CircuitState::Open.to_u8(),
                                 Ordering::AcqRel,
                                 Ordering::Acquire,
                             );
-                            state.half_open_calls.store(0, Ordering::Release);
-                            state.opened_at_millis.store(clock.now_millis(), Ordering::Release);
+                            if res.is_ok() {
+                                state.half_open_calls.store(0, Ordering::Release);
+                                state.opened_at_millis.store(clock.now_millis(), Ordering::Release);
+                            }
                         }
                         CircuitState::Open => {}
                     }

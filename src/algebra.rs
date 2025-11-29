@@ -546,7 +546,7 @@ where
                         Ok(resp) => Ok(resp),
                         Err(right_err) => {
                             // Surface both failures for diagnostics while returning deterministic left error.
-                            tracing::debug!(
+                            tracing::warn!(
                                 left_error = ?left_err,
                                 right_error = ?right_err,
                                 "ForkJoinService: both paths failed; returning combined error"
@@ -560,7 +560,7 @@ where
                     match left_fut.await {
                         Ok(resp) => Ok(resp),
                         Err(left_err) => {
-                            tracing::debug!(
+                            tracing::warn!(
                                 left_error = ?left_err,
                                 right_error = ?right_err,
                                 "ForkJoinService: both paths failed; returning combined error"
@@ -720,7 +720,7 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn fork_join_returns_both_errors_if_both_fail() {
+    async fn fork_join_returns_both_errors_on_dual_failure() {
         #[derive(Clone, Debug)]
         struct LeftErr;
         #[derive(Clone, Debug)]

@@ -15,8 +15,7 @@ pub use crate::{
         NullSink, PolicyEvent, RequestOutcome, RetryEvent, StreamingSink, TelemetrySink,
         TimeoutEvent,
     },
-    timeout::TimeoutLayer,
-    timeout::{TimeoutError, TimeoutPolicy, MAX_TIMEOUT},
+    timeout::{TimeoutError, TimeoutLayer, TimeoutPolicy, MAX_TIMEOUT},
     BulkheadPolicy, ResilienceError,
 };
 

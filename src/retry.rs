@@ -101,6 +101,10 @@ where
     }
 
     /// Execute an async operation with retry semantics.
+    ///
+    /// **Note:** Adaptive configuration values (`max_attempts`, `backoff`, `jitter`) are
+    /// captured at the start of execution. Updates to adaptive handles during a retry
+    /// loop only affect subsequent calls to `execute()`, not the current operation.
     pub async fn execute<T, Fut, Op>(&self, mut operation: Op) -> Result<T, ResilienceError<E>>
     where
         T: Send,
@@ -750,56 +754,8 @@ where
             let backoff = layer.backoff.get();
             let jitter = layer.jitter.get();
 
-            // Fast path: single attempt, avoid loop/backoff.
-            if max_attempts == 1 {
-                return match inner.call(req).await {
-                    Ok(resp) => {
-                        let duration = start.elapsed();
-                        emit_best_effort(
-                            sink.clone(),
-                            PolicyEvent::Request(crate::telemetry::RequestOutcome::Success {
-                                duration,
-                            }),
-                        )
-                        .await;
-                        Ok(resp)
-                    }
-                    Err(err) => {
-                        let e: E = err;
-                        if !(layer.should_retry)(&e) {
-                            let duration = start.elapsed();
-                            emit_best_effort(
-                                sink.clone(),
-                                PolicyEvent::Request(crate::telemetry::RequestOutcome::Failure {
-                                    duration,
-                                }),
-                            )
-                            .await;
-                            return Err(ResilienceError::Inner(e));
-                        }
-                        failures.push_back(e);
-                        let total_duration = start.elapsed();
-                        emit_best_effort(
-                            sink.clone(),
-                            PolicyEvent::Retry(RetryEvent::Exhausted {
-                                total_attempts: 1,
-                                total_duration,
-                            }),
-                        )
-                        .await;
-                        emit_best_effort(
-                            sink.clone(),
-                            PolicyEvent::Request(crate::telemetry::RequestOutcome::Failure {
-                                duration: total_duration,
-                            }),
-                        )
-                        .await;
-                        Err(ResilienceError::retry_exhausted(1, failures.into_iter().collect()))
-                    }
-                };
-            }
-
             for attempt in 0..max_attempts {
+                // Note: For max_attempts=1, this executes once with no sleep (unless it fails and max_attempts > 1).
                 match inner.call(req.clone()).await {
                     Ok(resp) => {
                         // Emit success event (best effort - honor readiness)

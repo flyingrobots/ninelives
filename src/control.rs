@@ -1,6 +1,6 @@
 //! Control plane primitives: command envelope, auth, history, router.
 //!
-//! This is a lightweight, transport-agnostic. Transports populate
+//! This is a lightweight, transport-agnostic control plane. Transports populate
 //! `CommandEnvelope` with an `AuthPayload`; the router dispatches to handlers
 //! after auth. History storage is pluggable.
 
@@ -341,6 +341,31 @@ pub enum CommandError {
     Audit(String),
 }
 
+/// Structured command failure payload.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum CommandFailure {
+    /// Caller provided invalid arguments.
+    InvalidArgs { msg: String },
+    /// Requested resource was not found.
+    NotFound { what: String },
+    /// Required registry dependency missing.
+    RegistryMissing { hint: String },
+    /// Catch-all internal error.
+    Internal { msg: String },
+}
+
+impl std::fmt::Display for CommandFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CommandFailure::InvalidArgs { msg } => write!(f, "{msg}"),
+            CommandFailure::NotFound { what } => write!(f, "{what} not found"),
+            CommandFailure::RegistryMissing { hint } => write!(f, "registry missing: {hint}"),
+            CommandFailure::Internal { msg } => write!(f, "{msg}"),
+        }
+    }
+}
+
 /// Command result type.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum CommandResult {
@@ -353,7 +378,7 @@ pub enum CommandResult {
     /// Reset complete.
     Reset,
     /// Error message.
-    Error(String),
+    Error(CommandFailure),
 }
 
 /// Audit record emitted after command execution.
@@ -787,7 +812,7 @@ impl ConfigService {
         let reg = self.registry_or_err()?;
         match reg.write(path, value) {
             Ok(()) => Ok(CommandResult::Ack),
-            Err(e) => Ok(CommandResult::Error(e)),
+            Err(e) => Ok(CommandResult::Error(CommandFailure::InvalidArgs { msg: e })),
         }
     }
 
@@ -795,7 +820,7 @@ impl ConfigService {
         let reg = self.registry_or_err()?;
         Ok(match reg.read(path) {
             Ok(val) => CommandResult::Value(val),
-            Err(e) => CommandResult::Error(e),
+            Err(e) => CommandResult::Error(CommandFailure::InvalidArgs { msg: e }),
         })
     }
 
@@ -828,7 +853,9 @@ impl BreakerService {
         let reg = self.registry()?;
         match reg.reset(id) {
             Ok(()) => Ok(CommandResult::Ack),
-            Err(e) => Ok(CommandResult::Error(e.to_string())),
+            Err(e) => Ok(CommandResult::Error(CommandFailure::NotFound {
+                what: format!("circuit_breaker:{id} ({e})"),
+            })),
         }
     }
 
@@ -899,11 +926,9 @@ impl BuiltInHandler {
     /// for consistency and maintainability.
     async fn get_from_store_or_config(&self, key: &str) -> CommandResult {
         if self.state.config.contains(key) {
-            return self
-                .state
-                .config
-                .read(key)
-                .unwrap_or(CommandResult::Error("read failed".into()));
+            return self.state.config.read(key).unwrap_or(CommandResult::Error(
+                CommandFailure::Internal { msg: "read failed".into() },
+            ));
         }
         let val = self.state.store.get(key).await.unwrap_or_default();
         CommandResult::Value(val)
@@ -938,7 +963,6 @@ impl CommandHandler<BuiltInCommand> for BuiltInHandler {
                     .unwrap_or_default();
                 let mut keys: Vec<String> = store_keys.into_iter().chain(config_keys).collect();
                 keys.sort();
-                keys.dedup();
                 Ok(CommandResult::List(keys))
             }
             BuiltInCommand::Reset => {
@@ -971,9 +995,9 @@ impl CommandHandler<BuiltInCommand> for BuiltInHandler {
                 root.insert("breakers".into(), serde_json::Value::Object(map));
                 match serde_json::to_string(&root) {
                     Ok(s) => Ok(CommandResult::Value(s)),
-                    Err(e) => {
-                        Ok(CommandResult::Error(format!("failed to serialize breaker state: {e}")))
-                    }
+                    Err(e) => Ok(CommandResult::Error(CommandFailure::Internal {
+                        msg: format!("failed to serialize breaker state: {e}"),
+                    })),
                 }
             }
         }

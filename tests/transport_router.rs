@@ -30,7 +30,9 @@ impl Transport for JsonTransport {
             CommandResult::Value(v) => json!({"result":"value","value":v,"id":ctx.id}),
             CommandResult::List(vs) => json!({"result":"list","items":vs,"id":ctx.id}),
             CommandResult::Reset => json!({"result":"reset","id":ctx.id}),
-            CommandResult::Error(e) => json!({"result":"error","message":e,"id":ctx.id}),
+            CommandResult::Error(e) => {
+                json!({"result":"error","message":e.to_string(),"id":ctx.id,"kind":e})
+            }
         };
         serde_json::to_vec(&out)
     }

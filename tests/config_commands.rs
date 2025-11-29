@@ -82,7 +82,12 @@ async fn list_config_returns_registered_keys() {
         meta: CommandMeta { id: "lc".into(), correlation_id: None, timestamp_millis: None },
     };
     let res = router.execute(env).await.unwrap();
-    assert_eq!(res, CommandResult::List(vec!["max_attempts".into(), "timeout_ms".into()]));
+    if let CommandResult::List(mut keys) = res {
+        keys.sort();
+        assert_eq!(keys, vec!["max_attempts", "timeout_ms"]);
+    } else {
+        panic!("expected List result");
+    }
 }
 
 #[tokio::test]
