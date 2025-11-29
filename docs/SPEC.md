@@ -3,11 +3,13 @@
 *Status: Draft aligned to roadmap (Nov 2025)*
 
 **What’s implemented today (feat/telemetry branch, v0.2 planned):**
+
 - Tower-native layers: retry, timeout, circuit-breaker, bulkhead, algebraic `+ | &` composition.
 - Telemetry sinks: in-crate sinks (Null/Log/Memory/Streaming) plus companion sinks (otlp, nats, kafka, etc.).
 - CI: fmt, clippy, tests, coverage via cargo-llvm-cov.
 
 **Not yet implemented (future work per ROADMAP):**
+
 - Control plane (`Adaptive`, command router), Observer, Sentinel meta-policy engine, shadow evaluation.
 - Workspace split into `ninelives-core`, `-control`, `-observer`, `-sentinel` (currently a single crate plus adapter crates).
 - Control-plane transports (REST/gRPC/GraphQL) and state backends (redis, etcd) beyond the skeletal adapter stubs.
@@ -25,9 +27,10 @@ The core philosophy of Nine Lives is that **every asynchronous operation is a `t
 This is the unifying principle that makes the entire framework "fractally" composable. A `Service` is the atomic unit of async work, and a `Layer` is a decorator for that work. Because every component in the system—from user business logic, to a telemetry sink, to a state backend, to a control plane command—is a `Service`, the *entire* `ninelives` policy algebra can be applied to *any* part of the system.
 
 This enables:
--   Wrapping a Redis state backend with a `RetryLayer` and a `TimeoutLayer`.
--   Wrapping a Telemetry Sink with a `BulkheadLayer` to rate-limit outgoing events.
--   Wrapping Control Plane commands with an `AuthorizationLayer` and an `AuditLayer`.
+
+- Wrapping a Redis state backend with a `RetryLayer` and a `TimeoutLayer`.
+- Wrapping a Telemetry Sink with a `BulkheadLayer` to rate-limit outgoing events.
+- Wrapping Control Plane commands with an `AuthorizationLayer` and an `AuditLayer`.
 
 The same powerful tools are used at every level, creating a consistent, predictable, and infinitely composable system.
 
@@ -35,12 +38,12 @@ The same powerful tools are used at every level, creating a consistent, predicta
 
 The Nine Lives framework is a modular ecosystem, organized as a Rust workspace to separate concerns, manage dependencies, and allow users to opt into complexity.
 
--   **`ninelives-core` (Foundation)**: Contains the architectural primitives: `Policy<L>` wrapper, algebraic composition structs (`CombinedLayer`, `FallbackLayer`), and the core `Service`-based traits for `TelemetrySink`, `StateBackend`, and `CommandHandler`.
--   **`ninelives` (Batteries-Included)**: The main user-facing crate. Provides concrete implementations of standard resilience `Layer`s (`RetryLayer`, `TimeoutLayer`, etc.) and simple, local backends and sinks.
--   **`ninelives-control` (Control Plane)**: The dynamic command plane infrastructure, including the `ControlPlaneRouter` and built-in command handlers.
--   **`ninelives-observer` (Observation)**: The `Observer` component, responsible for aggregating telemetry into a queryable `SystemState`.
--   **`ninelives-sentinel` (Autonomy)**: The highest-level component. Contains the `Meta-Policy Engine` for the self-healing loop and integrates the scripting engine.
--   **Adapter Crates (`ninelives-*`)**: A suite of separate crates for integrating with third-party services (e.g., `ninelives-redis`, `ninelives-otlp`, `ninelives-rest`).
+- **`ninelives-core` (Foundation)**: Contains the architectural primitives: `Policy<L>` wrapper, algebraic composition structs (`CombinedLayer`, `FallbackLayer`), and the core `Service`-based traits for `TelemetrySink`, `StateBackend`, and `CommandHandler`.
+- **`ninelives` (Batteries-Included)**: The main user-facing crate. Provides concrete implementations of standard resilience `Layer`s (`RetryLayer`, `TimeoutLayer`, etc.) and simple, local backends and sinks.
+- **`ninelives-control` (Control Plane)**: The dynamic command plane infrastructure, including the `ControlPlaneRouter` and built-in command handlers.
+- **`ninelives-observer` (Observation)**: The `Observer` component, responsible for aggregating telemetry into a queryable `SystemState`.
+- **`ninelives-sentinel` (Autonomy)**: The highest-level component. Contains the `Meta-Policy Engine` for the self-healing loop and integrates the scripting engine.
+- **Adapter Crates (`ninelives-*`)**: A suite of separate crates for integrating with third-party services (e.g., `ninelives-redis`, `ninelives-otlp`, `ninelives-rest`).
 
 ---
 
@@ -48,9 +51,9 @@ The Nine Lives framework is a modular ecosystem, organized as a Rust workspace t
 
 The ergonomic DSL for composing `Layer`s. Users opt-in by wrapping a `Layer` in a `Policy<L>` struct. All operators combine `Policy<Layer>`s to produce a new `Policy<Layer>`.
 
--   **`Policy(A) + Policy(B)` (Composition)**: Composes two layers in a standard middleware pattern, `A(B(Service))`.
--   **`Policy(A) | Policy(B)` (Fallback)**: Creates a failover strategy. Tries the `A` stack, and on failure, retries the original request with the `B` stack.
--   **`Policy(A) & Policy(B)` (Fork-Join)**: Creates a concurrent "happy eyeballs" strategy. Tries `A` and `B` simultaneously and returns the first `Ok` result.
+- **`Policy(A) + Policy(B)` (Composition)**: Composes two layers in a standard middleware pattern, `A(B(Service))`.
+- **`Policy(A) | Policy(B)` (Fallback)**: Creates a failover strategy. Tries the `A` stack, and on failure, retries the original request with the `B` stack.
+- **`Policy(A) & Policy(B)` (Fork-Join)**: Creates a concurrent "happy eyeballs" strategy. Tries `A` and `B` simultaneously and returns the first `Ok` result.
 
 ---
 
@@ -59,14 +62,17 @@ The ergonomic DSL for composing `Layer`s. Users opt-in by wrapping a `Layer` in 
 This plane provides observability and forms the communication bus for the Sentinel.
 
 ### **3.1. `PolicyEvent` & `TelemetrySink`**
--   **`PolicyEvent`**: A structured `enum` defining all events generated by policies.
--   **`TelemetrySink`**: A `tower::Service` that accepts a `PolicyEvent`. Because it's a `Service`, any sink can be made resilient with `ninelives` policies.
+
+- **`PolicyEvent`**: A structured `enum` defining all events generated by policies.
+- **`TelemetrySink`**: A `tower::Service` that accepts a `PolicyEvent`. Because it's a `Service`, any sink can be made resilient with `ninelives` policies.
 
 ### **3.2. The Algebraic Message Plane**
+
 The algebraic composition of `TelemetrySink`s creates a powerful message bus.
--   **Multicasting (`+`)**: `sink_A + sink_B` sends an event to both sinks concurrently.
--   **Fallback (`|`)**: `sink_A | sink_B` provides resilient event delivery, trying `B` if `A` fails.
--   **`StreamingSink`**: A specific sink implementation using `tokio::sync::broadcast` acts as a pub/sub bus, allowing components like the `Observer` to subscribe to the event stream.
+
+- **Multicasting (`+`)**: `sink_A + sink_B` sends an event to both sinks concurrently.
+- **Fallback (`|`)**: `sink_A | sink_B` provides resilient event delivery, trying `B` if `A` fails.
+- **`StreamingSink`**: A specific sink implementation using `tokio::sync::broadcast` acts as a pub/sub bus, allowing components like the `Observer` to subscribe to the event stream.
 
 ---
 
@@ -75,11 +81,13 @@ The algebraic composition of `TelemetrySink`s creates a powerful message bus.
 The control plane provides the mechanism for runtime configuration and interaction.
 
 ### **4.1. Core Components**
--   **`Adaptive<T>` Handles**: Thread-safe wrappers for live-tunable policy parameters.
--   **`CommandHandler`**: A `tower::Service` that processes a `CommandContext`.
--   **`ControlPlaneRouter`**: A dynamic dispatcher that registers and executes `CommandHandler` services.
+
+- **`Adaptive<T>` Handles**: Thread-safe wrappers for live-tunable policy parameters.
+- **`CommandHandler`**: A `tower::Service` that processes a `CommandContext`.
+- **`ControlPlaneRouter`**: A dynamic dispatcher that registers and executes `CommandHandler` services.
 
 ### **4.2. Securing the Control Plane**
+
 The execution of commands is itself a `Service` call, protected by a `ninelives` policy stack. This allows for uniform application of authorization, auditing, and rate-limiting to administrative actions. The `CommandContext` will carry an `Identity` field for this purpose.
 
 ---
@@ -89,21 +97,26 @@ The execution of commands is itself a `Service` call, protected by a `ninelives`
 The Sentinel is a closed-loop system for self-healing. It is composed of several `Service`-oriented components.
 
 ### **5.1. Architecture: Observe → Decide → Act**
-1.  **Observation Layer (`ninelives-observer`)**: The `Observer` service subscribes to the message plane, ingests `PolicyEvent`s, and produces an aggregated, queryable `SystemState`.
-2.  **Meta-Policy Layer (`ninelives-sentinel`)**: The `Meta-Policy Engine` evaluates rules against the `SystemState`.
-3.  **Action Layer (`ninelives-control`)**: The `ControlPlaneRouter` executes commands dispatched by the engine.
+
+1. **Observation Layer (`ninelives-observer`)**: The `Observer` service subscribes to the message plane, ingests `PolicyEvent`s, and produces an aggregated, queryable `SystemState`.
+2. **Meta-Policy Layer (`ninelives-sentinel`)**: The `Meta-Policy Engine` evaluates rules against the `SystemState`.
+3. **Action Layer (`ninelives-control`)**: The `ControlPlaneRouter` executes commands dispatched by the engine.
 
 ### **5.2. The Programmable Meta-Policy Engine**
+
 The "brain" of the Sentinel must be dynamic.
--   **Rationale for Scripting**: To allow live updates to the Sentinel's logic without recompiling or restarting the application, meta-policies will be defined in an external script.
--   **Technology**: An embedded scripting language like **Rhai** will be used. Rhai is chosen for its safety (sandboxed), simplicity, and deep integration with the Rust type system.
--   **Hot-Reloading**: The engine will support a `meta-policy reload` command to load a new script file on the fly.
+
+- **Rationale for Scripting**: To allow live updates to the Sentinel's logic without recompiling or restarting the application, meta-policies will be defined in an external script.
+- **Technology**: An embedded scripting language like **Rhai** will be used. Rhai is chosen for its safety (sandboxed), simplicity, and deep integration with the Rust type system.
+- **Hot-Reloading**: The engine will support a `meta-policy reload` command to load a new script file on the fly.
 
 ### **5.3. Safety: Shadow Policy Evaluation**
+
 To prevent buggy meta-policies from destabilizing the system, the Sentinel will support a "what-if" analysis mode.
--   **Mechanism**: A `Sentinel` rule will first propose a policy change. The system can then apply this change to a "shadow" configuration on a `PolicyLayer`.
--   **Evaluation**: The layer processes live traffic using its primary configuration but *also* evaluates the outcome *as if* the shadow configuration were active, emitting special `ShadowEvent`s.
--   **Promotion**: The `Sentinel` observes these shadow events. If the what-if scenario is stable for a configured period, the Sentinel issues a second command to promote the shadow configuration to the primary, active configuration.
+
+- **Mechanism**: A `Sentinel` rule will first propose a policy change. The system can then apply this change to a "shadow" configuration on a `PolicyLayer`.
+- **Evaluation**: The layer processes live traffic using its primary configuration but *also* evaluates the outcome *as if* the shadow configuration were active, emitting special `ShadowEvent`s.
+- **Promotion**: The `Sentinel` observes these shadow events. If the what-if scenario is stable for a configured period, the Sentinel issues a second command to promote the shadow configuration to the primary, active configuration.
 
 ---
 
@@ -112,16 +125,18 @@ To prevent buggy meta-policies from destabilizing the system, the Sentinel will 
 To maximize adoption, Nine Lives will ship with a rich ecosystem of companion crates.
 
 ### **6.1. Backend & Service Adapters**
--   **State**: `ninelives-redis`, `ninelives-etcd`.
--   **Telemetry**: `ninelives-otlp`, `ninelives-prometheus`.
--   **Sentinel**: `ninelives-sentinel-prometheus` (for state input), `ninelives-sentinel-kubernetes` (for action output).
+
+- **State**: `ninelives-redis`, `ninelives-etcd`.
+- **Telemetry**: `ninelives-otlp`, `ninelives-prometheus`.
+- **Sentinel**: `ninelives-sentinel-prometheus` (for state input), `ninelives-sentinel-kubernetes` (for action output).
 
 ### **6.2. Control Plane Transports**
--   `ninelives-rest` (HTTP)
--   `ninelives-grpc`
--   `ninelives-jsonl` (stdin/file friendly; stream commands/events as JSONL)
--   `ninelives-graphql`
--   `ninelives-mcp`
+
+- `ninelives-rest` (HTTP)
+- `ninelives-grpc`
+- `ninelives-jsonl` (stdin/file friendly; stream commands/events as JSONL)
+- `ninelives-graphql`
+- `ninelives-mcp`
 
 ---
 
@@ -136,11 +151,12 @@ The documentation will provide detailed recipes for implementing high-level patt
 This section contextualizes the Nine Lives v2 design by comparing it against popular resilience libraries.
 
 ### **8.1. The Competitors**
--   **Nine Lives v2**: The fractal, algebraic architecture specified in this document.
--   **Resilience4j (Java)**: The feature-rich standard for the JVM.
--   **Polly (C#)**: The de-facto standard for resilience in .NET.
--   **go-kit (Go)**: A popular microservices toolkit with resilience components.
--   **`tower` (Rust)**: The foundational library upon which this design is built.
+
+- **Nine Lives v2**: The fractal, algebraic architecture specified in this document.
+- **Resilience4j (Java)**: The feature-rich standard for the JVM.
+- **Polly (C#)**: The de-facto standard for resilience in .NET.
+- **go-kit (Go)**: A popular microservices toolkit with resilience components.
+- **`tower` (Rust)**: The foundational library upon which this design is built.
 
 ### **8.2. Feature Comparison Matrix**
 
@@ -159,5 +175,5 @@ This section contextualizes the Nine Lives v2 design by comparing it against pop
 
 The Nine Lives v2 design is state-of-the-art because it **unifies the best ideas from all of them into a single, cohesive framework and then pushes them to their logical conclusion.**
 
--   **The Fractal Advantage**: The recursive architecture is our most profound advantage. Because every component is a `Service`, we can apply resilience policies to the framework's own internals (e.g., a retry policy for a telemetry sink). This provides a level of robustness and consistency that is unmatched.
--   **From Passive to Active**: The inclusion of the Sentinel's autonomous control loop represents a generational leap. The library is transformed from a passive toolkit into an active, intelligent agent that can manage and heal the system on its own.
+- **The Fractal Advantage**: The recursive architecture is our most profound advantage. Because every component is a `Service`, we can apply resilience policies to the framework's own internals (e.g., a retry policy for a telemetry sink). This provides a level of robustness and consistency that is unmatched.
+- **From Passive to Active**: The inclusion of the Sentinel's autonomous control loop represents a generational leap. The library is transformed from a passive toolkit into an active, intelligent agent that can manage and heal the system on its own.

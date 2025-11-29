@@ -3,6 +3,7 @@
 Ready-to-use policy recipes and runnable examples for the `ninelives` resilience library.
 
 ## Install
+
 ```toml
 ninelives = "0.3"
 ninelives-cookbook = { path = "../ninelives-cookbook" }
@@ -24,12 +25,14 @@ ninelives-cookbook = { path = "../ninelives-cookbook" }
 ### Adaptive knobs
 
 All recipes above support runtime tuning without restarting. Use these methods:
+
 - `retry_fast`: call `policy.adaptive_max_attempts()`, `adaptive_backoff_base()`, `adaptive_jitter()` to tune retry behavior live.
 - `timeout_p95`: call `policy.adaptive_duration()` to adjust the timeout.
 - `api_guardrail` / `hedged_then_fallback`: component policies are adaptive-capable; wire their handles into your builder (see `control_plane` example).
 - `bulkhead_isolate`: call `policy.adaptive_max_concurrent(new_cap)` to raise the concurrency limit (up to system resource limits).
 
 Use them like:
+
 ```rust
 use ninelives_cookbook::api_guardrail;
 use tower::ServiceBuilder;
@@ -39,7 +42,9 @@ let svc = ServiceBuilder::new().layer(policy).service_fn(|req: &str| async move 
 ```
 
 ## Examples (bin)
+
 Run from this crate:
+
 ```bash
 cargo run -p ninelives-cookbook --example timeout_algebraic_composition
 cargo run -p ninelives-cookbook --example control_plane   # control-plane quickstart
@@ -48,9 +53,11 @@ cargo run -p ninelives-cookbook --example control_plane   # control-plane quicks
 (Examples mirror the recipes and show end-to-end usage.)
 
 ## Why a separate crate?
+
 To keep the core `ninelives` crate lean while providing richer, opinionated recipes and runnable samples without pulling extra weight into core builds.
 
 ## Notes on tuning
+
 - Timeouts: set to your service’s p95/p99, not the defaults here.
 - Backoff: increase base if your downstream rate-limits; decrease if you need faster recovery.
 - Bulkhead: set `max_in_flight` to sustainable concurrency for your dependency, not CPU cores.

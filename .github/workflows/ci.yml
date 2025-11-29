@@ -18,6 +18,19 @@ jobs:
       - name: Lint workflows
         uses: rhysd/actionlint@v1.7.4
 
+  markdownlint:
+    needs: actionlint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.1.6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install markdownlint deps
+        run: npm ci
+      - name: Lint Markdown
+        run: npx markdownlint-cli2 "**/*.md"
+
   commit-policy:
     needs: actionlint
     runs-on: ubuntu-latest

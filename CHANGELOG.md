@@ -4,10 +4,10 @@ All notable changes will be documented in this file.
 
 ## [Unreleased]
 
-
 ## [0.2.0] - 2025-11-25
 
 ### Added
+
 - Telemetry sinks with best-effort emission; sink composition (Multicast/Fallback).
 - Retry telemetry pipeline (`execute_with_sink`) sharing core logic.
 - Bulkhead telemetry reasons (`Saturated` vs `Closed`) and closed event.
@@ -15,15 +15,18 @@ All notable changes will be documented in this file.
 - Adapter changelogs (nats/kafka/otlp/prometheus/jsonl/elastic/etcd/cookbook).
 
 ### Changed
+
 - Bulkhead half-open probe counting fixed; closed state distinguishes telemetry.
 - Release workflows pin toolchain action commit.
 - README roadmap snapshot; examples point to cookbook crate and 0.2 usage.
 
 ### Fixed
+
 - release-plz config aligned with non-published adapters; skips adapter publishing.
 - Clippy `let-unit-value` warning resolved in telemetry.
 
 ### Added
+
 - **Control Plane**: Added `ninelives::control` module with `CommandRouter`, `AuthRegistry` (JWT/Signature/mTLS hooks), and `CommandHistory`.
 - **Circuit Breaker Registry**: Global and local registry support (`ninelives::circuit_breaker_registry`) for managing multiple breakers; `CircuitBreakerLayer::with_registry`.
 - **Built-in Commands**: `Set`, `Get`, `List`, `ResetCircuitBreaker`, `GetState`, `ReadConfig`, `WriteConfig`.
@@ -38,10 +41,12 @@ All notable changes will be documented in this file.
 - CI: actionlint → fmt → clippy (with `-D missing_docs`) → tests; new docs build job; release-plz config expanded.
 
 ### Changed
+
 - Toolchain pinned to `stable`; MSRV documented (1.70).
 - rustfmt note on heuristics; gitignore cleaned.
 
 ### Fixed
+
 - **Bulkhead**: Fixed test flake: potential deadlock in test setup for bulkhead service clones.
 - Removed stray Obsidian files; documentation typos.
 

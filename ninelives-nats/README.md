@@ -31,9 +31,11 @@ let sink = NonBlockingSink::with_capacity(raw, 1024);
 ```
 
 ### Configuration
+
 For production, always source the NATS URL from a configuration system or environment variable (`NATS_URL`) rather than hardcoding. Ensure connection errors are surfaced or retried; silent failures here will disable telemetry.
 
 ## Recipe
+
 - Publish every `PolicyEvent` to subject `policy.events`.
 - Wrap with `NonBlockingSink` to keep request paths non-blocking.
 - Subscribe with any NATS client to power an Observer or downstream pipeline.

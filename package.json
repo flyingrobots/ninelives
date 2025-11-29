@@ -1,0 +1,23 @@
+{
+  "name": "ninelives",
+  "version": "0.0.0",
+  "description": "Tooling for markdown linting in the ninelives workspace.",
+  "scripts": {
+    "lint:md": "markdownlint-cli2 \"**/*.md\"",
+    "lint:md:fix": "markdownlint-cli2 --fix \"**/*.md\""
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/flyingrobots/ninelives.git"
+  },
+  "keywords": [],
+  "author": "ninelives contributors",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/flyingrobots/ninelives/issues"
+  },
+  "homepage": "https://github.com/flyingrobots/ninelives#readme",
+  "devDependencies": {
+    "markdownlint-cli2": "^0.19.1"
+  }
+}

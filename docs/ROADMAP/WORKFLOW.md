@@ -3,6 +3,7 @@
 Tasks now live inline in `docs/ROADMAP/P#.md` under `## Tasks` (one file per phase). `xtask` reads/writes those sections and keeps the DAG/diagrams in sync.
 
 ## Commands
+
 - `cargo run -p xtask --bin xtask sync-dag <PHASE|all>` — imports [`docs/ROADMAP/DAG.csv`](docs/ROADMAP/DAG.csv) (and any per-phase DAGs), recomputes `blocked_by/blocks/status`, rewrites phase files, and regenerates `roadmap.mmd` + `roadmap.svg` (if `mmdc` is installed).
 - `cargo run -p xtask --bin xtask suggest [PHASE|all]` — list ready tasks sorted by value/duration and downstream depth.
 - `cargo run -p xtask --bin xtask set <TASK_ID> <open|blocked|closed>` — update status and recompute blockers.
@@ -12,18 +13,22 @@ Tasks now live inline in `docs/ROADMAP/P#.md` under `## Tasks` (one file per pha
 - `cargo run -p xtask --bin xtask enrich P2` — (legacy) refreshes P2 copy from canned plans.
 
 ## Status Marks
+
 - `open` / `blocked` / `closed` (shown as text in the task tables; blocking is recomputed from the DAG).
 
 ## Sources of Truth
+
 - Global DAG: [`docs/ROADMAP/DAG.csv`](docs/ROADMAP/DAG.csv) (from,to edges). Per-phase DAGs are optional but supported.
 - Phase task lists: `docs/ROADMAP/P#.md` `## Tasks` sections.
 - Diagrams: `docs/ROADMAP/roadmap.mmd` (Mermaid) and `docs/ROADMAP/roadmap.svg` (if `mmdc` ran).
 
 ## CI / Hooks
+
 - CI: `.github/workflows/roadmap.yml` runs `sync-dag all` and fails on diff. Main CI also runs pre-push-equivalent checks.
 - Local hooks are versioned in `scripts/git-hooks/`; run `scripts/setup-hooks.sh` to enable. Pre-push runs fmt, clippy, tests, doc, and `sync-dag all` (blocks on drift). Pre-commit runs fmt+clippy.
 
 ## Typical Loop
+
 1) `cargo run -p xtask --bin xtask suggest P3` (or phase/all) to pick a ready task.
 2) Follow the workflow below (failing tests first!).
 3) `cargo run -p xtask --bin xtask set <TASK_ID> closed`.
@@ -53,11 +58,13 @@ Use `cargo run -p xtask --bin xtask suggest <PHASE|all>` to list ready tasks ord
 We enforce a strict "test-first" workflow.
 
 ### Framework & Locations
+
 - **Framework**: Standard Rust `cargo test`.
 - **Integration Tests**: Located in `tests/*.rs`. Preferred for feature validation (black-box).
 - **Unit Tests**: Located in `src/**` (inline `mod tests`). Use for internal logic/invariants.
 
 ### Scaffolding a Failing Test
+
 To quickly start Task 2 (Write Failing Tests), use the helper script:
 
 ```bash
@@ -68,11 +75,14 @@ To quickly start Task 2 (Write Failing Tests), use the helper script:
 This creates a new integration test file in `tests/` with a failing assertion.
 
 ### Running Tests
+
 - **Full Suite (Local)**: `cargo test --all-features --all-targets`
 - **Specific Test**: `cargo test --test <test_name>` (integration) or `cargo test <function_name>` (unit).
 
 ### Pre-Push Hooks & CI
+
 Our pre-push hook ensures quality before you push. It runs:
+
 1. `cargo fmt -- --check`
 2. `cargo clippy --all-targets --all-features -- -D warnings -D missing_docs`
 3. `cargo test --all-features --all-targets` (Full Suite)
@@ -80,6 +90,7 @@ Our pre-push hook ensures quality before you push. It runs:
 5. `cargo run -p xtask --bin xtask sync-dag all` (Roadmap sync)
 
 **Troubleshooting Pre-Push Failures:**
+
 - **Tests failed?** Run `cargo test` locally to debug.
 - **Formatting/Linting?** Run `cargo fmt` and `cargo clippy --fix`.
 - **Roadmap drift?** Run `cargo run -p xtask --bin xtask sync-dag all` and commit the changes to `docs/ROADMAP/`.
@@ -90,4 +101,5 @@ Our pre-push hook ensures quality before you push. It runs:
 - Prefer `cargo run -p xtask --bin xtask sync-dag all` before pushing to avoid roadmap drift.
 
 ## Adding Cross-Phase Edges
+
 Edit [`docs/ROADMAP/DAG.csv`](docs/ROADMAP/DAG.csv) and run `sync-dag all` to propagate blockers, phase files, and diagrams.

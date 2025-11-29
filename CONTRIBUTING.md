@@ -19,11 +19,13 @@ We use `git` hooks to enforce code quality (formatting, linting, tests) before e
 
 **Option 1: Automatic Setup (Recommended)**
 Run the helper script to safely configure your local git repository:
+
 ```bash
 ./scripts/setup-hooks.sh
 ```
 
 **Option 2: Manual Setup**
+
 ```bash
 git config core.hooksPath scripts/git-hooks
 ```
@@ -32,7 +34,7 @@ git config core.hooksPath scripts/git-hooks
 Check that `scripts/git-hooks` contains files like `pre-commit` and `pre-push`.
 If the setup script fails, ensure you are in the project root and have write permissions to `.git/config`.
 
-4. Open a PR with a clear description and necessary tests.
+1. Open a PR with a clear description and necessary tests.
 
 ## 🧪 Testing Notes
 
@@ -116,7 +118,7 @@ For deeper criteria and examples, follow this checklist and keep it current; if 
 
 **Incident Response**: If a Release workflow job fails, triage the logs, fix the root cause on main, and rerun the failed job. If a published crate is bad, yank it on crates.io and cut a follow-up patch release.
 
-### Common Release/CI Failure Modes:
+### Common Release/CI Failure Modes
 
 **Auth/Token Issues**: Refresh GitHub/`CARGO_REGISTRY_TOKEN`.
 
@@ -130,4 +132,4 @@ For deeper criteria and examples, follow this checklist and keep it current; if 
 
 ## ⚙️ Suggested Local Setup (Optional)
 
-**Recommended**: Enable Actions notifications in personal settings https://github.com/settings/notifications (System → Actions) to track CI status.
+**Recommended**: Enable Actions notifications in personal settings <https://github.com/settings/notifications> (System → Actions) to track CI status.

@@ -1,13 +1,17 @@
 # ADR-008: Control Plane Wire Format (Canonical JSON)
 
 ## Status
+
 Accepted
 
 ## Context
+
 We need an interoperable wire format so any transport (HTTP, gRPC, JSONL, stdin JSONL) can carry control-plane commands into `CommandRouter`. Earlier ADR-004 defined the transport envelope and trait; this ADR nails down the canonical JSON representation to avoid drift across transports.
 
 ## Decision
+
 - Canonical wire object (`TransportEnvelope` JSON):
+
   ```jsonc
   {
     "id": "<string>",                // unique command id
@@ -26,6 +30,7 @@ We need an interoperable wire format so any transport (HTTP, gRPC, JSONL, stdin 
     }
   }
   ```
+
 - Responses use `CommandResult` rendered as JSON:
   - `Ack` -> `{ "result": "ack" }`
   - `Value(<string>)` -> `{ "result": "value", "value": "..." }`
@@ -37,18 +42,22 @@ We need an interoperable wire format so any transport (HTTP, gRPC, JSONL, stdin 
 - Schemas checked into [`schemas/transport-envelope.schema.json`](schemas/transport-envelope.schema.json) and [`schemas/command-result.schema.json`](schemas/command-result.schema.json).
 
 ## Rationale
+
 - Keeps command schema stable across transports and languages.
 - Enables tooling (CLI, SDKs) to validate and replay commands easily.
 - Auth envelope matches existing `AuthPayload` variants, ensuring a single source of truth.
 
 ## Consequences
+
 - Any new auth method must extend both `AuthPayload` and this schema.
 - Breaking changes to envelope or result shapes require versioning (future work: add optional `version` field if/when needed).
 
 ## Compatibility
+
 - Backward compatible with existing examples; transports already map into `TransportEnvelope`.
 - Works with JSONL streams (one envelope per line) for stdin/stdout CLIs.
 
 ## Open Questions
+
 - Should we add a `correlation_id` and `timestamp` to the wire by default? (Currently only inside `CommandMeta`/router.)
 - Need a formal JSON Schema export in future phases (not required now).

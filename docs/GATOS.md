@@ -16,7 +16,7 @@
 
 GATOS enables **verifiable, auditable infrastructure** where all state, policy, and computation history lives in Git as immutable commits.
 
-**Repository**: https://github.com/flyingrobots/gatos
+**Repository**: <https://github.com/flyingrobots/gatos>
 
 ---
 
@@ -43,6 +43,7 @@ GATOS provides **deterministic correctness** and **cryptographic verifiability**
 #### 1. **Retry Policies** (`RetryLayer`)
 
 **Features:**
+
 - Configurable backoff strategies (constant, linear, exponential)
 - Jitter modes (full, equal, decorrelated) to prevent thundering herds
 - Adaptive max attempts via `Adaptive<usize>` handles
@@ -80,11 +81,12 @@ let blob_fetcher = ServiceBuilder::new()
         .should_retry(|e| matches!(e, BlobError::NetworkTimeout | BlobError::ServiceUnavailable))
         .build()?)
     .service(s3_client);
-```
+```text
 
 #### 2. **Circuit Breaker** (`CircuitBreakerLayer`)
 
 **Features:**
+
 - Three-state machine: Closed → Open → HalfOpen
 - Configurable failure threshold, recovery timeout, half-open test calls
 - Adaptive thresholds via `Adaptive<T>` handles
@@ -125,11 +127,12 @@ let git_remote = ServiceBuilder::new()
         )?
     )?)
     .service(git_push_service);
-```
+```text
 
 #### 3. **Bulkhead** (`BulkheadLayer`)
 
 **Features:**
+
 - Concurrency limiting via semaphore
 - Adaptive concurrency via `Adaptive<usize>` handles
 - Immediate rejection when saturated (no queueing)
@@ -167,6 +170,7 @@ if success_rate < 0.9 {
 #### 4. **Timeout** (`TimeoutLayer`)
 
 **Features:**
+
 - Tokio-integrated timeouts
 - Adaptive duration via `Adaptive<Duration>` handles
 - Per-request timeout enforcement
@@ -195,6 +199,7 @@ let blob_fetcher = ServiceBuilder::new()
 #### 5. **Sequential Composition** (`Policy(A) + Policy(B)`)
 
 **Features:**
+
 - Stack layers: `A` wraps `B`
 - Standard middleware pattern
 - Precedence: `+` binds tighter than `|`
@@ -217,6 +222,7 @@ let worker = ServiceBuilder::new()
 #### 6. **Fallback Composition** (`Policy(A) | Policy(B)`)
 
 **Features:**
+
 - Try primary strategy, fall back to secondary on error
 - Original request retried with fallback stack
 - Use for graceful degradation
@@ -246,6 +252,7 @@ let blob_fetcher = ServiceBuilder::new()
 #### 7. **Fork-Join / Happy Eyeballs** (`Policy(A) & Policy(B)`)
 
 **Features:**
+
 - Race both strategies concurrently
 - Return first successful result
 - Use for low-latency diversity
@@ -283,6 +290,7 @@ let git_push = ServiceBuilder::new()
 #### 8. **Telemetry Sinks** (`TelemetrySink`)
 
 **Features:**
+
 - Rich `PolicyEvent` enum (retry attempts, circuit opened, bulkhead rejected, etc.)
 - Built-in sinks: `NullSink`, `LogSink`, `MemorySink`, `StreamingSink`
 - Composable sinks: `MulticastSink`, `FallbackSink`
@@ -344,6 +352,7 @@ let retry = RetryLayer::new(...)?.with_sink(stream);
 #### 9. **Adaptive Configuration** (`Adaptive<T>`)
 
 **Features:**
+
 - Lock-free reads via `arc-swap` (default) or `RwLock` (feature flag)
 - Live updates without redeployment
 - Integrates with control plane commands
@@ -370,6 +379,7 @@ adaptive_retry.set(5);  // Now retries up to 5 times
 #### 10. **Control Plane** (`CommandRouter`, `ConfigRegistry`)
 
 **Features:**
+
 - Transport-agnostic command infrastructure
 - Pluggable auth/audit
 - Built-in handlers: Set/Get/List/Reset, ReadConfig/WriteConfig
@@ -418,7 +428,7 @@ router.execute(cmd).await?;
 
 ### Architecture Overview
 
-```
+```text
 ┌─────────────────────────────────────────────────────────┐
 │                    GATOS Application                     │
 │  ┌────────────┐  ┌────────────┐  ┌────────────┐        │
@@ -854,6 +864,7 @@ impl AuthProvider for GatosTrustAuth {
 ## Mapping: Nine Lives Phases → GATOS Milestones
 
 ### Nine Lives P1: Observability Foundation ✅
+
 **Status**: Complete
 **Features**: Telemetry events, sinks, composition
 
@@ -869,6 +880,7 @@ impl AuthProvider for GatosTrustAuth {
 ---
 
 ### Nine Lives P2: Runtime Adaptive Tuning 🚧
+
 **Status**: ~50% complete (P2.01-P2.10, P2.17 closed)
 **Features**: Control plane, adaptive handles, config commands
 
@@ -884,6 +896,7 @@ impl AuthProvider for GatosTrustAuth {
 | AuditSink | M2 (Governance) | Record all config changes to audit refs |
 
 **Critical for GATOS:**
+
 - P2.14 (Transport abstraction) - needed for M8 (GATOS CLI integration)
 - P2.16 (AuthZ layer) - needed for M2 (governance integration)
 - P2.19 (ninelives-control crate) - separate control plane for GATOS
@@ -891,6 +904,7 @@ impl AuthProvider for GatosTrustAuth {
 ---
 
 ### Nine Lives P3: Adaptive Policies 📋
+
 **Status**: Planned
 **Features**: Auto-tuning retry/breaker/bulkhead based on telemetry
 
@@ -904,12 +918,14 @@ impl AuthProvider for GatosTrustAuth {
 | Telemetry aggregation | M6 (Explorer) | Feed metrics into GATOS state plane |
 
 **Critical for GATOS:**
+
 - P3.01-P3.03: Adaptive retry (job workers need this for M4)
 - P3.07-P3.09: Adaptive bulkhead (worker pool auto-scaling for M4)
 
 ---
 
 ### Nine Lives P4: Happy Eyeballs (Fork-Join) 📋
+
 **Status**: Planned
 **Features**: Concurrent racing of strategies (`&` operator)
 
@@ -923,12 +939,14 @@ impl AuthProvider for GatosTrustAuth {
 | IPv4/IPv6 Happy Eyeballs | M10 (Enterprise) | Network diversity for distributed clusters |
 
 **Critical for GATOS:**
+
 - P4.01-P4.05: Happy Eyeballs implementation (policy gate fast path for M2)
 - P4.08-P4.10: Concurrent fallback (blob fetch optimization for M5)
 
 ---
 
 ### Nine Lives P5: Observer & System State 📋
+
 **Status**: Planned
 **Features**: Aggregate telemetry into queryable state
 
@@ -942,12 +960,14 @@ impl AuthProvider for GatosTrustAuth {
 | Historical analysis | M7 (PoX) | Reproducible performance claims |
 
 **Critical for GATOS:**
+
 - P5.01-P5.05: Observer implementation (needed for M6 dashboard)
 - P5.08-P5.10: State queries (expose metrics to GATOS Explorer)
 
 ---
 
 ### Nine Lives P6: Shadow Evaluation 📋
+
 **Status**: Planned
 **Features**: What-if analysis for policy changes
 
@@ -961,12 +981,14 @@ impl AuthProvider for GatosTrustAuth {
 | Promotion triggers | M9 (Conformance) | Auto-promote successful shadow configs |
 
 **Critical for GATOS:**
+
 - P6.01-P6.04: Shadow policy evaluation (governance safety for M2)
 - P6.07-P6.09: Promotion logic (automated policy updates for M10)
 
 ---
 
 ### Nine Lives P7: Crate Split 📋
+
 **Status**: Planned
 **Features**: Separate ninelives-core, ninelives-control, etc.
 
@@ -980,12 +1002,14 @@ impl AuthProvider for GatosTrustAuth {
 | ninelives-sentinel | M10+ (Autonomy) | Self-healing (enterprise feature) |
 
 **Critical for GATOS:**
+
 - P7.01-P7.05: Core/control split (allows GATOS to use patterns without control overhead)
 - P7.08-P7.10: Observer separation (GATOS can substitute its own state aggregation)
 
 ---
 
 ### Nine Lives P8: Transport Adapters 📋
+
 **Status**: Planned
 **Features**: HTTP, gRPC, WebSocket control plane transports
 
@@ -999,12 +1023,14 @@ impl AuthProvider for GatosTrustAuth {
 | In-process channels | M4 (Job Plane) | Worker-local control |
 
 **Critical for GATOS:**
+
 - P8.01-P8.03: HTTP adapter (enables `gatos cmd` CLI for M8)
 - P8.05-P8.07: gRPC adapter (production control plane for M10)
 
 ---
 
 ### Nine Lives P9: Distributed Patterns 📋
+
 **Status**: Planned
 **Features**: Leader election, distributed tracing, coordinated resilience
 
@@ -1018,12 +1044,14 @@ impl AuthProvider for GatosTrustAuth {
 | Distributed tracing | M10+ (Observability) | Trace resilience across services |
 
 **Critical for GATOS:**
+
 - P9.01-P9.04: Distributed circuit breaker (cluster-wide KMS protection)
 - P9.07-P9.09: Distributed tracing (cross-service observability)
 
 ---
 
 ### Nine Lives P10: Production Hardening 📋
+
 **Status**: Planned
 **Features**: Benchmarks, zero-overhead optimizations, security audits
 
@@ -1037,6 +1065,7 @@ impl AuthProvider for GatosTrustAuth {
 | Security audit | M11 (Launch) | Third-party validation |
 
 **Critical for GATOS:**
+
 - P10.01-P10.04: Benchmarks (performance baseline for PoX)
 - P10.09-P10.12: Security hardening (required for M11 launch)
 
@@ -1045,11 +1074,14 @@ impl AuthProvider for GatosTrustAuth {
 ## Milestone-Driven Roadmap Summary
 
 ### GATOS M1-M2: Foundation (Current Phase)
+
 **Nine Lives Requirements:**
+
 - P2 (Control Plane) - runtime tuning for policy gate
 - Basic telemetry (P1) - audit policy decisions
 
 **Integration Priority:**
+
 1. GatosAuditSink (write events to audit refs)
 2. GatosTrustAuth (integrate with trust graph)
 3. Policy gate resilience (timeout + bulkhead)
@@ -1057,11 +1089,14 @@ impl AuthProvider for GatosTrustAuth {
 ---
 
 ### GATOS M3: Message Plane
+
 **Nine Lives Requirements:**
+
 - P2 (Retry + Jitter) - handle Git CAS races
 - P4 (Fork-Join) - race multiple Git remotes
 
 **Integration Priority:**
+
 1. Message publisher retry (exponential backoff + jitter)
 2. Multi-remote racing (Happy Eyeballs for Git push)
 3. Backpressure handling (adaptive bulkhead)
@@ -1069,12 +1104,15 @@ impl AuthProvider for GatosTrustAuth {
 ---
 
 ### GATOS M4: Job Plane
+
 **Nine Lives Requirements:**
+
 - P2 (Full resilience stack) - retry + circuit + bulkhead + timeout
 - P3 (Adaptive patterns) - auto-tune worker concurrency
 - P5 (Observer) - track job success/failure rates
 
 **Integration Priority:**
+
 1. Job executor resilience (complete policy stack)
 2. Worker pool bulkhead (adaptive concurrency)
 3. Proof-of-Execution retry (guarantee PoE generation)
@@ -1083,12 +1121,15 @@ impl AuthProvider for GatosTrustAuth {
 ---
 
 ### GATOS M5: Privacy & Opaque Pointers
+
 **Nine Lives Requirements:**
+
 - P2 (Circuit breaker) - protect KMS from cascading failures
 - P3 (Adaptive retry) - tune blob fetch based on error rate
 - P4 (Fork-join) - race cache vs. remote fetch
 
 **Integration Priority:**
+
 1. KMS circuit breaker (aggressive tripping)
 2. Blob fetch retry (handle transient S3 errors)
 3. Cache racing (local vs. remote concurrent fetch)
@@ -1096,11 +1137,14 @@ impl AuthProvider for GatosTrustAuth {
 ---
 
 ### GATOS M6: Explorer & Verification
+
 **Nine Lives Requirements:**
+
 - P5 (Observer) - aggregate metrics for dashboard
 - P8 (HTTP adapter) - expose metrics API
 
 **Integration Priority:**
+
 1. Real-time metrics dashboard
 2. GraphQL API for resilience state
 3. Historical performance queries
@@ -1108,11 +1152,14 @@ impl AuthProvider for GatosTrustAuth {
 ---
 
 ### GATOS M7: Proof-of-Experiment
+
 **Nine Lives Requirements:**
+
 - P5 (Observer) - verifiable performance claims
 - P6 (Shadow evaluation) - test without affecting prod
 
 **Integration Priority:**
+
 1. Reproducible performance benchmarks
 2. Shadow policy evaluation for experiments
 3. Verifiable resilience characteristics
@@ -1120,11 +1167,14 @@ impl AuthProvider for GatosTrustAuth {
 ---
 
 ### GATOS M8: Demos & Examples
+
 **Nine Lives Requirements:**
+
 - P8 (HTTP adapter) - CLI integration
 - P2 (Complete control plane) - runtime tuning demos
 
 **Integration Priority:**
+
 1. `gatos cmd` CLI integration
 2. Example policies (job, policy, message)
 3. Cookbook recipes for common patterns
@@ -1132,11 +1182,14 @@ impl AuthProvider for GatosTrustAuth {
 ---
 
 ### GATOS M9: Conformance Suite
+
 **Nine Lives Requirements:**
+
 - P6 (Shadow evaluation) - test conformance without risk
 - P10 (Benchmarks) - validate performance claims
 
 **Integration Priority:**
+
 1. Shadow policy conformance tests
 2. Performance benchmarks
 3. Integration test suite
@@ -1144,11 +1197,14 @@ impl AuthProvider for GatosTrustAuth {
 ---
 
 ### GATOS M10+: Enterprise & Scale
+
 **Nine Lives Requirements:**
+
 - P9 (Distributed patterns) - cluster-wide resilience
 - P10 (Production hardening) - security audit
 
 **Integration Priority:**
+
 1. Distributed circuit breakers
 2. Cluster-wide bulkheads
 3. Security hardening

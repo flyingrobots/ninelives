@@ -41,6 +41,7 @@ let strategy = fast_path | (retry + breaker + slow_path);
 ## 🚀 Quick Start
 
 Add to `Cargo.toml`:
+
 ```toml
 [dependencies]
 ninelives = "0.3"
@@ -85,14 +86,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 Pick a recipe from [`ninelives-cookbook`](https://docs.rs/ninelives-cookbook/latest/ninelives_cookbook/):
 
-- **Simple retry:** [`retry_fast`](https://docs.rs/ninelives-cookbook/latest/ninelives_cookbook/fn.retry_fast.html) — 3 attempts, 50ms exp backoff + jitter.
-- **Latency guard:** [`timeout_p95`](https://docs.rs/ninelives-cookbook/latest/ninelives_cookbook/fn.timeout_p95.html) — 300ms budget.
-- **Bulkhead:** [`bulkhead_isolate`](https://docs.rs/ninelives-cookbook/latest/ninelives_cookbook/fn.bulkhead_isolate.html) — protect shared deps.
-- **API guardrail (intermediate):** [`api_guardrail`](https://docs.rs/ninelives-cookbook/latest/ninelives_cookbook/fn.api_guardrail.html) — timeout + breaker + bulkhead.
-- **Reliable read (advanced):** [`reliable_read`](https://docs.rs/ninelives-cookbook/latest/ninelives_cookbook/fn.reliable_read.html) — fast path then fallback stack.
-- **Hedged read (tricky):** [`hedged_read`](https://docs.rs/ninelives-cookbook/latest/ninelives_cookbook/fn.hedged_read.html) — fork-join two differently tuned stacks.
-- **Hedge + fallback (god tier):** [`hedged_then_fallback`](https://docs.rs/ninelives-cookbook/latest/ninelives_cookbook/fn.hedged_then_fallback.html) — race two fast paths, then fall back to a sturdy stack.
-- **Sensible defaults:** [`sensible_defaults`](https://docs.rs/ninelives-cookbook/latest/ninelives_cookbook/fn.sensible_defaults.html) — timeout + retry + bulkhead starter pack.
+* **Simple retry:** [`retry_fast`](https://docs.rs/ninelives-cookbook/latest/ninelives_cookbook/fn.retry_fast.html) — 3 attempts, 50ms exp backoff + jitter.
+* **Latency guard:** [`timeout_p95`](https://docs.rs/ninelives-cookbook/latest/ninelives_cookbook/fn.timeout_p95.html) — 300ms budget.
+* **Bulkhead:** [`bulkhead_isolate`](https://docs.rs/ninelives-cookbook/latest/ninelives_cookbook/fn.bulkhead_isolate.html) — protect shared deps.
+* **API guardrail (intermediate):** [`api_guardrail`](https://docs.rs/ninelives-cookbook/latest/ninelives_cookbook/fn.api_guardrail.html) — timeout + breaker + bulkhead.
+* **Reliable read (advanced):** [`reliable_read`](https://docs.rs/ninelives-cookbook/latest/ninelives_cookbook/fn.reliable_read.html) — fast path then fallback stack.
+* **Hedged read (tricky):** [`hedged_read`](https://docs.rs/ninelives-cookbook/latest/ninelives_cookbook/fn.hedged_read.html) — fork-join two differently tuned stacks.
+* **Hedge + fallback (god tier):** [`hedged_then_fallback`](https://docs.rs/ninelives-cookbook/latest/ninelives_cookbook/fn.hedged_then_fallback.html) — race two fast paths, then fall back to a sturdy stack.
+* **Sensible defaults:** [`sensible_defaults`](https://docs.rs/ninelives-cookbook/latest/ninelives_cookbook/fn.sensible_defaults.html) — timeout + retry + bulkhead starter pack.
 
 Most recipes are adaptive: retry/timeout/circuit/bulkhead knobs can be updated live via the `Adaptive<T>` handles.
 
@@ -102,11 +103,11 @@ See [`ninelives-cookbook/examples/`](ninelives-cookbook/examples) for runnable d
 
 ## 🧭 Repo Layout (workspace)
 
-- `src/` — core policies, algebra, control plane.
-- `schemas/` — JSON Schemas for control-plane envelopes/results.
-- `ninelives-*` — integration crates (nats, kafka, elastic, etcd, prometheus, otlp, jsonl).
-- `ninelives-cookbook/` — ready-made policy recipes + examples.
-- `xtask/` — dev automation and integration test runners (`xtask it-*`).
+* `src/` — core policies, algebra, control plane.
+* `schemas/` — JSON Schemas for control-plane envelopes/results.
+* `ninelives-*` — integration crates (nats, kafka, elastic, etcd, prometheus, otlp, jsonl).
+* `ninelives-cookbook/` — ready-made policy recipes + examples.
+* `xtask/` — dev automation and integration test runners (`xtask it-*`).
 
 ## Appendix: Environment Variables
 
@@ -125,18 +126,21 @@ All project/test environment variables are prefixed with `NINE_LIVES_`.
 ## 🔋 Features
 
 ### 🛡️ Standard Primitives
-- **Retry:** Exponential/Linear/Constant backoff with full jitter support.
-- **Circuit Breaker:** Lock-free implementation. Automatically opens on failure spikes to protect downstream.
-- **Bulkhead:** Semaphored concurrency limits to prevent resource exhaustion.
-- **Timeout:** Strict latency bounds.
+
+* **Retry:** Exponential/Linear/Constant backoff with full jitter support.
+* **Circuit Breaker:** Lock-free implementation. Automatically opens on failure spikes to protect downstream.
+* **Bulkhead:** Semaphored concurrency limits to prevent resource exhaustion.
+* **Timeout:** Strict latency bounds.
 
 ### 🎛️ Control Plane (Adaptive)
+
 Turn static configs into live knobs. Nine Lives includes a runtime configuration system (`ConfigRegistry`, `CommandRouter`) that lets you adjust max retries, timeouts, or circuit breaker thresholds without restarting the service.
 
 ### 🛰️ Control Plane Wire Format
 
-- Canonical wire envelope: `TransportEnvelope { id, cmd, args, auth }`
-- Auth payload matches the Rust enum shape, e.g.:
+* Canonical wire envelope: `TransportEnvelope { id, cmd, args, auth }`
+* Auth payload matches the Rust enum shape, e.g.:
+
   ```json
   {
     "id": "cmd-1",
@@ -145,15 +149,18 @@ Turn static configs into live knobs. Nine Lives includes a runtime configuration
     "auth": { "Jwt": { "token": "your-jwt" } }
   }
   ```
+
 ### 🔌 Ecosystem
+
 Nine Lives is designed to integrate with your infrastructure:
-- [`ninelives-elastic`](ninelives-elastic/README.md)
-- [`ninelives-etcd`](ninelives-etcd/README.md)
-- [`ninelives-jsonl`](ninelives-jsonl/README.md)
-- [`ninelives-kafka`](ninelives-kafka/README.md)
-- [`ninelives-nats`](ninelives-nats/README.md)
-- [`ninelives-otlp`](ninelives-otlp/README.md)
-- [`ninelives-prometheus`](ninelives-prometheus/README.md)
+
+* [`ninelives-elastic`](ninelives-elastic/README.md)
+* [`ninelives-etcd`](ninelives-etcd/README.md)
+* [`ninelives-jsonl`](ninelives-jsonl/README.md)
+* [`ninelives-kafka`](ninelives-kafka/README.md)
+* [`ninelives-nats`](ninelives-nats/README.md)
+* [`ninelives-otlp`](ninelives-otlp/README.md)
+* [`ninelives-prometheus`](ninelives-prometheus/README.md)
 
 ---
 
@@ -175,10 +182,10 @@ Nine Lives is designed to integrate with your infrastructure:
 
 ## 🗺️ Roadmap
 
-- **Phase 1: Foundation** ✅ (Layers, Algebra, Telemetry)
-- **Phase 2: Control Plane** ✅ (Runtime Config, Command Protocol)
-- **Phase 3: Observer** 🚧 (Aggregation, Sentinel Logic)
-- **Future:** WASM-based Meta-Policies, Distributed Circuit Breaking.
+* **Phase 1: Foundation** ✅ (Layers, Algebra, Telemetry)
+* **Phase 2: Control Plane** ✅ (Runtime Config, Command Protocol)
+* **Phase 3: Observer** 🚧 (Aggregation, Sentinel Logic)
+* **Future:** WASM-based Meta-Policies, Distributed Circuit Breaking.
 
 See [ROADMAP.md](docs/ROADMAP/README.md) for details.
 
