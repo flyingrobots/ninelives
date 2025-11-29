@@ -255,7 +255,7 @@ where
 
         Box::pin(async move {
             // Sync capacity upward if desired increased
-            let desired = *max.get();
+            let desired = (*max.get()).max(1);
             let current_cap = capacity.load(Ordering::Acquire);
             if desired > current_cap {
                 semaphore.add_permits(desired - current_cap);
@@ -268,7 +268,7 @@ where
             // Try to acquire permit
             let permit = match semaphore.clone().try_acquire_owned() {
                 Ok(p) => {
-                    let max_cfg = *max.get();
+                    let max_cfg = desired;
                     let active_count = max_cfg.saturating_sub(available_before.min(max_cfg)) + 1;
                     // Emit acquired event
                     emit_best_effort(
@@ -282,8 +282,8 @@ where
                     p
                 }
                 Err(_) => {
-                    let max_cfg = *max.get();
-                    let active_count = max_cfg;
+                    let max_cfg = desired;
+                    let active_count = max_cfg.saturating_sub(available_before.min(max_cfg));
                     // Emit rejected event
                     emit_best_effort(
                         sink.clone(),
