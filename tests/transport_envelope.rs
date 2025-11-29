@@ -15,5 +15,9 @@ fn transport_envelope_roundtrip_json() {
 
     let serialized = serde_json::to_string(&env).unwrap();
     let de: TransportEnvelope = serde_json::from_str(&serialized).unwrap();
-    assert_eq!(env, de);
+
+    assert_eq!(env.id, de.id, "id field mismatch");
+    assert_eq!(env.cmd, de.cmd, "cmd field mismatch");
+    assert_eq!(env.args, de.args, "args field mismatch");
+    assert_eq!(env.auth, de.auth, "auth field mismatch");
 }
