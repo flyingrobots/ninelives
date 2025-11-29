@@ -14,10 +14,8 @@ async fn otlp_sink_compiles_and_emits() {
     let mut sink = OtlpSink::new(provider);
 
     // Emit a test event
-    let event = PolicyEvent::Retry(RetryEvent::Attempt {
-        attempt: 1,
-        delay: Duration::from_millis(100),
-    });
+    let event =
+        PolicyEvent::Retry(RetryEvent::Attempt { attempt: 1, delay: Duration::from_millis(100) });
 
     // Call the service (it will succeed - we're just testing it compiles/runs)
     let result = sink.call(event).await;

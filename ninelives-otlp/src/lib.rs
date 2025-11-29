@@ -78,10 +78,7 @@ fn map_event(event: &PolicyEvent) -> (Severity, String, &'static str, Vec<(&'sta
 
     match event {
         PolicyEvent::Retry(RetryEvent::Attempt { attempt, delay }) => {
-            let attrs = vec![
-                ("attempt", *attempt as i64),
-                ("delay_ms", delay.as_millis() as i64),
-            ];
+            let attrs = vec![("attempt", *attempt as i64), ("delay_ms", delay.as_millis() as i64)];
             (Severity::Info, "retry_attempt".to_string(), event_kind, attrs)
         }
         PolicyEvent::Retry(RetryEvent::Exhausted { total_attempts, total_duration }) => {
@@ -102,17 +99,11 @@ fn map_event(event: &PolicyEvent) -> (Severity, String, &'static str, Vec<(&'sta
             (Severity::Info, "circuit_closed".to_string(), event_kind, vec![])
         }
         PolicyEvent::Bulkhead(BulkheadEvent::Acquired { active_count, max_concurrency }) => {
-            let attrs = vec![
-                ("active", *active_count as i64),
-                ("max", *max_concurrency as i64),
-            ];
+            let attrs = vec![("active", *active_count as i64), ("max", *max_concurrency as i64)];
             (Severity::Info, "bulkhead_acquired".to_string(), event_kind, attrs)
         }
         PolicyEvent::Bulkhead(BulkheadEvent::Rejected { active_count, max_concurrency }) => {
-            let attrs = vec![
-                ("active", *active_count as i64),
-                ("max", *max_concurrency as i64),
-            ];
+            let attrs = vec![("active", *active_count as i64), ("max", *max_concurrency as i64)];
             (Severity::Warn, "bulkhead_rejected".to_string(), event_kind, attrs)
         }
         PolicyEvent::Timeout(TimeoutEvent::Occurred { timeout }) => {
