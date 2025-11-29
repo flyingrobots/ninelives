@@ -105,70 +105,8 @@ jobs:
       - name: Tests (all features)
         run: cargo test --all-features --all-targets
 
-  nats-integration:
-    needs: fmt-clippy-test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4.1.6
-      - uses: dtolnay/rust-toolchain@v1
-        with:
-          toolchain: 1.82.0
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2.7.3
-      - name: Run NATS integration (docker compose)
-        run: cargo run -p xtask -- it-nats
-
-  kafka-integration:
-    needs: fmt-clippy-test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4.1.6
-      - uses: dtolnay/rust-toolchain@v1
-        with:
-          toolchain: 1.82.0
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2.7.3
-      - name: Run Kafka integration (docker compose)
-        run: cargo run -p xtask -- it-kafka
-
-  elastic-integration:
-    needs: fmt-clippy-test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4.1.6
-      - uses: dtolnay/rust-toolchain@v1
-        with:
-          toolchain: 1.82.0
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2.7.3
-      - name: Run Elasticsearch integration (docker compose)
-        run: cargo run -p xtask -- it-elastic
-
-  otlp-integration:
-    needs: fmt-clippy-test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4.1.6
-      - uses: dtolnay/rust-toolchain@v1
-        with:
-          toolchain: 1.82.0
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2.7.3
-      - name: Run OTLP integration (docker compose)
-        run: cargo run -p xtask -- it-otlp
-
-  etcd-integration:
-    needs: fmt-clippy-test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4.1.6
-      - uses: dtolnay/rust-toolchain@v1
-        with:
-          toolchain: 1.82.0
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2.7.3
-      - name: Run etcd integration (docker compose)
-        run: cargo run -p xtask -- it-etcd
+  # Integration tests have been moved to .github/workflows/integration-tests.yml
+  # to reduce duplication and improve maintainability.
 
   msrv:
     needs: actionlint
