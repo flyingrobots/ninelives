@@ -17,7 +17,7 @@ pub struct DynamicConfig<T> {
     #[cfg(not(feature = "adaptive-rwlock"))]
     inner: Arc<ArcSwap<T>>,
     #[cfg(feature = "adaptive-rwlock")]
-    inner: Arc<RwLock<T>>,
+    inner: Arc<RwLock<Arc<T>>>, // Store Arc<T>
 }
 
 // Back-compat alias for existing code/tests referencing Adaptive.
@@ -39,7 +39,7 @@ impl<T> DynamicConfig<T> {
         }
         #[cfg(feature = "adaptive-rwlock")]
         {
-            Self { inner: Arc::new(RwLock::new(value)) }
+            Self { inner: Arc::new(RwLock::new(Arc::new(value))) } // Wrap initial value in Arc
         }
     }
 
@@ -51,11 +51,8 @@ impl<T> DynamicConfig<T> {
 
     /// Snapshot the current value (Clone under RwLock backend).
     #[cfg(feature = "adaptive-rwlock")]
-    pub fn get(&self) -> Arc<T>
-    where
-        T: Clone,
-    {
-        Arc::new(self.inner.read().unwrap().clone())
+    pub fn get(&self) -> Arc<T> {
+        self.inner.read().expect("RwLock poisoned").clone() // Clone the inner Arc<T>
     }
 
     /// Replace the value entirely.
@@ -66,7 +63,7 @@ impl<T> DynamicConfig<T> {
         }
         #[cfg(feature = "adaptive-rwlock")]
         {
-            *self.inner.write().expect("adaptive config lock poisoned") = value;
+            *self.inner.write().expect("adaptive config lock poisoned") = Arc::new(value); // Store Arc<T>
         }
     }
 
@@ -87,11 +84,11 @@ impl<T> DynamicConfig<T> {
                 // CAS failed, retry with new current value
             }
         }
-        #[cfg(feature = "adaptive-rwlock")]
+        #[cfg(feature = "adaptive-rwlock") ]
         {
-            let cur = self.inner.read().expect("adaptive config lock poisoned").clone();
-            let new_val = f(&cur);
-            *self.inner.write().expect("adaptive config lock poisoned") = new_val;
+            let cur_arc = self.inner.read().expect("adaptive config lock poisoned").clone();
+            let new_val = f(&cur_arc);
+            *self.inner.write().expect("adaptive config lock poisoned") = Arc::new(new_val);
         }
     }
 }
