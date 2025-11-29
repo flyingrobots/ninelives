@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Determine the directory of this script
-THIS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Determine the directory of this script (physical path to avoid symlink ancestors)
+THIS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 HOOKS_DIR="${THIS_DIR}/git-hooks"
 
 # 1. Verify existence and directory type
@@ -14,9 +14,9 @@ fi
 # 2. Resolve canonical path (POSIX compliant) to prevent symlink redirection
 CANONICAL_HOOKS_DIR="$(cd "${HOOKS_DIR}" && pwd -P)"
 
-if [ "${HOOKS_DIR}" != "${CANONICAL_HOOKS_DIR}" ]; then
-    echo "Error: Hooks directory resolves to '${CANONICAL_HOOKS_DIR}', expected '${HOOKS_DIR}'." >&2
-    echo "Symlinked hooks directories are not supported for security reasons." >&2
+# Explicitly reject the hooks directory itself being a symlink.
+if [ -L "${HOOKS_DIR}" ]; then
+    echo "Error: Hooks directory '${HOOKS_DIR}' is a symlink; symlinked hooks are not supported." >&2
     exit 1
 fi
 

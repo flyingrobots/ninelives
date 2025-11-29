@@ -311,7 +311,7 @@ where
     S1: tower_service::Service<Request> + Clone + Send + 'static,
     S1::Future: Send + 'static,
     S1::Response: Send + 'static,
-    S1::Error: Send + 'static,
+    S1::Error: Send + 'static + std::fmt::Debug,
     S2: tower_service::Service<Request, Response = S1::Response, Error = S1::Error>
         + Clone
         + Send
@@ -502,14 +502,29 @@ where
                     // Left failed, try right
                     match right_fut.await {
                         Ok(resp) => Ok(resp),
-                        Err(_) => Err(left_err), // Both failed, return left error
+                        Err(right_err) => {
+                            // Surface both failures for diagnostics while returning deterministic left error.
+                            tracing::debug!(
+                                left_error = ?left_err,
+                                right_error = ?right_err,
+                                "ForkJoinService: both paths failed; returning left error"
+                            );
+                            Err(left_err)
+                        } // Both failed, return left error
                     }
                 }
-                Either::Right((Err(_right_err), left_fut)) => {
+                Either::Right((Err(right_err), left_fut)) => {
                     // Right failed, try left
                     match left_fut.await {
                         Ok(resp) => Ok(resp),
-                        Err(left_err) => Err(left_err), // Both failed, return deterministic left error
+                        Err(left_err) => {
+                            tracing::debug!(
+                                left_error = ?left_err,
+                                right_error = ?right_err,
+                                "ForkJoinService: both paths failed; returning left error"
+                            );
+                            Err(left_err)
+                        } // Both failed, return deterministic left error
                     }
                 }
             }

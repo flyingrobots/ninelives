@@ -42,7 +42,10 @@ jobs:
       - name: Ensure feat/fix add tests
         if: startsWith(steps.msg.outputs.msg, 'feat') || startsWith(steps.msg.outputs.msg, 'fix')
         run: |
-          git fetch origin ${{ steps.base.outputs.ref }} --quiet
+          # For push events the ref is already present (fetch-depth: 0); skip fetching origin/* refs.
+          if [[ ! "${{ steps.base.outputs.ref }}" =~ ^origin/ ]]; then
+            git fetch origin ${{ steps.base.outputs.ref }} --quiet
+          fi
           files=$(git diff --name-only ${{ steps.base.outputs.ref }}...HEAD)
           if echo "$files" | grep -E '(tests?/|_test\\.rs|tests\\.rs)' >/dev/null; then
             echo "Tests detected in diff"
@@ -55,7 +58,12 @@ jobs:
         run: |
           sudo apt-get update >/dev/null && sudo apt-get install -y jq >/dev/null
           cargo install cargo-llvm-cov --locked --version 0.6.21
-          git fetch origin ${{ steps.base.outputs.ref }} --quiet
+          # Skip fetch for push events where the ref is already present (origin/*).
+          if [[ ! "${{ steps.base.outputs.ref }}" =~ ^origin/ ]]; then
+            git fetch origin ${{ steps.base.outputs.ref }} --quiet
+          fi
+          # Ensure a clean target directory for the worktree.
+          rm -rf /tmp/base
           git worktree add /tmp/base ${{ steps.base.outputs.ref }}
           run_cov() {
             dir=$1
@@ -68,20 +76,23 @@ jobs:
             jq -r '.line.percent' /tmp/cov.json
             popd >/dev/null
           }
-          base_cov=$(run_cov /tmp/base)
-          head_cov=$(run_cov .)
-          echo "base coverage: $base_cov"
-          echo "head coverage: $head_cov"
+          base_raw=$(run_cov /tmp/base)
+          head_raw=$(run_cov .)
+          echo "base coverage (raw): $base_raw"
+          echo "head coverage (raw): $head_raw"
 
-          # Format floats to 2 decimal places for consistent parsing
-          bcov=$(printf '%.2f' "$base_cov")
-          hcov=$(printf '%.2f' "$head_cov")
-
-          # If parsing failed, exit with an error.
-          if [ -z "$bcov" ] || [ -z "$hcov" ]; then
-            echo "error: Failed to parse coverage output. Base: '$base_cov', Head: '$head_cov'." >&2
+          # Validate raw values before formatting.
+          is_num() {
+            [[ -n "$1" && "$1" != "null" && "$1" =~ ^[0-9]+(\.[0-9]+)?$ ]]
+          }
+          if ! is_num "$base_raw" || ! is_num "$head_raw"; then
+            echo "error: coverage output is not numeric. Base: '$base_raw', Head: '$head_raw'." >&2
             exit 1
           fi
+
+          # Format floats to 2 decimal places after validation.
+          bcov=$(printf '%.2f' "$base_raw")
+          hcov=$(printf '%.2f' "$head_raw")
 
           # Perform integer-based comparison on whole percentages (rounded)
           b_int=$(awk -v val="$bcov" 'BEGIN { print int(val + 0.5) }') # Round to nearest integer
@@ -156,9 +167,7 @@ jobs:
         with:
           toolchain: 1.82.0
       - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-llvm-cov
+        run: cargo install cargo-llvm-cov --locked --version 0.6.21
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2.7.3
       - name: Coverage (fail under 80%)

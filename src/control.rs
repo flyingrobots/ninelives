@@ -182,8 +182,12 @@ impl AuthRegistry {
                 for p in &self.providers {
                     match p.authenticate(&env.meta, env.auth.as_ref()) {
                         Ok(ctx) => {
-                            p.authorize(&ctx, env.cmd.label(), &env.meta)?;
-                            return Ok(ctx);
+                            // If a provider authenticates but denies authorization, stop immediately
+                            // to prevent later providers from overriding an explicit deny.
+                            match p.authorize(&ctx, env.cmd.label(), &env.meta) {
+                                Ok(()) => return Ok(ctx),
+                                Err(e) => return Err(e),
+                            }
                         }
                         Err(e) => last_err = Some(e),
                     }

@@ -2,7 +2,8 @@
 /target
 /.cargo/
 
-# Cargo lockfile is committed
+# Ignore only the workspace-root Cargo.lock; per-crate Cargo.lock files in subdirectories are not ignored.
+/Cargo.lock
 
 # macOS noise
 .DS_Store
