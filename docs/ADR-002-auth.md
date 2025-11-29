@@ -51,8 +51,15 @@ pub struct CommandEnvelope<C> {
 
 pub trait AuthProvider {
     fn name(&self) -> &'static str;
-    fn authenticate(&self, env: &CommandEnvelope<impl CmdTrait>) -> Result<AuthContext, AuthError>;
-    fn authorize(&self, ctx: &AuthContext, env: &CommandEnvelope<impl CmdTrait>) -> Result<(), AuthzError>;
+    fn authenticate<Cmd: CmdTrait>(
+        &self,
+        env: &CommandEnvelope<Cmd>,
+    ) -> Result<AuthContext, AuthError>;
+    fn authorize<Cmd: CmdTrait>(
+        &self,
+        ctx: &AuthContext,
+        env: &CommandEnvelope<Cmd>,
+    ) -> Result<(), AuthzError>;
 }
 ```
 

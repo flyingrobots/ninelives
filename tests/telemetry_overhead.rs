@@ -1,3 +1,4 @@
+#![cfg(feature = "bench-telemetry")]
 #![allow(missing_docs)]
 
 use hdrhistogram::Histogram;

@@ -128,7 +128,7 @@ where
         validate(transport_envelope_schema(), &env_val)?;
 
         let (cmd_env, ctx) = (self.to_command)(env)?;
-        let res = self.router.execute(cmd_env).await.map_err(|e| format!("{}", e))?;
+        let res = self.router.execute(cmd_env).await.map_err(|e| e.to_string())?;
 
         // Runtime validation of outgoing CommandResult against JSON Schema
         // (Optional: can be feature-gated for performance)

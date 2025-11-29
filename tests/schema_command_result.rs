@@ -19,10 +19,31 @@ fn command_result_matches_schema_variants() {
     for sample in samples {
         assert_valid(&compiled, sample);
     }
+
+    let invalid_samples = [
+        json!({"result": "ack", "extra": true}),                     // extra field
+        json!({"result": "value"}),                                  // missing value
+        json!({"result": "error"}),                                  // missing message
+        json!({"result": "unknown"}),                                // unknown result variant
+        json!({}),                                                   // empty object
+    ];
+
+    for sample in invalid_samples {
+        assert!(
+            compiled.validate(&sample).is_err(),
+            "schema unexpectedly accepted invalid sample: {sample}"
+        );
+    }
 }
 fn assert_valid(schema: &jsonschema::JSONSchema, value: serde_json::Value) {
     if let Err(errs) = schema.validate(&value) {
-        let msg = errs.map(|e| e.to_string()).collect::<Vec<_>>().join(", ");
-        panic!("{}", msg);
+        let msg = errs.fold(String::new(), |mut acc, e| {
+            if !acc.is_empty() {
+                acc.push_str(", ");
+            }
+            acc.push_str(&e.to_string());
+            acc
+        });
+        panic!("Schema validation failed: {}", msg);
     }
 }

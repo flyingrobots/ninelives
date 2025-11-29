@@ -1,5 +1,3 @@
-
-
 use ninelives::control::AuthPayload;
 use ninelives::TransportEnvelope;
 use serde_json::json;
@@ -13,8 +11,11 @@ fn transport_envelope_roundtrip_json() {
         auth: Some(AuthPayload::Opaque(vec![1, 2, 3])),
     };
 
-    let serialized = serde_json::to_string(&env).expect(&format!("failed to serialize TransportEnvelope: {:?}", env));
-    let de: TransportEnvelope = serde_json::from_str(&serialized).expect(&format!("failed to deserialize TransportEnvelope from JSON: {}", serialized));
+    let serialized = serde_json::to_string(&env)
+        .unwrap_or_else(|e| panic!("failed to serialize TransportEnvelope: {e:?}"));
+    let de: TransportEnvelope = serde_json::from_str(&serialized).unwrap_or_else(|e| {
+        panic!("failed to deserialize TransportEnvelope from JSON ({serialized}): {e:?}")
+    });
 
     assert_eq!(env.id, de.id, "id field mismatch");
     assert_eq!(env.cmd, de.cmd, "cmd field mismatch");

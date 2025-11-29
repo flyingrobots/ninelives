@@ -31,4 +31,6 @@ fn command_context_missing_id_fails() {
     let input = r#"{"args":{"foo":1}}"#;
     let err = serde_json::from_str::<CommandContext>(input).unwrap_err();
     assert!(err.is_data());
+    let msg = err.to_string().to_lowercase();
+    assert!(msg.contains("id") || msg.contains("missing"), "error message lacked id reference: {msg}");
 }
