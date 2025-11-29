@@ -3,7 +3,7 @@ name = "ninelives-elastic"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
-description = "Optional Elasticsearch telemetry sink for ninelives"
+description = "Elasticsearch telemetry sink for ninelives (bring-your-own client)"
 license.workspace = true
 publish = true
 repository.workspace = true
@@ -13,11 +13,9 @@ readme = "README.md"
 ninelives = { workspace = true }
 tracing = "0.1"
 tower-service = { workspace = true }
-
-# Optional heavy client
-elasticsearch = { version = "8.16.0-alpha.1", optional = true }
-reqwest = { version = "0.12", features = ["json", "gzip", "rustls-tls"], optional = true }
-tokio = { version = "1", features = ["rt", "macros"], optional = true }
+serde_json.workspace = true
+elasticsearch = { version = "8.19.0-alpha.1", default-features = false, features = ["rustls-tls"] }
+tokio = { version = "1", features = ["rt", "macros"] }
 
 [features]
-client = ["elasticsearch", "reqwest", "tokio"]
+default = []
