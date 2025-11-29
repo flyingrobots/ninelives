@@ -24,6 +24,10 @@ async fn channel_transport_roundtrip() {
     let router = Arc::new(ninelives::control::CommandRouter::new(auth, handler, history));
 
     let transport = ChannelTransport::new(router);
-    let res = transport.send(env(BuiltInCommand::List)).await.unwrap();
+    let res =
+        tokio::time::timeout(Duration::from_secs(5), transport.send(env(BuiltInCommand::List)))
+            .await
+            .expect("transport.send timed out")
+            .unwrap();
     assert_eq!(res, CommandResult::List(vec![]));
 }

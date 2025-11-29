@@ -6,7 +6,7 @@ Prometheus metrics sink for the `ninelives` resilience library. Bring your own `
 
 ```toml
 ninelives = "0.3"
-ninelives-prometheus = { path = "../ninelives-prometheus" }
+ninelives-prometheus = "0.3"
 prometheus = "0.13"
 ```
 
@@ -19,7 +19,7 @@ use tower::Service;
 
 // 1. Create Registry and Sink
 let registry = Registry::new();
-let prom_sink = PrometheusSink::new(registry.clone());
+let prom_sink = PrometheusSink::new(registry.clone()); // can return Err; handle in real code
 let mut sink = NonBlockingSink::with_capacity(prom_sink, 1024);
 
 // 2. Emit an event (normally done automatically by policies)

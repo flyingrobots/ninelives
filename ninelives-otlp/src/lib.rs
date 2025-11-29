@@ -81,18 +81,22 @@ fn map_event(event: &PolicyEvent) -> (Severity, String, &'static str, Vec<(&'sta
 
     match event {
         PolicyEvent::Retry(RetryEvent::Attempt { attempt, delay }) => {
-            let attrs = vec![("attempt", *attempt as i64), ("delay_ms", delay.as_millis() as i64)];
+            let delay_ms = delay.as_millis().try_into().unwrap_or(i64::MAX);
+            let attrs = vec![
+                ("attempt", (*attempt).try_into().unwrap_or(i64::MAX)),
+                ("delay_ms", delay_ms),
+            ];
             (Severity::Info, "retry_attempt".to_string(), event_kind, attrs)
         }
         PolicyEvent::Retry(RetryEvent::Exhausted { total_attempts, total_duration }) => {
             let attrs = vec![
-                ("total_attempts", *total_attempts as i64),
-                ("total_duration_ms", total_duration.as_millis() as i64),
+                ("total_attempts", (*total_attempts).try_into().unwrap_or(i64::MAX)),
+                ("total_duration_ms", total_duration.as_millis().try_into().unwrap_or(i64::MAX)),
             ];
             (Severity::Warn, "retry_exhausted".to_string(), event_kind, attrs)
         }
         PolicyEvent::CircuitBreaker(CircuitBreakerEvent::Opened { failure_count }) => {
-            let attrs = vec![("failure_count", *failure_count as i64)];
+            let attrs = vec![("failure_count", (*failure_count).try_into().unwrap_or(i64::MAX))];
             (Severity::Warn, "circuit_opened".to_string(), event_kind, attrs)
         }
         PolicyEvent::CircuitBreaker(CircuitBreakerEvent::HalfOpen) => {
@@ -102,23 +106,29 @@ fn map_event(event: &PolicyEvent) -> (Severity, String, &'static str, Vec<(&'sta
             (Severity::Info, "circuit_closed".to_string(), event_kind, vec![])
         }
         PolicyEvent::Bulkhead(BulkheadEvent::Acquired { active_count, max_concurrency }) => {
-            let attrs = vec![("active", *active_count as i64), ("max", *max_concurrency as i64)];
+            let attrs = vec![
+                ("active", (*active_count).try_into().unwrap_or(i64::MAX)),
+                ("max", (*max_concurrency).try_into().unwrap_or(i64::MAX)),
+            ];
             (Severity::Info, "bulkhead_acquired".to_string(), event_kind, attrs)
         }
         PolicyEvent::Bulkhead(BulkheadEvent::Rejected { active_count, max_concurrency }) => {
-            let attrs = vec![("active", *active_count as i64), ("max", *max_concurrency as i64)];
+            let attrs = vec![
+                ("active", (*active_count).try_into().unwrap_or(i64::MAX)),
+                ("max", (*max_concurrency).try_into().unwrap_or(i64::MAX)),
+            ];
             (Severity::Warn, "bulkhead_rejected".to_string(), event_kind, attrs)
         }
         PolicyEvent::Timeout(TimeoutEvent::Occurred { timeout }) => {
-            let attrs = vec![("timeout_ms", timeout.as_millis() as i64)];
+            let attrs = vec![("timeout_ms", timeout.as_millis().try_into().unwrap_or(i64::MAX))];
             (Severity::Warn, "timeout".to_string(), event_kind, attrs)
         }
         PolicyEvent::Request(RequestOutcome::Success { duration }) => {
-            let attrs = vec![("duration_ms", duration.as_millis() as i64)];
+            let attrs = vec![("duration_ms", duration.as_millis().try_into().unwrap_or(i64::MAX))];
             (Severity::Info, "request_success".to_string(), event_kind, attrs)
         }
         PolicyEvent::Request(RequestOutcome::Failure { duration }) => {
-            let attrs = vec![("duration_ms", duration.as_millis() as i64)];
+            let attrs = vec![("duration_ms", duration.as_millis().try_into().unwrap_or(i64::MAX))];
             (Severity::Warn, "request_failure".to_string(), event_kind, attrs)
         }
     }

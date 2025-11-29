@@ -1,5 +1,6 @@
 #![allow(missing_docs)]
 
+use ninelives::adaptive::Adaptive;
 use ninelives::control::{
     AuthMode, AuthRegistry, BuiltInCommand, CommandEnvelope, CommandMeta, CommandResult,
     ConfigRegistry, InMemoryHistory, PassthroughAuth,
@@ -7,7 +8,6 @@ use ninelives::control::{
 use ninelives::{Transport, TransportEnvelope, TransportRouter};
 use serde_json::json;
 use std::sync::Arc;
-use ninelives::adaptive::Adaptive;
 
 // Simple JSON transport for testing.
 #[derive(Clone)]
