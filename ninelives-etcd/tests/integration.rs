@@ -15,14 +15,29 @@ async fn writes_events_to_etcd() {
 
     let prefix = format!("policy_events/{}", uuid::Uuid::new_v4());
     let mut sink = EtcdSink::new(prefix.clone(), client.clone()).expect("valid sink");
+    struct Cleanup {
+        client: etcd_client::Client,
+        prefix: String,
+    }
+    impl Drop for Cleanup {
+        fn drop(&mut self) {
+            let client = self.client.clone();
+            let prefix = self.prefix.clone();
+            let handle = tokio::runtime::Handle::current();
+            let _ = handle.block_on(async move {
+                let _ = client
+                    .delete(prefix.as_str(), Some(etcd_client::DeleteOptions::new().with_prefix()))
+                    .await;
+            });
+        }
+    }
+    let _guard = Cleanup { client: client.clone(), prefix: prefix.clone() };
 
     let event = PolicyEvent::Retry(RetryEvent::Attempt {
         attempt: 1,
         delay: std::time::Duration::from_millis(50),
     });
-    sink.call(event.clone())
-        .await
-        .expect(&format!("Failed to send event to EtcdSink: {:?}", event));
+    sink.call(event).await.expect("Failed to send event to EtcdSink");
 
     // read back latest key under prefix
     let resp = client
@@ -43,22 +58,8 @@ async fn writes_events_to_etcd() {
 
     let kv = &kvs[0];
     let value_str = std::str::from_utf8(kv.value()).expect("value should be valid UTF-8");
-
-    // At minimum, verify the event type and basic structure
-    assert!(
-        value_str.contains("retry_attempt"),
-        "expected event to contain 'retry_attempt', got: {}",
-        value_str
-    );
-    assert!(
-        value_str.contains("50") && value_str.contains("attempt"),
-        "expected event to contain attempt/delay info, got: {}",
-        value_str
-    );
-
-    // Cleanup
-    client
-        .delete(prefix.as_str(), Some(etcd_client::DeleteOptions::new().with_prefix()))
-        .await
-        .expect("cleanup failed");
+    let json: serde_json::Value = serde_json::from_str(value_str).expect("value should be JSON");
+    assert_eq!(json["kind"], "retry_attempt", "kind mismatch");
+    assert_eq!(json["attempt"], 1, "attempt mismatch");
+    assert_eq!(json["delay_ms"], 50, "delay_ms mismatch");
 }

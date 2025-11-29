@@ -2,8 +2,30 @@ use elasticsearch::{Elasticsearch, SearchParts};
 use ninelives::telemetry::{PolicyEvent, RetryEvent};
 use ninelives_elastic::ElasticSink;
 use serde_json::json;
+use tokio::runtime::Handle;
+use tower::ServiceExt;
 use tower_service::Service;
 use uuid::Uuid; // Added for unique index generation
+
+struct Cleanup {
+    client: Elasticsearch,
+    index: String,
+}
+
+impl Drop for Cleanup {
+    fn drop(&mut self) {
+        let client = self.client.clone();
+        let index = self.index.clone();
+        let handle = Handle::current();
+        let _ = handle.block_on(async move {
+            let _ = client
+                .indices()
+                .delete(elasticsearch::indices::IndicesDeleteParts::Index(&[&index]))
+                .send()
+                .await;
+        });
+    }
+}
 
 // Requires Elasticsearch running. If NINE_LIVES_TEST_ELASTIC_URL is unset, the test skips.
 #[tokio::test]
@@ -20,12 +42,14 @@ async fn indexes_policy_events() {
         elasticsearch::http::transport::Transport::single_node(&url).expect("transport");
     let client = Elasticsearch::new(transport);
     let mut sink = ElasticSink::new(client.clone(), index.clone());
+    let _guard = Cleanup { client: client.clone(), index: index.clone() };
 
     let event = PolicyEvent::Retry(RetryEvent::Attempt {
         attempt: 1,
         delay: std::time::Duration::from_millis(50),
     });
-    sink.call(event.clone()).await.expect("failed to sink policy event to Elasticsearch");
+    sink.ready().await.expect("sink ready");
+    sink.call(event).await.expect("failed to sink policy event to Elasticsearch");
 
     // refresh index then search
     client
@@ -55,12 +79,4 @@ async fn indexes_policy_events() {
     assert_eq!(source["kind"], "retry_attempt", "kind mismatch");
     assert_eq!(source["attempt"], 1, "attempt mismatch");
     assert_eq!(source["delay_ms"], 50, "delay_ms mismatch");
-
-    // Cleanup: delete the unique index
-    client
-        .indices()
-        .delete(elasticsearch::indices::IndicesDeleteParts::Index(&[&index]))
-        .send()
-        .await
-        .expect("Failed to delete index after test");
 }

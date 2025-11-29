@@ -20,22 +20,25 @@ use std::task::{Context, Poll};
 #[derive(Clone, Debug)]
 pub struct OtlpSink<P> {
     provider: P,
+    logger: P::Logger,
 }
 
 impl<P> OtlpSink<P>
 where
     P: LoggerProvider + Clone + Send + Sync + 'static,
+    P::Logger: Clone,
 {
     /// Create a sink from an existing OTLP logger provider
     pub fn new(provider: P) -> Self {
-        Self { provider }
+        let logger = provider.logger("ninelives");
+        Self { provider, logger }
     }
 }
 
 impl<P> tower_service::Service<PolicyEvent> for OtlpSink<P>
 where
     P: LoggerProvider + Clone + Send + Sync + 'static,
-    P::Logger: Send,
+    P::Logger: Clone + Send + Sync + 'static,
 {
     type Response = ();
     type Error = Infallible;
@@ -46,7 +49,7 @@ where
     }
 
     fn call(&mut self, event: PolicyEvent) -> Self::Future {
-        let logger = self.provider.logger("ninelives");
+        let logger = self.logger.clone();
         Box::pin(async move {
             let (severity, body, event_kind, numeric_attrs) = map_event(&event);
             let mut record = logger.create_log_record();

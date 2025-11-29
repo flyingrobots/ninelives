@@ -12,7 +12,7 @@ readme = "README.md"
 [dependencies]
 ninelives = { workspace = true }
 serde_json.workspace = true
-tracing = "0.1"
+tracing.workspace = true
 rdkafka = { version = "0.38", features = ["tokio"] }
 tokio = { version = "1", features = ["rt", "macros"] }
 tower-service = { workspace = true }
