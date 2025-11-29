@@ -85,14 +85,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 Pick a recipe from [`ninelives-cookbook`](ninelives-cookbook/src/lib.rs):
 
-- **Simple retry:** [`retry_fast`](ninelives-cookbook/src/lib.rs#L15) — 3 attempts, 50ms exp backoff + jitter.
-- **Latency guard:** [`timeout_p95`](ninelives-cookbook/src/lib.rs#L33) — 300ms budget.
-- **Bulkhead:** [`bulkhead_isolate(max)`](ninelives-cookbook/src/lib.rs#L39) — protect shared deps.
-- **API guardrail (intermediate):** [`api_guardrail`](ninelives-cookbook/src/lib.rs#L74) — timeout + breaker + bulkhead.
-- **Reliable read (advanced):** [`reliable_read`](ninelives-cookbook/src/lib.rs#L48) — fast path then fallback stack.
-- **Hedged read (tricky):** [`hedged_read`](ninelives-cookbook/src/lib.rs#L90) — fork-join two differently tuned stacks.
-- **Hedge + fallback (god tier):** [`hedged_then_fallback`](ninelives-cookbook/src/lib.rs#L129) — race two fast paths, then fall back to a sturdy stack.
-- **Sensible defaults:** [`sensible_defaults`](ninelives-cookbook/src/lib.rs#L112) — timeout + retry + bulkhead starter pack.
+- **Simple retry:** [`retry_fast`](ninelives-cookbook/src/lib.rs) — 3 attempts, 50ms exp backoff + jitter.
+- **Latency guard:** [`timeout_p95`](ninelives-cookbook/src/lib.rs) — 300ms budget.
+- **Bulkhead:** [`bulkhead_isolate(max)`](ninelives-cookbook/src/lib.rs) — protect shared deps.
+- **API guardrail (intermediate):** [`api_guardrail`](ninelives-cookbook/src/lib.rs) — timeout + breaker + bulkhead.
+- **Reliable read (advanced):** [`reliable_read`](ninelives-cookbook/src/lib.rs) — fast path then fallback stack.
+- **Hedged read (tricky):** [`hedged_read`](ninelives-cookbook/src/lib.rs) — fork-join two differently tuned stacks.
+- **Hedge + fallback (god tier):** [`hedged_then_fallback`](ninelives-cookbook/src/lib.rs) — race two fast paths, then fall back to a sturdy stack.
+- **Sensible defaults:** [`sensible_defaults`](ninelives-cookbook/src/lib.rs) — timeout + retry + bulkhead starter pack.
 
 Most recipes are adaptive: retry/timeout/circuit/bulkhead knobs can be updated live via the `Adaptive<T>` handles.
 
@@ -145,18 +145,17 @@ Turn static configs into live knobs. Nine Lives includes a runtime configuration
     "auth": { "Jwt": { "token": "your-jwt" } }
   }
   ```
-  Other variants: `Signatures`, `Mtls`, `Opaque`.
-- Schemas live in `schemas/transport-envelope.schema.json`; design rationale in `docs/ADR-004-transport-formats.md`.
-- Built-in commands (see `src/control.rs`):
-  - `set`, `get`, `list`, `reset`
-  - `read_config`, `write_config`, `list_config`
-  - `reset_circuit_breaker`, `get_state` (returns `{"breakers": { id: "Open" | "Closed" | "HalfOpen" }}`)
-- Transport glue lives in `src/control/transport.rs`.
-
-### 📡 Telemetry & Observability
-Unified event system. Every layer emits structured `PolicyEvent`s (e.g., `RetryAttempt`, `CircuitOpen`).
-- **Sinks:**
-  - `LogSink` (tracing)
+| Feature                               | Nine Lives | Resilience4j (Java) | Polly (C#) | go-kit (Go) | `tower` (Rust) |
+| :------------------------------------ | :-----------: | :-----------------: | :--------: | :---------: | :------------: |
+| **1. Uniform `Service` Abstraction**  |       ✅       |          ❌          |     ❌      |      ✅      |       ✅        |
+| **2. Fractal/Recursive Architecture** |       ✅       |          ❌          |     ❌      |      ❌      |       ✅        |
+| **3. Algebraic Composition** (`+`, `&#124;`, `&`)  |       ✅       |          ❌          |     ❌      |      ❌      |       ❌        |
+| **4. Composable Telemetry Sinks**     |       ✅       |          ❌          |     ❌      |      ❌      |       ❌        |
+| **5. Live Policy Updates**            |       ✅       |          ✅          |     ✅      |   Partial   |       ❌        |
+| **6. Pluggable Control Plane**        |       ✅       |          ❌          |     ❌      |      ❌      |       ❌        |
+| **7. Autonomous Self-Healing Loop**   |       ✅       |          ❌          |     ❌      |      ❌      |       ❌        |
+| **8. Distributed/Fleet Policies**     |       ✅       |          ❌          |  Partial   |      ❌      |       ❌        |
+| **9. Lock-Free Core**                 |       ✅       |          ⚠️          |     ⚠️      |      ⚠️      |       ⚠️        |
   - `OtlpSink` (OpenTelemetry)
   - `StreamingSink` (Broadcast to NATS/Kafka)
 - **Introspection:** Query the state of any circuit breaker at runtime.
@@ -179,7 +178,7 @@ Nine Lives is designed to integrate with your infrastructure:
 | :------------------------------------ | :-----------: | :-----------------: | :--------: | :---------: | :------------: |
 | **1. Uniform `Service` Abstraction**  |       ✅       |          ❌          |     ❌      |      ✅      |       ✅        |
 | **2. Fractal/Recursive Architecture** |       ✅       |          ❌          |     ❌      |      ❌      |       ✅        |
-| **3. Algebraic Composition** (`+`, `\|`, `&`)      |          ✅          |     ❌      |      ❌      |       ❌        | ❌   |
+| **3. Algebraic Composition**      |          ✅          |     ❌      |      ❌      |       ❌        | ❌   |
 | **4. Composable Telemetry Sinks**     |       ✅       |          ❌          |     ❌      |      ❌      |       ❌        |
 | **5. Live Policy Updates**            |       ✅       |          ✅          |     ✅      |   Partial   |       ❌        |
 | **6. Pluggable Control Plane**        |       ✅       |          ❌          |     ❌      |      ❌      |       ❌        |
