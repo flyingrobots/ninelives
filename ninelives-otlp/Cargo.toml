@@ -3,7 +3,7 @@ name = "ninelives-otlp"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
-description = "OTLP telemetry sink for ninelives"
+description = "OTLP telemetry sink for ninelives (bring-your-own Logger)"
 license.workspace = true
 publish = true
 repository.workspace = true
@@ -13,10 +13,9 @@ readme = "README.md"
 ninelives = { workspace = true }
 tracing = "0.1"
 tower-service = { workspace = true }
-
-opentelemetry = { version = "0.21", optional = true }
-opentelemetry-otlp = { version = "0.14", optional = true, default-features = true, features = ["grpc-tonic"] }
-tokio = { version = "1", features = ["rt", "macros"], optional = true }
+opentelemetry = { version = "0.31", features = ["logs"] }
+opentelemetry_sdk = { version = "0.31", features = ["logs", "testing", "rt-tokio"] }
+tokio = { version = "1", features = ["rt", "macros"] }
 
 [features]
-client = ["opentelemetry", "opentelemetry-otlp", "tokio"]
+default = []

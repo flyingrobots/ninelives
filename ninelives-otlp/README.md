@@ -1,39 +1,41 @@
 # ninelives-otlp
 
-OTLP telemetry sink for the `ninelives` resilience library.
+OTLP telemetry sink for the `ninelives` resilience library. Bring your own `opentelemetry::logs::Logger`; events are emitted as log records (export destination is up to your pipeline).
 
-## Why
-Send `PolicyEvent`s to your existing OTLP collector so you can view Nine Lives telemetry alongside service logs and traces.
+## Usage
 
-## Add to Cargo.toml
 ```toml
-ninelives = "0.1"
-ninelives-otlp = { path = "../ninelives-otlp", features = ["client"] }
+ninelives = "0.3"
+ninelives-otlp = { path = "../ninelives-otlp" }
+opentelemetry = { version = "0.22", features = ["logs"] }
+opentelemetry_sdk = { version = "0.22", features = ["logs"] }
 ```
 
-## Minimal usage
 ```rust
 use ninelives::telemetry::NonBlockingSink;
 use ninelives_otlp::OtlpSink;
+use opentelemetry::logs::Logger;
+use opentelemetry_sdk::logs::{LoggerProvider, SimpleLogProcessor};
+use opentelemetry_sdk::export::logs::LogExporter;
 
-// OTEL_EXPORTER_OTLP_ENDPOINT controls where logs go, e.g. http://localhost:4317
-#[tokio::main]
-async fn main() {
-    let sink = NonBlockingSink::with_capacity(OtlpSink::new(), 1024);
-    // attach with .with_sink(sink) on your policies
-}
+// build your own exporter/pipeline, then get a Logger
+# struct NoopExporter;
+# impl LogExporter for NoopExporter {
+#     fn export(&self, _: Vec<opentelemetry_sdk::export::logs::LogData>) -> opentelemetry::export::logs::ExportResult { opentelemetry::export::logs::ExportResult::Success }
+#     fn shutdown(&self) {}
+# }
+let provider = LoggerProvider::builder()
+    .with_log_processor(SimpleLogProcessor::new(Box::new(NoopExporter)))
+    .build();
+let logger: Logger = provider.logger_builder("ninelives-otlp").build();
+let raw = OtlpSink::new(logger);
+let sink = NonBlockingSink::with_capacity(raw, 1024);
 ```
 
-## Environment
-- `OTEL_EXPORTER_OTLP_ENDPOINT` (e.g. `http://localhost:4317`)
-- Optional: `OTEL_RESOURCE_ATTRIBUTES` to add service metadata.
+## Test
 
-## What we emit
-- One OTLP Log per `PolicyEvent`
-- Attributes: `component=ninelives`, `event_kind` (retry|circuit_breaker|bulkhead|timeout|request), plus event-specific fields (attempt, delay_ms, failure_count, duration_ms, etc.)
-- Severity: `INFO` for normal flow, `WARN` for failures/timeouts/rejections/exhausted retries.
+```bash
+cargo test -p ninelives-otlp
+```
 
-## Caveats
-- Feature `client` must be enabled; otherwise the sink is a no-op.
-- The current pipeline uses the OTLP log exporter; tracing spans are not emitted.
-- Wrap with `NonBlockingSink` to avoid blocking request paths.
+The integration test builds an in-memory exporter and asserts a log record is emitted.
