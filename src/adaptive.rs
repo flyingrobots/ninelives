@@ -21,6 +21,7 @@ pub struct DynamicConfig<T> {
 }
 
 // Back-compat alias for existing code/tests referencing Adaptive.
+/// Alias for `DynamicConfig` for backward compatibility and easier typing.
 pub type Adaptive<T> = DynamicConfig<T>;
 
 impl<T> Clone for DynamicConfig<T> {
@@ -30,6 +31,7 @@ impl<T> Clone for DynamicConfig<T> {
 }
 
 impl<T> DynamicConfig<T> {
+    /// Create a new `DynamicConfig` with the given initial value.
     pub fn new(value: T) -> Self {
         #[cfg(not(feature = "adaptive-rwlock"))]
         {

@@ -65,6 +65,7 @@ fn command_result_to_schema_value(res: &super::CommandResult) -> JsonValue {
 
 /// Transport abstraction for encoding/decoding control-plane messages.
 pub trait Transport: Send + Sync {
+    /// Error type produced by encoding/decoding operations.
     type Error: std::error::Error + Send + Sync + 'static;
 
     /// Decode a raw frame (e.g., bytes/string/json value) into a transport envelope.
@@ -101,6 +102,7 @@ where
     Conv:
         Fn(TransportEnvelope) -> Result<(CommandEnvelope<C>, CommandContext), String> + Send + Sync,
 {
+    /// Create a new `TransportRouter` connecting a transport to a command router via a converter.
     pub fn new(router: crate::control::CommandRouter<C>, transport: T, conv: Conv) -> Self {
         Self { router, transport, to_command: conv }
     }

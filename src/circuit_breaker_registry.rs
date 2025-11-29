@@ -1,3 +1,7 @@
+//! Registry for managing named circuit breakers.
+//!
+//! Allows global access and control (reset/inspection) of circuit breakers by ID.
+
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -10,6 +14,7 @@ pub struct CircuitBreakerHandle {
 }
 
 impl CircuitBreakerHandle {
+    /// Reset the circuit breaker state to Closed, clearing failure counts.
     pub fn reset(&self) {
         self.state.reset();
     }
@@ -27,14 +32,19 @@ pub struct CircuitBreakerRegistry {
 }
 
 impl CircuitBreakerRegistry {
+    /// Register a new circuit breaker handle with the given ID.
+    /// If an entry already exists, it is overwritten.
     pub fn register(&self, id: String, handle: CircuitBreakerHandle) {
         self.inner.lock().unwrap().insert(id, handle);
     }
 
+    /// Retrieve a handle to a registered circuit breaker by ID.
     pub fn get(&self, id: &str) -> Option<CircuitBreakerHandle> {
         self.inner.lock().unwrap().get(id).cloned()
     }
 
+    /// Reset a registered circuit breaker by ID.
+    /// Returns error if the ID is not found.
     pub fn reset(&self, id: &str) -> Result<(), String> {
         if let Some(handle) = self.get(id) {
             handle.reset();

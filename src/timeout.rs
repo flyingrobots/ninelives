@@ -119,6 +119,7 @@ impl TimeoutPolicy {
         *self.duration.get()
     }
 
+    /// Returns a handle to the adaptive configuration for timeout duration.
     pub fn adaptive_duration(&self) -> Adaptive<Duration> {
         self.duration.clone()
     }

@@ -108,6 +108,7 @@ impl BulkheadPolicy {
         *self.max_concurrent.get()
     }
 
+    /// Returns a handle to the adaptive configuration for max concurrent permits.
     pub fn adaptive_max_concurrent(&self) -> Adaptive<usize> {
         self.max_concurrent.clone()
     }

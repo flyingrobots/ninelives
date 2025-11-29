@@ -8,6 +8,8 @@ use crate::control::CommandRouter;
 /// In-process channel-based transport for the control plane.
 type Tx<C> = mpsc::Sender<(CommandEnvelope<C>, oneshot::Sender<Result<CommandResult, String>>)>;
 
+/// A transport that sends commands over a Tokio MPSC channel.
+/// useful for in-process communication or testing.
 pub struct ChannelTransport<C: Clone> {
     tx: Tx<C>,
 }

@@ -124,6 +124,7 @@ impl CircuitBreakerConfig {
         self
     }
 
+    /// Returns the identifier of this circuit breaker, if set.
     pub fn id(&self) -> Option<&str> {
         self.id.as_deref()
     }

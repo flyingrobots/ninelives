@@ -1,5 +1,4 @@
 #![forbid(unsafe_code)]
-#![allow(missing_docs)]
 
 //! # Nine Lives 🐱
 //!

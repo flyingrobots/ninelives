@@ -4,7 +4,9 @@
 //! `CommandEnvelope` with an `AuthPayload`; the router dispatches to handlers
 //! after auth. History storage is pluggable.
 
+/// Transport abstractions.
 pub mod transport;
+/// Channel-based transport implementation.
 pub mod transport_channel;
 
 use crate::circuit_breaker_registry::CircuitBreakerRegistry;
@@ -25,44 +27,74 @@ pub type CommandId = String;
 /// Metadata for commands (extensible).
 #[derive(Clone, Debug, Default)]
 pub struct CommandMeta {
+    /// Unique command ID.
     pub id: CommandId,
+    /// Optional correlation ID for tracing.
     pub correlation_id: Option<String>,
+    /// Timestamp in milliseconds (epoch).
     pub timestamp_millis: Option<u128>,
 }
 
 /// Auth payload sent alongside a command. Transports set this; providers verify it.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum AuthPayload {
-    Jwt { token: String },
-    Signatures { payload_hash: [u8; 32], signatures: Vec<DetachedSig> },
-    Mtls { peer_dn: String, cert_chain: Vec<Vec<u8>> },
+    /// JSON Web Token authentication.
+    Jwt {
+        /// The JWT token string.
+        token: String,
+    },
+    /// Cryptographic signatures payload.
+    Signatures {
+        /// SHA-256 hash of the payload.
+        payload_hash: [u8; 32],
+        /// List of detached signatures.
+        signatures: Vec<DetachedSig>,
+    },
+    /// Mutual TLS authentication.
+    Mtls {
+        /// Peer Distinguished Name.
+        peer_dn: String,
+        /// Certificate chain (DER encoded).
+        cert_chain: Vec<Vec<u8>>,
+    },
+    /// Opaque authentication payload (custom/fallback).
     Opaque(Vec<u8>),
 }
 
 /// Detached signature placeholder (payload-agnostic). Extend as needed.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct DetachedSig {
+    /// Algorithm used (e.g., "ed25519", "es256").
     pub algorithm: String,
+    /// The signature bytes.
     pub signature: Vec<u8>,
+    /// Optional key identifier (kid).
     pub key_id: Option<String>,
 }
 
 /// Command envelope carrying the command, auth payload, and metadata.
 #[derive(Clone, Debug)]
 pub struct CommandEnvelope<C: Clone> {
+    /// The command payload.
     pub cmd: C,
+    /// Authentication payload.
     pub auth: Option<AuthPayload>,
+    /// Command metadata.
     pub meta: CommandMeta,
 }
 
 /// Command payload schema used by transports and handlers.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct CommandContext {
+    /// Command ID.
     pub id: String,
+    /// Arguments for the command.
     #[serde(default)]
     pub args: JsonValue,
+    /// Identity of the caller (if known/extracted).
     #[serde(default)]
     pub identity: Option<String>,
+    /// Optional response channel ID.
     #[serde(default)]
     pub response_channel: Option<String>,
 }
@@ -70,23 +102,31 @@ pub struct CommandContext {
 /// Result of authentication.
 #[derive(Clone, Debug)]
 pub struct AuthContext {
+    /// Authenticated principal (user/service ID).
     pub principal: String,
+    /// Name of the provider that authenticated the request.
     pub provider: &'static str,
+    /// Additional attributes from the auth provider (claims, roles, etc.).
     pub attributes: HashMap<String, String>,
 }
 
+/// Errors produced during authentication or authorization.
 #[derive(thiserror::Error, Debug)]
 pub enum AuthError {
+    /// Credentials missing or invalid.
     #[error("unauthenticated: {0}")]
     Unauthenticated(String),
+    /// Authenticated but permission denied.
     #[error("unauthorized: {0}")]
     Unauthorized(String),
+    /// Internal error in auth provider.
     #[error("internal auth error: {0}")]
     Internal(String),
 }
 
 /// Pluggable authentication/authorization provider.
 pub trait AuthProvider: Send + Sync {
+    /// Unique name of this provider.
     fn name(&self) -> &'static str;
 
     /// Verify credentials; returns context on success.
@@ -114,21 +154,27 @@ pub struct AuthRegistry {
     mode: AuthMode,
 }
 
+/// Strategy for combining multiple auth providers.
 #[derive(Clone, Copy, Debug)]
 pub enum AuthMode {
-    First, // first provider that authenticates wins
-    All,   // all must succeed
+    /// First provider that authenticates wins.
+    First,
+    /// All providers must succeed.
+    All,
 }
 
 impl AuthRegistry {
+    /// Create a new registry with the given mode.
     pub fn new(mode: AuthMode) -> Self {
         Self { providers: Vec::new(), mode }
     }
 
+    /// Register an auth provider.
     pub fn register(&mut self, provider: Arc<dyn AuthProvider>) {
         self.providers.push(provider);
     }
 
+    /// Authenticate a command envelope using registered providers.
     pub fn authenticate<C>(&self, env: &CommandEnvelope<C>) -> Result<AuthContext, AuthError>
     where
         C: CommandLabel + Clone,
@@ -167,11 +213,13 @@ pub struct AuthorizationLayer {
 }
 
 impl AuthorizationLayer {
+    /// Create a new authorization layer with the given registry.
     pub fn new(registry: AuthRegistry) -> Self {
         Self { registry: Arc::new(registry) }
     }
 }
 
+/// Service that applies authorization checks before forwarding commands.
 #[derive(Clone)]
 pub struct AuthorizationService<S> {
     inner: S,
@@ -238,6 +286,7 @@ impl AuthProvider for PassthroughAuth {
 /// Command handler trait.
 #[async_trait]
 pub trait CommandHandler<C: Clone>: Send + Sync {
+    /// Handle an authenticated command.
     async fn handle(
         &self,
         cmd: CommandEnvelope<C>,
@@ -268,37 +317,52 @@ impl<T> CommandService for T where
 {
 }
 
+/// Errors returned by command handling.
 #[derive(thiserror::Error, Debug)]
 pub enum CommandError {
+    /// Authentication or authorization failed.
     #[error("auth: {0}")]
     Auth(#[from] AuthError),
+    /// Handler execution failed.
     #[error("handler: {0}")]
     Handler(String),
+    /// Audit recording failed.
     #[error("audit: {0}")]
     Audit(String),
 }
 
+/// Result of a command execution.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum CommandResult {
+    /// Command acknowledged, no value.
     Ack,
+    /// Single string value.
     Value(String),
+    /// List of string values.
     List(Vec<String>),
+    /// Reset complete.
     Reset,
+    /// Error message.
     Error(String),
 }
 
 /// Audit record emitted after command execution.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct AuditRecord {
+    /// Command ID.
     pub id: CommandId,
+    /// Command label.
     pub label: String,
+    /// Principal who executed the command.
     pub principal: String,
+    /// Status/Result of execution.
     pub status: String,
 }
 
 /// Audit sink interface.
 #[async_trait]
 pub trait AuditSink: Send + Sync {
+    /// Record an audit event.
     async fn record(&self, record: AuditRecord) -> Result<(), CommandError>;
 }
 
@@ -316,8 +380,11 @@ impl AuditSink for TracingAuditSink {
 /// Command history interface (pluggable storage).
 #[async_trait]
 pub trait CommandHistory: Send + Sync {
+    /// Append a command execution record.
     async fn append(&self, meta: &CommandMeta, result: &CommandResult);
+    /// List recent command history.
     async fn list(&self) -> Vec<CommandMeta>;
+    /// Clear history.
     async fn clear(&self);
 }
 
@@ -349,9 +416,11 @@ pub struct MemoryAuditSink {
 }
 
 impl MemoryAuditSink {
+    /// Create a new in-memory audit sink.
     pub fn new() -> Self {
         Self::default()
     }
+    /// Retrieve recorded audit records.
     pub fn records(&self) -> Vec<AuditRecord> {
         self.records.lock().unwrap().clone()
     }
@@ -377,6 +446,7 @@ impl<C> CommandRouter<C>
 where
     C: Send + Sync + Clone + CommandLabel + 'static,
 {
+    /// Create a new command router.
     pub fn new(
         auth: AuthRegistry,
         handler: Arc<dyn CommandHandler<C>>,
@@ -385,11 +455,13 @@ where
         Self { auth, handler, history, audit: None }
     }
 
+    /// Attach an audit sink to the router.
     pub fn with_audit(mut self, audit: Arc<dyn AuditSink>) -> Self {
         self.audit = Some(audit);
         self
     }
 
+    /// Execute a command envelope through the router (auth -> handler -> history/audit).
     pub async fn execute(&self, env: CommandEnvelope<C>) -> Result<CommandResult, CommandError> {
         // Auth path: audit denials too.
         let auth_result = self.auth.authenticate(&env);
@@ -436,18 +508,48 @@ where
 /// Built-in control-plane command for testing/demo.
 #[derive(Clone, Debug, PartialEq)]
 pub enum BuiltInCommand {
-    Set { key: String, value: String },
-    Get { key: String },
+    /// Set a value in the store.
+    Set {
+        /// Key to set.
+        key: String,
+        /// Value to set.
+        value: String,
+    },
+    /// Get a value from the store.
+    Get {
+        /// Key to get.
+        key: String,
+    },
+    /// List all keys in the store.
     List,
+    /// Reset the store.
     Reset,
-    ReadConfig { path: String },
-    WriteConfig { path: String, value: String },
-    ResetCircuitBreaker { id: String },
+    /// Read a config value.
+    ReadConfig {
+        /// Config path.
+        path: String,
+    },
+    /// Write a config value.
+    WriteConfig {
+        /// Config path.
+        path: String,
+        /// New value.
+        value: String,
+    },
+    /// Reset a circuit breaker.
+    ResetCircuitBreaker {
+        /// Breaker ID.
+        id: String,
+    },
+    /// List all registered config keys.
     ListConfig,
+    /// Get system state snapshot.
     GetState,
 }
 
+/// Trait for getting a string label for a command type.
 pub trait CommandLabel {
+    /// Returns the label for the command.
     fn label(&self) -> &str;
 }
 
@@ -479,6 +581,7 @@ impl Default for ConfigRegistry {
 }
 
 impl ConfigRegistry {
+    /// Create a new config registry.
     pub fn new() -> Self {
         Self { entries: HashMap::new() }
     }
@@ -520,16 +623,19 @@ impl ConfigRegistry {
         );
     }
 
+    /// Write a value to a registered config key.
     pub fn write(&self, path: &str, raw: &str) -> Result<(), String> {
         let entry = self.entries.get(path).ok_or_else(|| format!("unknown config path: {path}"))?;
         entry.write(raw)
     }
 
+    /// Read a value from a registered config key.
     pub fn read(&self, path: &str) -> Result<String, String> {
         let entry = self.entries.get(path).ok_or_else(|| format!("unknown config path: {path}"))?;
         entry.read()
     }
 
+    /// Check if a config key is registered.
     pub fn contains(&self, path: &str) -> bool {
         self.entries.contains_key(path)
     }
@@ -572,6 +678,7 @@ where
     }
 }
 
+/// Built-in handler for basic commands.
 #[derive(Default)]
 pub struct BuiltInHandler {
     store: Arc<Mutex<HashMap<String, String>>>,
@@ -580,16 +687,19 @@ pub struct BuiltInHandler {
 }
 
 impl BuiltInHandler {
+    /// Attach a config registry to the handler.
     pub fn with_config_registry(mut self, registry: ConfigRegistry) -> Self {
         self.config_registry = Some(registry);
         self
     }
 
+    /// Attach a circuit breaker registry to the handler.
     pub fn with_circuit_breaker_registry(mut self, registry: CircuitBreakerRegistry) -> Self {
         self.circuit_breaker_registry = Some(registry);
         self
     }
 
+    /// Set the config registry.
     pub fn set_config_registry(&mut self, registry: ConfigRegistry) {
         self.config_registry = Some(registry);
     }
