@@ -429,8 +429,16 @@ impl MemoryAuditSink {
 #[async_trait]
 impl AuditSink for MemoryAuditSink {
     async fn record(&self, record: AuditRecord) -> Result<(), CommandError> {
-        self.records.lock().expect("audit lock poisoned").push(record);
-        Ok(())
+        match self.records.lock() {
+            Ok(mut guard) => {
+                guard.push(record);
+                Ok(())
+            }
+            Err(poison) => Err(CommandError::Internal(format!(
+                "audit lock poisoned: {}",
+                poison
+            ))),
+        }
     }
 }
 

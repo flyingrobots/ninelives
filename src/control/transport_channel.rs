@@ -74,22 +74,18 @@ where
                         match msg {
                             Some((env, reply_tx)) => {
                                 let router = router.clone();
-                                // Wrap processing in spawn_blocking or AssertUnwindSafe if panic recovery is critical.
-                                // Here we use a standard tokio::spawn wrapper to isolate panics per request if feasible,
-                                // but since we are processing sequentially, we catch unwind around the execution block.
-                                let res = std::panic::AssertUnwindSafe(async {
+                                let handle = tokio::spawn(async move {
                                     tracing::debug!(cmd_id=%env.meta.id, "Received command");
                                     router.execute(env).await
-                                }).catch_unwind().await;
-
-                                let result = match res {
+                                });
+                                let result = match handle.await {
                                     Ok(Ok(ok)) => Ok(ok),
                                     Ok(Err(e)) => {
                                         tracing::error!(error=%e, "Router execution failed");
                                         Err(TransportError::RouterError(format!("{:?}", e)))
-                                    },
-                                    Err(panic) => {
-                                        tracing::error!(panic=?panic, "Router panicked during execution");
+                                    }
+                                    Err(e) => {
+                                        tracing::error!(error=%e, "Router task panicked");
                                         Err(TransportError::RouterError("Internal panic".into()))
                                     }
                                 };

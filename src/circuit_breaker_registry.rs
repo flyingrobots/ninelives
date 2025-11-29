@@ -68,6 +68,7 @@ impl CircuitBreakerRegistry {
     }
 
     /// Convenience: create and register a fresh state with the given id.
+    /// Register a breaker with default configuration (last writer wins on duplicate id).
     pub fn register_new(&self, id: String) {
         let state = Arc::new(CircuitBreakerState::new());
         let handle = CircuitBreakerHandle { state };

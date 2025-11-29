@@ -149,11 +149,11 @@ impl BulkheadPolicy {
     }
 
     fn sync_capacity(&self) {
-        let desired = *self.max_concurrent.get();
+        let desired = (*self.max_concurrent.get()).max(1);
         loop {
             let current = self.capacity.load(Ordering::Acquire);
-            let target = desired.max(1); // enforce minimum of 1
-            if current == target {
+            let target = desired; // enforce minimum of 1
+            if target <= current {
                 break;
             }
             // CAS to avoid double-adding permits
@@ -162,11 +162,7 @@ impl BulkheadPolicy {
                 .compare_exchange_weak(current, target, Ordering::AcqRel, Ordering::Relaxed)
                 .is_ok()
             {
-                if target > current {
-                    self.semaphore.add_permits(target - current);
-                }
-                // Note: decreasing capacity requires draining permits over time
-                // or implementing a "forget" mechanism if tokio::sync::Semaphore supports it
+                self.semaphore.add_permits(target - current);
                 break;
             }
         }
@@ -215,11 +211,12 @@ pub struct BulkheadService<S, Sink = NullSink> {
 }
 
 impl<S, Sink> BulkheadService<S, Sink> {
-    fn new(inner: S, max_concurrent: usize, sink: Sink) -> Self {
+    fn new(inner: S, max_concurrent: Adaptive<usize>, sink: Sink) -> Self {
+        let initial = (*max_concurrent.get()).max(1);
         Self {
-            semaphore: Arc::new(Semaphore::new(max_concurrent)),
-            max_concurrent: Adaptive::new(max_concurrent),
-            capacity: Arc::new(AtomicUsize::new(max_concurrent)),
+            semaphore: Arc::new(Semaphore::new(initial)),
+            max_concurrent,
+            capacity: Arc::new(AtomicUsize::new(initial)),
             inner,
             sink,
         }
@@ -339,7 +336,7 @@ where
 {
     type Service = BulkheadService<S, Sink>;
     fn layer(&self, service: S) -> Self::Service {
-        BulkheadService::new(service, *self.max_concurrent.get(), self.sink.clone())
+        BulkheadService::new(service, self.max_concurrent.clone(), self.sink.clone())
     }
 }
 
