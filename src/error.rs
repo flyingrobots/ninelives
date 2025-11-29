@@ -5,7 +5,7 @@ use std::time::Duration;
 /// Cap the number of stored failures inside RetryExhausted to avoid unbounded growth.
 pub const MAX_RETRY_FAILURES: usize = 10;
 /// Unified error type for all resilience policies
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum ResilienceError<E> {
     /// The operation exceeded the timeout duration
     Timeout {
@@ -39,6 +39,8 @@ pub enum ResilienceError<E> {
     },
     /// The underlying operation failed
     Inner(E),
+    /// Third-party policy specific error
+    Custom(Box<dyn std::error::Error + Send + Sync>),
 }
 impl<E: fmt::Display> fmt::Display for ResilienceError<E> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -79,6 +81,7 @@ impl<E: fmt::Display> fmt::Display for ResilienceError<E> {
                 }
             }
             Self::Inner(e) => write!(f, "{}", e),
+            Self::Custom(e) => write!(f, "{e}"),
         }
     }
 }
@@ -89,6 +92,7 @@ impl<E: std::error::Error + 'static> std::error::Error for ResilienceError<E> {
             Self::RetryExhausted { failures, .. } => {
                 failures.last().map(|e| e as &dyn std::error::Error)
             }
+            Self::Custom(e) => Some(e.as_ref()),
             _ => None,
         }
     }
@@ -128,6 +132,13 @@ impl<E> ResilienceError<E> {
     pub fn into_inner(self) -> Option<E> {
         match self {
             Self::Inner(e) => Some(e),
+            _ => None,
+        }
+    }
+    /// Extract custom boxed error, if present.
+    pub fn into_custom(self) -> Option<Box<dyn std::error::Error + Send + Sync>> {
+        match self {
+            Self::Custom(e) => Some(e),
             _ => None,
         }
     }
