@@ -1,5 +1,6 @@
 //! Circuit breaker implemented as a tower Layer/Service.
 
+use crate::circuit_breaker_registry::{CircuitBreakerHandle, CircuitBreakerRegistry};
 use crate::{adaptive::Adaptive, clock::Clock, clock::MonotonicClock, ResilienceError};
 use futures::future::BoxFuture;
 use std::sync::atomic::{AtomicU64, AtomicU8, AtomicUsize, Ordering};
@@ -182,6 +183,7 @@ pub struct CircuitBreakerLayer<Sink = NullSink> {
     config: CircuitBreakerConfig,
     clock: Arc<dyn Clock>,
     sink: Sink,
+    registry: Option<CircuitBreakerRegistry>,
 }
 
 impl CircuitBreakerLayer<NullSink> {
@@ -194,7 +196,12 @@ impl CircuitBreakerLayer<NullSink> {
     /// Returns error if the configuration is invalid.
     pub fn new(config: CircuitBreakerConfig) -> Result<Self, CircuitBreakerError> {
         config.validate()?;
-        Ok(Self { config, clock: Arc::new(MonotonicClock::default()), sink: NullSink })
+        Ok(Self {
+            config,
+            clock: Arc::new(MonotonicClock::default()),
+            sink: NullSink,
+            registry: None,
+        })
     }
 
     /// Create a circuit breaker layer with a custom clock implementation and no telemetry.
@@ -209,8 +216,89 @@ impl CircuitBreakerLayer<NullSink> {
         clock: C,
     ) -> Result<Self, CircuitBreakerError> {
         config.validate()?;
-        Ok(Self { config, clock: Arc::new(clock), sink: NullSink })
+        Ok(Self { config, clock: Arc::new(clock), sink: NullSink, registry: None })
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use tower::Service;
+
+    #[derive(Debug, Clone)]
+    struct TestClock(Arc<AtomicU64>);
+    impl TestClock {
+        fn new(start: u64) -> Self {
+            Self(Arc::new(AtomicU64::new(start)))
+        }
+        fn advance(&self, delta_ms: u64) {
+            self.0.fetch_add(delta_ms, Ordering::SeqCst);
+        }
+    }
+    impl Clock for TestClock {
+        fn now_millis(&self) -> u64 {
+            self.0.load(Ordering::SeqCst)
+        }
+    }
+
+    #[derive(Clone)]
+    struct FlappyService {
+        calls: Arc<AtomicUsize>,
+        fail_first: bool,
+        delay: Option<Duration>,
+    }
+    impl FlappyService {
+        fn new(fail_first: bool, delay: Option<Duration>) -> Self {
+            Self { calls: Arc::new(AtomicUsize::new(0)), fail_first, delay }
+        }
+    }
+    impl Service<String> for FlappyService {
+        type Response = String;
+        type Error = std::io::Error;
+        type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
+        fn poll_ready(&mut self, _cx: &mut std::task::Context<'_>) -> std::task::Poll<Result<(), Self::Error>> {
+            std::task::Poll::Ready(Ok(()))
+        }
+        fn call(&mut self, req: String) -> Self::Future {
+            let count = self.calls.fetch_add(1, Ordering::SeqCst);
+            let fail_first = self.fail_first;
+            let delay = self.delay;
+            Box::pin(async move {
+                if fail_first && count == 0 {
+                    Err(std::io::Error::new(std::io::ErrorKind::Other, "boom"))
+                } else {
+                    if let Some(d) = delay {
+                        tokio::time::sleep(d).await;
+                    }
+                    Ok(req)
+                }
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn breaker_opens_and_half_opens_after_timeout() {
+        let clock = TestClock::new(0);
+        let cfg = CircuitBreakerConfig::new(1, Duration::from_millis(50), 2).unwrap();
+        let layer = CircuitBreakerLayer::with_clock(cfg, clock.clone()).unwrap();
+        let service = layer.layer(FlappyService::new(true, None));
+        let mut svc = service.clone();
+
+        // first call fails -> opens
+        let err = svc.call("req".to_string()).await.unwrap_err();
+        assert!(matches!(err, ResilienceError::Inner(_)));
+
+        // immediately rejected while still within recovery timeout
+        let err2 = service.clone().call("req".to_string()).await.unwrap_err();
+        assert!(matches!(err2, ResilienceError::CircuitOpen { .. }));
+
+        // advance clock to allow half-open
+        clock.advance(60);
+        let ok = service.clone().call("req".to_string()).await.unwrap();
+        assert_eq!(ok, "req");
+    }
+
 }
 
 impl<Sink> CircuitBreakerLayer<Sink>
@@ -222,7 +310,18 @@ where
     where
         NewSink: Clone,
     {
-        CircuitBreakerLayer { config: self.config, clock: self.clock, sink }
+        CircuitBreakerLayer {
+            config: self.config,
+            clock: self.clock,
+            sink,
+            registry: self.registry,
+        }
+    }
+
+    /// Attach a registry for control-plane management.
+    pub fn with_registry(mut self, registry: CircuitBreakerRegistry) -> Self {
+        self.registry = Some(registry);
+        self
     }
 }
 
@@ -237,11 +336,20 @@ pub struct CircuitBreakerService<S, Sink = NullSink> {
 }
 
 impl<S, Sink> CircuitBreakerService<S, Sink> {
-    fn new(inner: S, config: CircuitBreakerConfig, clock: Arc<dyn Clock>, sink: Sink) -> Self {
+    fn new(
+        inner: S,
+        config: CircuitBreakerConfig,
+        clock: Arc<dyn Clock>,
+        sink: Sink,
+        registry: Option<CircuitBreakerRegistry>,
+    ) -> Self {
         let state = Arc::new(CircuitBreakerState::new());
 
         if let Some(id) = config.id() {
-            crate::circuit_breaker_registry::register_global(id.to_string(), state.clone());
+            if let Some(reg) = registry {
+                let handle = CircuitBreakerHandle { state: state.clone() };
+                reg.register(id.to_string(), handle);
+            }
         }
 
         Self { inner, state, config, clock, sink }
@@ -402,6 +510,7 @@ where
             self.config.clone(),
             self.clock.clone(),
             self.sink.clone(),
+            self.registry.clone(),
         )
     }
 }

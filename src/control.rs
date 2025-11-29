@@ -7,6 +7,7 @@
 pub mod transport;
 pub mod transport_channel;
 
+use crate::circuit_breaker_registry::CircuitBreakerRegistry;
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::sync::{Arc, Mutex};
@@ -575,11 +576,17 @@ where
 pub struct BuiltInHandler {
     store: Arc<Mutex<HashMap<String, String>>>,
     config_registry: Option<ConfigRegistry>,
+    circuit_breaker_registry: Option<CircuitBreakerRegistry>,
 }
 
 impl BuiltInHandler {
     pub fn with_config_registry(mut self, registry: ConfigRegistry) -> Self {
         self.config_registry = Some(registry);
+        self
+    }
+
+    pub fn with_circuit_breaker_registry(mut self, registry: CircuitBreakerRegistry) -> Self {
+        self.circuit_breaker_registry = Some(registry);
         self
     }
 
@@ -664,31 +671,41 @@ impl CommandHandler<BuiltInCommand> for BuiltInHandler {
                 }
             }
             BuiltInCommand::ResetCircuitBreaker { id } => {
-                match crate::circuit_breaker_registry::global().reset(&id) {
-                    Ok(()) => Ok(CommandResult::Ack),
-                    Err(e) => Ok(CommandResult::Error(e)),
+                if let Some(reg) = &self.circuit_breaker_registry {
+                    match reg.reset(&id) {
+                        Ok(()) => Ok(CommandResult::Ack),
+                        Err(e) => Ok(CommandResult::Error(e)),
+                    }
+                } else {
+                    Ok(CommandResult::Error("circuit breaker registry not set".into()))
                 }
             }
             BuiltInCommand::GetState => {
-                let breakers = crate::circuit_breaker_registry::global().snapshot();
-                let map: serde_json::Map<String, serde_json::Value> = breakers
-                    .into_iter()
-                    .map(|(id, state)| {
-                        (
-                            id,
-                            serde_json::Value::String(
-                                match state {
-                                    crate::circuit_breaker::CircuitState::Closed => "Closed",
-                                    crate::circuit_breaker::CircuitState::Open => "Open",
-                                    crate::circuit_breaker::CircuitState::HalfOpen => "HalfOpen",
-                                }
-                                .into(),
-                            ),
-                        )
-                    })
-                    .collect();
-                let payload = serde_json::json!({ "breakers": map });
-                Ok(CommandResult::Value(payload.to_string()))
+                if let Some(reg) = &self.circuit_breaker_registry {
+                    let breakers = reg.snapshot();
+                    let map: serde_json::Map<String, serde_json::Value> = breakers
+                        .into_iter()
+                        .map(|(id, state)| {
+                            (
+                                id,
+                                serde_json::Value::String(
+                                    match state {
+                                        crate::circuit_breaker::CircuitState::Closed => "Closed",
+                                        crate::circuit_breaker::CircuitState::Open => "Open",
+                                        crate::circuit_breaker::CircuitState::HalfOpen => {
+                                            "HalfOpen"
+                                        }
+                                    }
+                                    .into(),
+                                ),
+                            )
+                        })
+                        .collect();
+                    let payload = serde_json::json!({ "breakers": map });
+                    Ok(CommandResult::Value(payload.to_string()))
+                } else {
+                    Ok(CommandResult::Error("circuit breaker registry not set".into()))
+                }
             }
         }
     }
@@ -792,9 +809,10 @@ mod tests {
 
     #[test]
     fn breaker_snapshot_sorted_and_states() {
-        crate::circuit_breaker_registry::register_new("cb_a".into());
-        crate::circuit_breaker_registry::register_new("cb_b".into());
-        let snap = crate::circuit_breaker_registry::global().snapshot();
+        let reg = crate::circuit_breaker_registry::CircuitBreakerRegistry::default();
+        reg.register_new("cb_a".into());
+        reg.register_new("cb_b".into());
+        let snap = reg.snapshot();
         assert_eq!(snap.len(), 2);
         assert_eq!(snap[0].0, "cb_a");
         assert_eq!(snap[0].1, crate::circuit_breaker::CircuitState::Closed);

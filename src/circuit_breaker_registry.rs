@@ -1,10 +1,10 @@
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex};
 
 use crate::circuit_breaker::{CircuitBreakerState, CircuitState};
 
 /// Handle to reset/query a circuit breaker instance.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct CircuitBreakerHandle {
     pub(crate) state: Arc<CircuitBreakerState>,
 }
@@ -21,7 +21,7 @@ impl CircuitBreakerHandle {
 }
 
 /// Registry keyed by breaker id.
-#[derive(Default, Clone)]
+#[derive(Default, Clone, Debug)]
 pub struct CircuitBreakerRegistry {
     inner: Arc<Mutex<HashMap<String, CircuitBreakerHandle>>>,
 }
@@ -44,6 +44,13 @@ impl CircuitBreakerRegistry {
         }
     }
 
+    /// Convenience: create and register a fresh state with the given id.
+    pub fn register_new(&self, id: String) {
+        let state = Arc::new(CircuitBreakerState::new());
+        let handle = CircuitBreakerHandle { state };
+        self.register(id, handle);
+    }
+
     /// Snapshot of all breaker states (id -> state).
     pub fn snapshot(&self) -> Vec<(String, CircuitState)> {
         let map = self.inner.lock().unwrap();
@@ -52,26 +59,4 @@ impl CircuitBreakerRegistry {
         entries.sort_by(|a, b| a.0.cmp(&b.0));
         entries
     }
-}
-
-static GLOBAL_REGISTRY: OnceLock<CircuitBreakerRegistry> = OnceLock::new();
-
-pub fn global() -> &'static CircuitBreakerRegistry {
-    GLOBAL_REGISTRY.get_or_init(CircuitBreakerRegistry::default)
-}
-
-pub(crate) fn register_global(id: String, state: Arc<CircuitBreakerState>) {
-    let handle = CircuitBreakerHandle { state };
-    global().register(id, handle);
-}
-
-/// Convenience: create and register a fresh state with the given id.
-pub fn register_new(id: String) {
-    let state = Arc::new(CircuitBreakerState::new());
-    register_global(id, state);
-}
-
-/// Read-only state lookup for a breaker id.
-pub fn state_of(id: &str) -> Option<CircuitState> {
-    global().get(id).map(|h| h.state())
 }

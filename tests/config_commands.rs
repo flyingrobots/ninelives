@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
 
 use ninelives::adaptive::Adaptive;
-use ninelives::circuit_breaker_registry::register_new;
+use ninelives::circuit_breaker_registry::CircuitBreakerRegistry;
 use ninelives::control::{
     AuthMode, AuthPayload, AuthRegistry, CommandEnvelope, CommandMeta, CommandResult,
     ConfigRegistry, InMemoryHistory,
@@ -68,14 +68,16 @@ async fn list_config_returns_registered_keys() {
 
 #[tokio::test]
 async fn get_state_reports_open_breaker() {
+    let registry = CircuitBreakerRegistry::default();
+
     // Create breaker and force it to open.
     let cfg =
         CircuitBreakerConfig::new(1, Duration::from_millis(1), 1).unwrap().with_id("cb_state");
-    let layer = CircuitBreakerLayer::new(cfg).unwrap();
+    let layer = CircuitBreakerLayer::new(cfg).unwrap().with_registry(registry.clone());
     let mut svc = layer.layer(FailingSvc);
     let _ = svc.ready().await.unwrap().call(()).await;
 
-    let handler = BuiltInHandler::default();
+    let handler = BuiltInHandler::default().with_circuit_breaker_registry(registry);
     let mut auth = AuthRegistry::new(AuthMode::First);
     auth.register(std::sync::Arc::new(PassthroughAuth));
     let history = Arc::new(InMemoryHistory::default());
@@ -97,9 +99,10 @@ async fn get_state_reports_open_breaker() {
 
 #[tokio::test]
 async fn reset_circuit_breaker_command() {
-    register_new("cb1".into());
+    let registry = CircuitBreakerRegistry::default();
+    registry.register_new("cb1".into());
 
-    let handler = BuiltInHandler::default();
+    let handler = BuiltInHandler::default().with_circuit_breaker_registry(registry);
     let mut auth = AuthRegistry::new(AuthMode::First);
     auth.register(std::sync::Arc::new(PassthroughAuth));
     let history = Arc::new(InMemoryHistory::default());
@@ -133,18 +136,20 @@ impl Service<()> for FailingSvc {
 
 #[tokio::test]
 async fn reset_command_closes_open_breaker() {
+    let registry = CircuitBreakerRegistry::default();
+
     let cfg =
         CircuitBreakerConfig::new(1, Duration::from_millis(1), 1).unwrap().with_id("cb_reset");
-    let layer = CircuitBreakerLayer::new(cfg).unwrap();
+    let layer = CircuitBreakerLayer::new(cfg).unwrap().with_registry(registry.clone());
     let mut svc = layer.layer(FailingSvc);
 
     // Trigger an error to open the breaker.
     let _ = svc.ready().await.unwrap().call(()).await;
-    let state = ninelives::circuit_breaker_registry::state_of("cb_reset").unwrap();
+    let state = registry.get("cb_reset").unwrap().state();
     assert_eq!(state, CircuitState::Open);
 
     // Execute reset command and verify state closes.
-    let handler = BuiltInHandler::default();
+    let handler = BuiltInHandler::default().with_circuit_breaker_registry(registry.clone());
     let mut auth = AuthRegistry::new(AuthMode::First);
     auth.register(std::sync::Arc::new(PassthroughAuth));
     let history = Arc::new(InMemoryHistory::default());
@@ -159,7 +164,7 @@ async fn reset_command_closes_open_breaker() {
     let res = router.execute(env).await.unwrap();
     assert_eq!(res, CommandResult::Ack);
 
-    let state = ninelives::circuit_breaker_registry::state_of("cb_reset").unwrap();
+    let state = registry.get("cb_reset").unwrap().state();
     assert_eq!(state, CircuitState::Closed);
 }
 
