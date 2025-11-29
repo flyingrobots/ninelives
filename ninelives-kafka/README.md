@@ -6,7 +6,7 @@ Kafka telemetry sink for the `ninelives` resilience library. Bring your own `rdk
 
 ```toml
 ninelives = "0.3"
-ninelives-kafka = { git = "https://github.com/your-org/ninelives", branch = "main" }
+ninelives-kafka = "0.3"
 rdkafka = { version = "0.37", features = ["cmake-build"] }  # cmake-build: statically build librdkafka via cmake
 ```
 

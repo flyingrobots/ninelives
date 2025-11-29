@@ -49,7 +49,7 @@ async fn publishes_events_to_kafka() {
     let event =
         PolicyEvent::Retry(RetryEvent::Attempt { attempt: 1, delay: Duration::from_millis(50) });
 
-    sink.call(event.clone()).await.expect("failed to sink policy event to Kafka");
+    sink.call(event).await.expect("failed to sink policy event to Kafka");
 
     // Flush producer to ensure message is sent
     producer.flush(Duration::from_secs(5)).expect("Failed to flush producer");
