@@ -49,14 +49,19 @@ where
     S: tower_service::Service<PolicyEvent> + Clone + Send + 'static,
     S::Future: Send,
 {
-    assert_eq!(iter % concurrency, 0, "iter must be divisible by concurrency");
     let mut hist: Histogram<u64> = Histogram::new(3).unwrap();
     let mut tasks = Vec::new();
-    for _ in 0..concurrency {
+    
+    let base_iter = iter / concurrency;
+    let remainder = iter % concurrency;
+
+    for i in 0..concurrency {
         let mut s = sink.clone();
+        let count = if i < remainder { base_iter + 1 } else { base_iter };
+        
         tasks.push(tokio::spawn(async move {
             let mut h = Histogram::new(3).unwrap();
-            for _ in 0..(iter / concurrency) {
+            for _ in 0..count {
                 let start = Instant::now();
                 let _ = s.call(sample_event()).await;
                 h.record(start.elapsed().as_nanos() as u64).unwrap();

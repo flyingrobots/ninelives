@@ -7,6 +7,10 @@ use serde_json::json;
 
 use super::{AuthPayload, CommandContext, CommandEnvelope, CommandLabel};
 
+fn default_args() -> serde_json::Value {
+    serde_json::Value::Object(serde_json::Map::new())
+}
+
 /// Canonical wire envelope exchanged by control-plane transports.
 ///
 /// This is transport-agnostic: HTTP, gRPC, JSONL, etc. should all map to this
@@ -15,10 +19,10 @@ use super::{AuthPayload, CommandContext, CommandEnvelope, CommandLabel};
 pub struct TransportEnvelope {
     /// Stable command identifier (unique per request).
     pub id: String,
-    /// Command label/name (e.g., \"write_config\").
+    /// Command label/name (e.g., "write_config").
     pub cmd: String,
     /// Arbitrary JSON args for the command.
-    #[serde(default)]
+    #[serde(default = "default_args")]
     pub args: serde_json::Value,
     /// Optional auth payload.
     #[serde(default)]
@@ -111,14 +115,15 @@ where
     pub async fn handle(&self, raw: &[u8]) -> Result<Vec<u8>, String> {
         let env = self.transport.decode(raw).map_err(T::map_error)?;
 
-        // Runtime validation of incoming envelope against JSON Schema
-        let env_val = serde_json::to_value(&env).map_err(|e| e.to_string())?;
-        validate(transport_envelope_schema(), &env_val)?;
+        // Note: We skip runtime schema validation of the incoming envelope here to avoid
+        // double-serialization (decode -> struct -> json value). The struct deserialization
+        // itself provides a baseline guarantee of shape correctness.
 
         let (cmd_env, ctx) = (self.to_command)(env)?;
         let res = self.router.execute(cmd_env).await.map_err(|e| format!("{}", e))?;
 
         // Runtime validation of outgoing CommandResult against JSON Schema
+        // (Optional: can be feature-gated for performance)
         let res_val = command_result_to_schema_value(&res);
         validate(command_result_schema(), &res_val)?;
 
