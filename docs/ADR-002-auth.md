@@ -1,5 +1,9 @@
 # ADR-002: Pluggable Auth for the Control Plane
 
+Date: 2025-11-25
+Owner: James Ross <james@flyingrobots.dev>
+Version: 1.0
+
 ## Status
 Proposed
 
