@@ -195,4 +195,15 @@ mod tests {
         // underlying value. This asserts pointer equality to catch regressions.
         assert!(StdArc::ptr_eq(&first_arc, &second_arc));
     }
+
+    #[cfg(not(feature = "adaptive-rwlock"))]
+    #[test]
+    fn arc_swap_get_returns_shared_arc() {
+        let config = DynamicConfig::new(42);
+        let first_arc = config.get();
+        let second_arc = config.get();
+
+        // Default ArcSwap backend should also return shared Arcs for repeated reads.
+        assert!(StdArc::ptr_eq(&first_arc, &second_arc));
+    }
 }

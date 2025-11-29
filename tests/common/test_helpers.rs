@@ -1,4 +1,4 @@
-use ninelives::control::{BuiltInCommand, CommandEnvelope, AuthPayload, CommandMeta};
+use ninelives::control::{AuthPayload, BuiltInCommand, CommandEnvelope, CommandMeta};
 
 pub fn create_test_envelope(
     cmd: BuiltInCommand,

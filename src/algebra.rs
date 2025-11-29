@@ -457,7 +457,9 @@ where
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match (&self.left, &self.right) {
-            (Some(l), Some(r)) => write!(f, "ForkJoin failed on both sides. Left: {}; Right: {}", l, r),
+            (Some(l), Some(r)) => {
+                write!(f, "ForkJoin failed on both sides. Left: {}; Right: {}", l, r)
+            }
             (Some(l), None) => write!(f, "ForkJoin failed on left side: {}", l),
             (None, Some(r)) => write!(f, "ForkJoin failed on right side: {}", r),
             (None, None) => write!(f, "ForkJoin failed with no recorded errors"),

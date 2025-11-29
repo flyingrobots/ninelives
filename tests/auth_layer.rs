@@ -104,7 +104,7 @@ async fn command_router_audits_denial() {
     let res = router.execute(env(BuiltInCommand::List)).await;
     assert!(matches!(res, Err(ninelives::control::CommandError::Auth(_))));
 
-    let records = audit.records();
+    let records = audit.records().await;
     assert_eq!(records.len(), 1);
     let status = &records[0].status;
     assert!(
@@ -122,7 +122,7 @@ async fn command_router_audits_success() {
     let res = router.execute(env(BuiltInCommand::List)).await.unwrap();
     assert_eq!(res, CommandResult::List(vec![]));
 
-    let records = audit.records();
+    let records = audit.records().await;
     assert_eq!(records.len(), 1);
     let status = &records[0].status;
     assert!(status == "ok" || status.contains("ok"), "unexpected status: {}", status);

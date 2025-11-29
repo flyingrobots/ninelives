@@ -431,8 +431,8 @@ impl MemoryAuditSink {
         Self::default()
     }
     /// Retrieve recorded audit records.
-    pub fn records(&self) -> Vec<AuditRecord> {
-        futures::executor::block_on(async { self.records.lock().await.clone() })
+    pub async fn records(&self) -> Vec<AuditRecord> {
+        self.records.lock().await.clone()
     }
 }
 

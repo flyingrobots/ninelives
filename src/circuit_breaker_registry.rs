@@ -84,7 +84,7 @@ impl CircuitBreakerRegistry for InMemoryCircuitBreakerRegistry {
     }
 
     fn reset(&self, id: &str) -> Result<(), CircuitBreakerRegistryError> {
-        let guard = self.inner.write().expect("circuit breaker registry poisoned");
+        let guard = self.inner.read().expect("circuit breaker registry poisoned");
         match guard.get(id) {
             Some(handle) => {
                 handle.reset();
