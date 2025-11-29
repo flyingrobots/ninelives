@@ -1,6 +1,6 @@
 //! Control plane primitives: command envelope, auth, history, router.
 //!
-//! This is a lightweight, transport-agnuus. Transports populate
+//! This is a lightweight, transport-agnostic. Transports populate
 //! `CommandEnvelope` with an `AuthPayload`; the router dispatches to handlers
 //! after auth. History storage is pluggable.
 
@@ -224,14 +224,13 @@ impl AuthorizationLayer {
 #[derive(Clone)]
 pub struct AuthorizationService<S> {
     inner: S,
-    _registry: Arc<AuthRegistry>,
 }
 
 impl<S> tower_layer::Layer<S> for AuthorizationLayer {
     type Service = AuthorizationService<S>;
 
     fn layer(&self, inner: S) -> Self::Service {
-        AuthorizationService { inner, _registry: self.registry.clone() }
+        AuthorizationService { inner }
     }
 }
 
@@ -398,15 +397,15 @@ pub struct InMemoryHistory {
 #[async_trait]
 impl CommandHistory for InMemoryHistory {
     async fn append(&self, meta: &CommandMeta, _result: &CommandResult) {
-        self.entries.lock().unwrap().push(meta.clone());
+        self.entries.lock().expect("history lock poisoned").push(meta.clone());
     }
 
     async fn list(&self) -> Vec<CommandMeta> {
-        self.entries.lock().unwrap().clone()
+        self.entries.lock().expect("history lock poisoned").clone()
     }
 
     async fn clear(&self) {
-        self.entries.lock().unwrap().clear();
+        self.entries.lock().expect("history lock poisoned").clear();
     }
 }
 
@@ -423,14 +422,14 @@ impl MemoryAuditSink {
     }
     /// Retrieve recorded audit records.
     pub fn records(&self) -> Vec<AuditRecord> {
-        self.records.lock().unwrap().clone()
+        self.records.lock().expect("audit lock poisoned").clone()
     }
 }
 
 #[async_trait]
 impl AuditSink for MemoryAuditSink {
     async fn record(&self, record: AuditRecord) -> Result<(), CommandError> {
-        self.records.lock().unwrap().push(record);
+        self.records.lock().expect("audit lock poisoned").push(record);
         Ok(())
     }
 }
