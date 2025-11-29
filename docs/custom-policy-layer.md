@@ -35,12 +35,18 @@ where
 use ninelives::Policy;
 use tower::{ServiceBuilder, ServiceExt};
 
-let layer = Policy(HeaderTagger) + Policy(ninelives::TimeoutLayer::new(std::time::Duration::from_secs(1))?);
-let mut svc = ServiceBuilder::new().layer(layer).service_fn(|req: &'static str| async move {
-    Ok::<_, std::io::Error>(req)
-});
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let layer = Policy(HeaderTagger)
+        + Policy(ninelives::TimeoutLayer::new(std::time::Duration::from_secs(1))?);
 
-svc.ready().await?.call("hello").await?;
+    let mut svc = ServiceBuilder::new()
+        .layer(layer)
+        .service_fn(|req: String| async move { Ok::<_, std::io::Error>(req) });
+
+    svc.ready().await?.call("hello".to_string()).await?;
+    Ok(())
+}
 ```
 
 ## 3) Expose via the control plane (optional)
