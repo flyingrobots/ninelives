@@ -87,7 +87,7 @@ The `ninelives-control` crate provides several built-in `AuthProvider` implement
 
 -   **`trust-quorum` (`--features auth-trust-quorum`)**:
     *   **Description**: Implements a Shiplog/Stargate-style trust quorum model. Authentication requires a configurable threshold of signatures from a trusted roster. Supports chain or attestation-based verification. Can optionally enforce that the entire `CommandEnvelope` is cryptographically signed.
-    *   **Dependency**: Reuses the core logic from `stargate-verifier` (crate `stargate_verifier = "0.x"`, interface `stargate_verifier::Verifier`). Expected API contract: `Verifier.verify_signatures(payload_hash, signatures, roster) -> Result<Vec<PublicKey>, Error>`.
+    *   **Dependency**: Reuses the core logic from `stargate-verifier` (planned git dependency `https://github.com/flyingrobots/stargate-verifier`, to be tagged `v0.1`). Expected API contract: `Verifier.verify_signatures(payload_hash, signatures, roster) -> Result<Vec<PublicKey>, Error>`. Until published on crates.io, this will be sourced via git with pinned tags; consumers should mirror the tag to avoid drift.
     *   **Configuration**: Per-environment configs for:
         *   `roster`: List of trusted public keys/identities.
         *   `threshold`: Minimum number of valid signatures required.
@@ -334,7 +334,7 @@ Transports are responsible for extracting raw authentication credentials from th
 ### **5. External Dependencies & Update Policy**
 
 *   **Dependency Introduction**: Each built-in `AuthProvider` (JWT, mTLS, trust-quorum) introduces specific external Rust crates (e.g., `jsonwebtoken`, `rustls`, `stargate-verifier`). These will be feature-gated.
-*   **Versioning & Pinning**: Dependencies will be pinned to specific major/minor versions (e.g., `jsonwebtoken = "~8.0"` or `"=8.2.0"`) to prevent unexpected breaking changes from transitive updates.
+*   **Versioning & Pinning**: Dependencies will be pinned to specific major/minor versions (e.g., `jsonwebtoken = "~8.0"` or `"=8.2.0"`) to prevent unexpected breaking changes from transitive updates. For `stargate-verifier`, until it is published to crates.io, we will consume it as a git dependency (`https://github.com/flyingrobots/stargate-verifier`, pinned to tagged releases such as `v0.1`) and mirror the API contract (`verify_signatures(payload_hash, signatures, roster) -> Result<Vec<PublicKey>, Error>`). Consumers should pin to the same tag to avoid drift.
 *   **Update Policy**: Dependencies will be reviewed and updated regularly (e.g., quarterly) to incorporate security patches and new features, or as needed for critical vulnerabilities.
 
 ### **6. Deployment Safety**

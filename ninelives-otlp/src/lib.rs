@@ -9,8 +9,7 @@ use std::task::{Context, Poll};
 
 /// OTLP sink that emits PolicyEvents as structured logs.
 ///
-/// Example usage:
-/// Requires an OTLP collector; doctest is compile-checked only.
+/// Example usage (compile-checked only; requires an OTLP collector and opentelemetry dev deps).
 /// ```no_run
 /// use opentelemetry_sdk::logs::LoggerProvider;
 /// use ninelives_otlp::OtlpSink;

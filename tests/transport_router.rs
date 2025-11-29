@@ -42,11 +42,20 @@ impl Transport for JsonTransport {
 fn env_to_command(
     env: TransportEnvelope,
 ) -> Result<(CommandEnvelope<BuiltInCommand>, ninelives::control::CommandContext), String> {
-    // For test, only support BuiltInCommand::List
-    let cmd = if env.cmd.eq_ignore_ascii_case("list") {
-        BuiltInCommand::List
-    } else {
-        return Err(format!("unsupported cmd: {}", env.cmd));
+    let cmd_lower = env.cmd.to_ascii_lowercase();
+    let cmd = match cmd_lower.as_str() {
+        "list" => BuiltInCommand::List,
+        "set" => {
+            let key = env.args.get("key").and_then(|v| v.as_str()).ok_or("missing key")?;
+            let value = env.args.get("value").and_then(|v| v.as_str()).ok_or("missing value")?;
+            BuiltInCommand::Set { key: key.into(), value: value.into() }
+        }
+        "get" => {
+            let key = env.args.get("key").and_then(|v| v.as_str()).ok_or("missing key")?;
+            BuiltInCommand::Get { key: key.into() }
+        }
+        "reset" => BuiltInCommand::Reset,
+        _ => return Err(format!("unsupported cmd: {}", env.cmd)),
     };
     let ctx = ninelives::control::CommandContext {
         id: env.id,
@@ -84,4 +93,77 @@ async fn transport_router_roundtrip_list() {
     let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(v["result"], "list");
     assert_eq!(v["id"], "cmd-99");
+}
+
+#[tokio::test]
+async fn transport_router_set_get_reset() {
+    let mut auth = AuthRegistry::new(AuthMode::First);
+    auth.register(Arc::new(PassthroughAuth));
+    let history = Arc::new(InMemoryHistory::default());
+    let handler = Arc::new(ninelives::control::BuiltInHandler::default());
+    let router = ninelives::control::CommandRouter::new(auth, handler, history);
+    let t_router = TransportRouter::new(router, JsonTransport, env_to_command);
+
+    // Set
+    let raw_set = json!({
+        "id": "cmd-set",
+        "cmd": "SET",
+        "args": { "key": "k", "value": "v" },
+        "auth": null
+    })
+    .to_string();
+    let bytes = t_router.handle(raw_set.as_bytes()).await.unwrap();
+    let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(v["result"], "ack");
+
+    // Get
+    let raw_get = json!({
+        "id": "cmd-get",
+        "cmd": "get",
+        "args": { "key": "k" },
+        "auth": null
+    })
+    .to_string();
+    let bytes = t_router.handle(raw_get.as_bytes()).await.unwrap();
+    let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(v["result"], "value");
+    assert_eq!(v["value"], "v");
+    assert_eq!(v["id"], "cmd-get");
+
+    // Reset then Get returns default empty string
+    let raw_reset = json!({
+        "id": "cmd-reset",
+        "cmd": "reset",
+        "args": {},
+        "auth": null
+    })
+    .to_string();
+    let _ = t_router.handle(raw_reset.as_bytes()).await.unwrap();
+
+    let bytes = t_router.handle(raw_get.as_bytes()).await.unwrap();
+    let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(v["result"], "value");
+    assert_eq!(v["value"], "");
+}
+
+#[tokio::test]
+async fn transport_router_get_unknown_errors() {
+    let mut auth = AuthRegistry::new(AuthMode::First);
+    auth.register(Arc::new(PassthroughAuth));
+    let history = Arc::new(InMemoryHistory::default());
+    let handler = Arc::new(ninelives::control::BuiltInHandler::default());
+    let router = ninelives::control::CommandRouter::new(auth, handler, history);
+    let t_router = TransportRouter::new(router, JsonTransport, env_to_command);
+
+    let raw_get = json!({
+        "id": "cmd-get-missing",
+        "cmd": "GET",
+        "args": { "key": "missing" },
+        "auth": null
+    })
+    .to_string();
+    let bytes = t_router.handle(raw_get.as_bytes()).await.unwrap();
+    let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(v["result"], "value");
+    assert_eq!(v["value"], "");
 }

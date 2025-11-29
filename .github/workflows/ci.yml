@@ -68,12 +68,16 @@ jobs:
           run_cov() {
             dir=$1
             pushd "$dir" >/dev/null
-            cargo llvm-cov --workspace --all-features \
+            if ! cargo llvm-cov --workspace --all-features \
               --exclude xtask --exclude ninelives-nats --exclude ninelives-kafka \
               --exclude ninelives-elastic --exclude ninelives-etcd --exclude ninelives-otlp \
               --exclude ninelives-prometheus --exclude ninelives-jsonl \
-              --summary-only --json > /tmp/cov.json
-            jq -r '.line.percent' /tmp/cov.json
+              --summary-only --json > /tmp/cov.json; then
+              echo "error: cargo llvm-cov failed in $dir" >&2
+              popd >/dev/null
+              return 1
+            fi
+            jq -r '.line.percent // empty' /tmp/cov.json
             popd >/dev/null
           }
           base_raw=$(run_cov /tmp/base)
