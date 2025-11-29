@@ -265,6 +265,19 @@ mod tests {
         assert!(!msg.ends_with(": "));
     }
     #[test]
+    fn custom_error_display_source_and_into_custom() {
+        let inner = io::Error::new(io::ErrorKind::Other, "boom");
+        let err: ResilienceError<io::Error> = ResilienceError::Custom(Box::new(inner));
+        assert!(err.to_string().contains("boom"));
+        let src = err.source().expect("custom should expose source");
+        assert!(src.to_string().contains("boom"));
+
+        let err2: ResilienceError<io::Error> =
+            ResilienceError::Custom(Box::new(io::Error::new(io::ErrorKind::Other, "boom2")));
+        let boxed = err2.into_custom().expect("custom should be extractable");
+        assert!(boxed.to_string().contains("boom2"));
+    }
+    #[test]
     fn is_timeout_check() {
         let err: ResilienceError<io::Error> = ResilienceError::Timeout {
             elapsed: Duration::from_secs(1),

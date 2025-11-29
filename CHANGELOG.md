@@ -5,6 +5,7 @@ All notable changes will be documented in this file.
 ## [Unreleased]
 
 - BREAKING: `ForkJoinService::Error` is now `ForkJoinError<E>` to surface both left and right errors on dual failures (previously returned only the left error); update downstream error handling for the new wrapper type. Target release: v0.3.0.
+- BREAKING: `ResilienceError<E>` no longer implements `Clone` due to the new `Custom(Box<dyn Error + Send + Sync>)` variant; update call sites/tests that relied on cloning to handle owned/moved errors instead.
 
 ## [0.2.0] - 2025-11-25
 
