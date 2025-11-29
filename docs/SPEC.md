@@ -1,4 +1,4 @@
-# Nine Lives v2: The Algebraic Resilience Framework Specification
+# Nine Lives v4: The Algebraic Resilience Framework Specification
 
 *Version 4.0 (Final)*
 

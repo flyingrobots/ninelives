@@ -9,17 +9,28 @@ Thanks for wanting to improve Nine Lives! This document provides guidelines for 
 3. Run Checks Locally:
 
 ```bash
-cargo fmt -- --check
-cargo clippy --all-targets --all-features -- -D warnings 
 cargo test --all-features --all-targets
 ```
-To enable the repo's hooks (pre-commit, pre-push), set:
 
+### Git Hooks (Recommended)
+
+We use `git` hooks to enforce code quality (formatting, linting, tests) before every commit and push. This prevents broken code from reaching the repository.
+
+**Option 1: Automatic Setup (Recommended)**
+Run the helper script to safely configure your local git repository:
+```bash
+./scripts/setup-hooks.sh
+```
+
+**Option 2: Manual Setup**
 ```bash
 git config core.hooksPath scripts/git-hooks
 ```
 
-Or run the helper script: `scripts/setup-hooks.sh`.
+**Verification:**
+Check that `scripts/git-hooks` contains files like `pre-commit` and `pre-push`.
+If the setup script fails, ensure you are in the project root and have write permissions to `.git/config`.
+
 4. Open a PR with a clear description and necessary tests.
 
 ## 🧪 Testing Notes

@@ -14,11 +14,12 @@ ninelives = { workspace = true }
 tracing = "0.1"
 tower-service = { workspace = true }
 opentelemetry = { version = "0.31", features = ["logs"] }
-opentelemetry_sdk = { version = "0.31", features = ["logs", "testing", "rt-tokio"] }
+opentelemetry_sdk = { version = "0.31", features = ["logs", "rt-tokio"] }
 tokio = { version = "1", features = ["rt", "macros"] }
 
 [dev-dependencies]
 opentelemetry-otlp = { version = "0.31", features = ["logs", "http-proto", "reqwest-client", "reqwest-rustls"] }
+opentelemetry_sdk = { version = "0.31", features = ["testing"] }
 
 [features]
 default = []
