@@ -14,9 +14,9 @@ ninelives = { workspace = true }
 serde_json.workspace = true
 tower-service = { workspace = true }
 async-nats = "0.36"
-tokio = { version = "1", features = ["rt", "macros"] }
+tokio = { workspace = true, features = ["rt", "macros"] }
 tracing = "0.1"
 
 [dev-dependencies]
-tokio = { version = "1", features = ["full"] }
-futures-util = "0.3"
+tokio = { workspace = true, features = ["full"] }
+futures-util = { workspace = true }

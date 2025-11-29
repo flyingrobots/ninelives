@@ -6,7 +6,10 @@ OTLP telemetry sink for the `ninelives` resilience library. Bring your own `open
 
 ```toml
 ninelives = "0.3"
-ninelives-otlp = { path = "../ninelives-otlp" }
+# Published crate usage
+ninelives-otlp = "0.3"
+# For local workspace development, you can instead use:
+# ninelives-otlp = { path = "../ninelives-otlp" }
 opentelemetry = { version = "0.31", features = ["logs"] }
 opentelemetry_sdk = { version = "0.31", features = ["logs", "rt-tokio"] }
 opentelemetry-otlp = { version = "0.31", features = ["logs", "http-proto", "reqwest-client", "reqwest-rustls"] }

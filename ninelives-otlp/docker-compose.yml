@@ -1,7 +1,7 @@
 version: '3.8'
 services:
   otelcol:
-    image: otel/opentelemetry-collector-contrib:latest
+    image: otel/opentelemetry-collector-contrib:0.140.1
     command: ["--config=/etc/otelcol-config.yaml"]
     volumes:
       - ./otel-collector-config.yaml:/etc/otelcol-config.yaml:ro
@@ -9,7 +9,7 @@ services:
       - "4317:4317" # gRPC
       - "4318:4318" # HTTP
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:13133/healthz"]
+      test: ["CMD", "curl", "-sf", "http://localhost:13133/healthz"]
       interval: 5s
       timeout: 3s
       retries: 10

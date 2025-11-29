@@ -11,11 +11,11 @@ readme = "README.md"
 
 [dependencies]
 ninelives = { workspace = true }
-tracing = "0.1"
+tracing.workspace = true
 tower-service = { workspace = true }
-opentelemetry = { version = "0.31", features = ["logs"] }
-opentelemetry_sdk = { version = "0.31", features = ["logs", "rt-tokio"] }
-tokio = { version = "1", features = ["rt", "macros"] }
+opentelemetry.workspace = true
+opentelemetry_sdk = { workspace = true, features = ["logs", "rt-tokio"] }
+tokio = { workspace = true, features = ["rt", "macros"] }
 
 [dev-dependencies]
 opentelemetry-otlp = { version = "0.31", features = ["logs", "http-proto", "reqwest-client", "reqwest-rustls"] }

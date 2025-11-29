@@ -7,6 +7,7 @@ services:
       - discovery.type=single-node
       - xpack.security.enabled=false
       - logger.level=info
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD:-changeme123456}
     ports:
       - "9200:9200"
     deploy:
@@ -31,11 +32,3 @@ services:
 
 volumes:
   elasticsearch_data:
-    - ELASTIC_PASSWORD=changeme123456
-    ports:
-      - "9200:9200"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9200/_cluster/health"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
