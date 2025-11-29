@@ -4,6 +4,7 @@ use ninelives::telemetry::{PolicyEvent, RetryEvent};
 use ninelives_otlp::OtlpSink;
 use opentelemetry_otlp::WithExportConfig;
 use std::time::Duration;
+use tokio::time::timeout;
 use tower_service::Service;
 
 // Requires an OTLP collector listening on HTTP. If NINE_LIVES_TEST_OTLP_ENDPOINT is unset, skip.
@@ -42,7 +43,10 @@ async fn publishes_events_to_otlp() {
     let event =
         PolicyEvent::Retry(RetryEvent::Attempt { attempt: 1, delay: Duration::from_millis(50) });
 
-    sink.call(event).await.expect("send event");
+    timeout(Duration::from_secs(5), sink.call(event))
+        .await
+        .expect("OtlpSink call timed out")
+        .expect("send event");
 
     // Flush to ensure export completes
     provider.force_flush().unwrap();

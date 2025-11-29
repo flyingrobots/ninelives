@@ -53,6 +53,28 @@ fn command_result_schema() -> &'static JSONSchema {
     })
 }
 
+#[cfg(debug_assertions)]
+fn validate_envelope(env: &TransportEnvelope) -> Result<(), String> {
+    let env_val = serde_json::to_value(env).map_err(|e| e.to_string())?;
+    validate(transport_envelope_schema(), &env_val)
+}
+
+#[cfg(not(debug_assertions))]
+fn validate_envelope(_env: &TransportEnvelope) -> Result<(), String> {
+    Ok(())
+}
+
+#[cfg(debug_assertions)]
+fn validate_result(res: &super::CommandResult) -> Result<(), String> {
+    let res_val = command_result_to_schema_value(res);
+    validate(command_result_schema(), &res_val)
+}
+
+#[cfg(not(debug_assertions))]
+fn validate_result(_res: &super::CommandResult) -> Result<(), String> {
+    Ok(())
+}
+
 fn validate(schema: &JSONSchema, value: &JsonValue) -> Result<(), String> {
     schema
         .validate(value)
@@ -111,11 +133,7 @@ where
     pub const MAX_REQUEST_SIZE: usize = 1024 * 1024; // 1 MiB
 
     /// Create a new TransportRouter.
-    pub fn new(
-        router: crate::control::CommandRouter<C>,
-        transport: T,
-        to_command: Conv,
-    ) -> Self {
+    pub fn new(router: crate::control::CommandRouter<C>, transport: T, to_command: Conv) -> Self {
         Self { router, transport, to_command }
     }
 
@@ -125,17 +143,14 @@ where
         }
         let env = self.transport.decode(raw).map_err(|e| T::map_error(&e))?;
 
-        // Runtime validation of incoming envelope against JSON Schema
-        let env_val = serde_json::to_value(&env).map_err(|e| e.to_string())?;
-        validate(transport_envelope_schema(), &env_val)?;
+        // Runtime validation of incoming envelope against JSON Schema (gated for perf)
+        validate_envelope(&env)?;
 
         let (cmd_env, ctx) = (self.to_command)(env)?;
         let res = self.router.execute(cmd_env).await.map_err(|e| e.to_string())?;
 
-        // Runtime validation of outgoing CommandResult against JSON Schema
-        // (Optional: can be feature-gated for performance)
-        let res_val = command_result_to_schema_value(&res);
-        validate(command_result_schema(), &res_val)?;
+        // Runtime validation of outgoing CommandResult against JSON Schema (gated for perf)
+        validate_result(&res)?;
 
         self.transport.encode(&ctx, &res).map_err(|e| T::map_error(&e))
     }
