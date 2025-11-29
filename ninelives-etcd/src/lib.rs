@@ -47,7 +47,20 @@ impl tower_service::Service<PolicyEvent> for EtcdSink {
         );
         let value = event_to_json(&event);
         Box::pin(async move {
-            let _ = client.put(key, value.to_string(), None).await;
+            match client.put(key.clone(), value.to_string(), None).await {
+                Ok(_) => {
+                    // Success: could increment a success metric here
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        target: "ninelives::etcd",
+                        key=%key,
+                        error=%e,
+                        "failed to write telemetry event to etcd"
+                    );
+                    // Failure: could increment a failure metric here
+                }
+            }
             Ok(())
         })
     }
