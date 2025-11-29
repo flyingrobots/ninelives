@@ -117,6 +117,7 @@ mod bulkhead;
 mod circuit_breaker;
 pub mod circuit_breaker_registry;
 mod clock;
+#[cfg(feature = "control")]
 pub mod control;
 mod error;
 mod jitter;
@@ -140,8 +141,11 @@ pub use circuit_breaker::{
     CircuitBreakerConfig, CircuitBreakerError, CircuitBreakerLayer, CircuitState,
 };
 pub use clock::{Clock, MonotonicClock};
+#[cfg(feature = "control")]
 pub use control::transport::{Transport, TransportEnvelope, TransportRouter};
+#[cfg(feature = "control")]
 pub use control::transport_channel::ChannelTransport;
+#[cfg(feature = "control")]
 pub use control::{AuthorizationLayer, MemoryAuditSink};
 pub use error::ResilienceError;
 pub use jitter::Jitter;

@@ -1,5 +1,8 @@
 name: Integration Tests
 
+permissions:
+  contents: read
+
 on:
   push:
     branches: [main]
@@ -14,6 +17,7 @@ jobs:
   integration-tests:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         target: [it-nats, it-kafka, it-elastic, it-otlp, it-etcd]
     steps:
