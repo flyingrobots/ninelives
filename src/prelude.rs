@@ -23,3 +23,21 @@ pub use crate::{
     timeout::{TimeoutError, TimeoutPolicy, MAX_TIMEOUT},
     BulkheadPolicy, ResilienceError,
 };
+
+/// Simple, ready-to-use helpers.
+pub mod simple {
+    use std::time::Duration;
+
+    use crate::circuit_breaker::{CircuitBreakerConfig, CircuitBreakerLayer};
+
+    /// Construct a circuit breaker layer with sensible defaults, overriding threshold and timeout.
+    pub fn circuit_breaker(threshold: usize, timeout: Duration) -> CircuitBreakerLayer {
+        let cfg = CircuitBreakerConfig::builder()
+            .failure_threshold(threshold)
+            .recovery_timeout(timeout)
+            .half_open_limit(1)
+            .build()
+            .expect("circuit breaker config");
+        CircuitBreakerLayer::new(cfg).expect("circuit breaker layer")
+    }
+}

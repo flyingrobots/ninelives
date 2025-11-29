@@ -244,6 +244,68 @@ impl CircuitBreakerState {
     pub(crate) fn current_state(&self) -> CircuitState {
         CircuitState::from_u8(self.state.load(Ordering::SeqCst))
     }
+
+    /// Determine if a request may proceed, updating state for Open -> HalfOpen and HalfOpen counters.
+    /// On success returns Ok(()).
+    /// On rejection returns the CircuitBreakerEvent that describes why it was blocked (Open or HalfOpen limit).
+    fn try_acquire(
+        &self,
+        config: &CircuitBreakerConfig,
+        clock: &dyn Clock,
+    ) -> Result<(), CircuitBreakerEvent> {
+        let now = clock.now_millis();
+        let current = CircuitState::from_u8(self.state.load(Ordering::Acquire));
+        let recovery_timeout = *config.recovery_timeout.get();
+        let failure_threshold = (*config.failure_threshold.get()).max(1);
+        let half_open_max_calls = (*config.half_open_max_calls.get()).max(1);
+        let recovery_timeout_ms = recovery_timeout.as_millis().min(u128::from(u64::MAX)) as u64;
+
+        match current {
+            CircuitState::Open => {
+                let opened_at = self.opened_at_millis.load(Ordering::Acquire);
+                if now.saturating_sub(opened_at) < recovery_timeout_ms {
+                    return Err(CircuitBreakerEvent::Opened {
+                        failure_count: self.failure_count.load(Ordering::Acquire),
+                    });
+                }
+                // Transition Open -> HalfOpen
+                let prev = self.state.compare_exchange(
+                    CircuitState::Open.to_u8(),
+                    CircuitState::HalfOpen.to_u8(),
+                    Ordering::AcqRel,
+                    Ordering::Acquire,
+                );
+                if prev.is_ok() {
+                    // Reset counters for HalfOpen window
+                    self.half_open_calls.store(0, Ordering::Release);
+                }
+                Ok(())
+            }
+            CircuitState::HalfOpen => {
+                let calls = self.half_open_calls.fetch_add(1, Ordering::AcqRel) + 1;
+                if calls > half_open_max_calls {
+                    Err(CircuitBreakerEvent::Opened {
+                        failure_count: self.failure_count.load(Ordering::Acquire),
+                    })
+                } else {
+                    Ok(())
+                }
+            }
+            CircuitState::Closed => {
+                // ensure thresholds not zero and capture current threshold; if exceeded, open
+                if self.failure_count.load(Ordering::Acquire) >= failure_threshold {
+                    // transition to open and stamp time
+                    self.state.store(CircuitState::Open.to_u8(), Ordering::Release);
+                    self.opened_at_millis.store(now, Ordering::Release);
+                    Err(CircuitBreakerEvent::Opened {
+                        failure_count: self.failure_count.load(Ordering::Acquire),
+                    })
+                } else {
+                    Ok(())
+                }
+            }
+        }
+    }
 }
 
 use crate::telemetry::{
@@ -470,48 +532,15 @@ where
         // TODO: Avoid Box::pin allocation; switch to pin-project + struct future or RPITIT when MSRV allows.
         Box::pin(async move {
             let start = StdInstant::now();
-            let now = clock.now_millis();
-            let current = CircuitState::from_u8(state.state.load(Ordering::Acquire));
-            let recovery_timeout = *config.recovery_timeout.get();
             let failure_threshold = (*config.failure_threshold.get()).max(1);
-            let half_open_max_calls = (*config.half_open_max_calls.get()).max(1);
-            let recovery_timeout_ms = recovery_timeout.as_millis().min(u128::from(u64::MAX)) as u64;
 
-            match current {
-                CircuitState::Open => {
-                    let opened_at = state.opened_at_millis.load(Ordering::Acquire);
-                    if now.saturating_sub(opened_at) < recovery_timeout_ms {
-                        return Err(ResilienceError::CircuitOpen {
-                            failure_count: state.failure_count.load(Ordering::Acquire),
-                            open_duration: Duration::from_millis(now.saturating_sub(opened_at)),
-                        });
-                    }
-                    // Transition Open -> HalfOpen
-                    let prev = state.state.compare_exchange(
-                        CircuitState::Open.to_u8(),
-                        CircuitState::HalfOpen.to_u8(),
-                        Ordering::AcqRel,
-                        Ordering::Acquire,
-                    );
-                    if prev.is_ok() {
-                        emit_best_effort(
-                            sink.clone(),
-                            PolicyEvent::CircuitBreaker(CircuitBreakerEvent::HalfOpen),
-                        )
-                        .await;
-                    }
-                    state.half_open_calls.store(0, Ordering::Release);
-                }
-                CircuitState::HalfOpen => {
-                    let calls = state.half_open_calls.fetch_add(1, Ordering::AcqRel) + 1;
-                    if calls > half_open_max_calls {
-                        return Err(ResilienceError::CircuitOpen {
-                            failure_count: state.failure_count.load(Ordering::Acquire),
-                            open_duration: Duration::ZERO,
-                        });
-                    }
-                }
-                CircuitState::Closed => {}
+            if let Err(CircuitBreakerEvent::Opened { failure_count }) =
+                state.try_acquire(&config, clock.as_ref())
+            {
+                let opened_at = state.opened_at_millis.load(Ordering::Acquire);
+                let now = clock.now_millis();
+                let open_duration = Duration::from_millis(now.saturating_sub(opened_at));
+                return Err(ResilienceError::CircuitOpen { failure_count, open_duration });
             }
 
             match inner.call(req).await {
