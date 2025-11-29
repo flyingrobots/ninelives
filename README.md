@@ -200,7 +200,7 @@ Nine Lives is designed to integrate with your infrastructure:
 * **Phase 3: Observer** 🚧 (Aggregation, Sentinel Logic)
 * **Future:** WASM-based Meta-Policies, Distributed Circuit Breaking.
 
-See [ROADMAP.md](docs/ROADMAP/README.md) for details.
+See [docs/ROADMAP/README.md](docs/ROADMAP/README.md) for details.
 
 ---
 

@@ -71,10 +71,8 @@ pub struct InMemoryCircuitBreakerRegistry {
 pub type DefaultCircuitBreakerRegistry = InMemoryCircuitBreakerRegistry;
 
 impl CircuitBreakerRegistry for InMemoryCircuitBreakerRegistry {
-    #[allow(unused_mut)]
     fn register(&self, id: String, handle: CircuitBreakerHandle) {
-        let guard = self.inner.write().expect("circuit breaker registry poisoned");
-        let mut map = guard;
+        let mut map = self.inner.write().expect("circuit breaker registry poisoned");
         map.insert(id, handle);
     }
 
