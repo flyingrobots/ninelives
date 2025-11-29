@@ -48,6 +48,42 @@ Use `cargo run -p xtask --bin xtask suggest <PHASE|all>` to list ready tasks ord
 7. `git push`.
 8. Open a GitHub PR targeting the correct branch.
 
+## Testing and CI
+
+We enforce a strict "test-first" workflow.
+
+### Framework & Locations
+- **Framework**: Standard Rust `cargo test`.
+- **Integration Tests**: Located in `tests/*.rs`. Preferred for feature validation (black-box).
+- **Unit Tests**: Located in `src/**` (inline `mod tests`). Use for internal logic/invariants.
+
+### Scaffolding a Failing Test
+To quickly start Task 2 (Write Failing Tests), use the helper script:
+
+```bash
+./scripts/scaffold-test.sh <test_name_snake_case>
+# Example: ./scripts/scaffold-test.sh auth_header_parsing
+```
+
+This creates a new integration test file in `tests/` with a failing assertion.
+
+### Running Tests
+- **Full Suite (Local)**: `cargo test --all-features --all-targets`
+- **Specific Test**: `cargo test --test <test_name>` (integration) or `cargo test <function_name>` (unit).
+
+### Pre-Push Hooks & CI
+Our pre-push hook ensures quality before you push. It runs:
+1. `cargo fmt -- --check`
+2. `cargo clippy --all-targets --all-features -- -D warnings -D missing_docs`
+3. `cargo test --all-features --all-targets` (Full Suite)
+4. `cargo doc --no-deps`
+5. `cargo run -p xtask --bin xtask sync-dag all` (Roadmap sync)
+
+**Troubleshooting Pre-Push Failures:**
+- **Tests failed?** Run `cargo test` locally to debug.
+- **Formatting/Linting?** Run `cargo fmt` and `cargo clippy --fix`.
+- **Roadmap drift?** Run `cargo run -p xtask --bin xtask sync-dag all` and commit the changes to `docs/ROADMAP/`.
+
 ## Tips
 
 - USE THE XTASK TOOLS TO KEEP THE DAG UP-TO-DATE.
