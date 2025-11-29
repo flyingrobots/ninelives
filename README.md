@@ -83,16 +83,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## 🍳 Cookbook
 
-Pick a recipe from [`ninelives-cookbook`](ninelives-cookbook/src/lib.rs):
+Pick a recipe from [`ninelives-cookbook`](https://docs.rs/ninelives-cookbook/latest/ninelives_cookbook/):
 
-- **Simple retry:** [`retry_fast`](ninelives-cookbook/src/lib.rs) — 3 attempts, 50ms exp backoff + jitter.
-- **Latency guard:** [`timeout_p95`](ninelives-cookbook/src/lib.rs) — 300ms budget.
-- **Bulkhead:** [`bulkhead_isolate(max)`](ninelives-cookbook/src/lib.rs) — protect shared deps.
-- **API guardrail (intermediate):** [`api_guardrail`](ninelives-cookbook/src/lib.rs) — timeout + breaker + bulkhead.
-- **Reliable read (advanced):** [`reliable_read`](ninelives-cookbook/src/lib.rs) — fast path then fallback stack.
-- **Hedged read (tricky):** [`hedged_read`](ninelives-cookbook/src/lib.rs) — fork-join two differently tuned stacks.
-- **Hedge + fallback (god tier):** [`hedged_then_fallback`](ninelives-cookbook/src/lib.rs) — race two fast paths, then fall back to a sturdy stack.
-- **Sensible defaults:** [`sensible_defaults`](ninelives-cookbook/src/lib.rs) — timeout + retry + bulkhead starter pack.
+- **Simple retry:** [`retry_fast`](https://docs.rs/ninelives-cookbook/latest/ninelives_cookbook/fn.retry_fast.html) — 3 attempts, 50ms exp backoff + jitter.
+- **Latency guard:** [`timeout_p95`](https://docs.rs/ninelives-cookbook/latest/ninelives_cookbook/fn.timeout_p95.html) — 300ms budget.
+- **Bulkhead:** [`bulkhead_isolate`](https://docs.rs/ninelives-cookbook/latest/ninelives_cookbook/fn.bulkhead_isolate.html) — protect shared deps.
+- **API guardrail (intermediate):** [`api_guardrail`](https://docs.rs/ninelives-cookbook/latest/ninelives_cookbook/fn.api_guardrail.html) — timeout + breaker + bulkhead.
+- **Reliable read (advanced):** [`reliable_read`](https://docs.rs/ninelives-cookbook/latest/ninelives_cookbook/fn.reliable_read.html) — fast path then fallback stack.
+- **Hedged read (tricky):** [`hedged_read`](https://docs.rs/ninelives-cookbook/latest/ninelives_cookbook/fn.hedged_read.html) — fork-join two differently tuned stacks.
+- **Hedge + fallback (god tier):** [`hedged_then_fallback`](https://docs.rs/ninelives-cookbook/latest/ninelives_cookbook/fn.hedged_then_fallback.html) — race two fast paths, then fall back to a sturdy stack.
+- **Sensible defaults:** [`sensible_defaults`](https://docs.rs/ninelives-cookbook/latest/ninelives_cookbook/fn.sensible_defaults.html) — timeout + retry + bulkhead starter pack.
 
 Most recipes are adaptive: retry/timeout/circuit/bulkhead knobs can be updated live via the `Adaptive<T>` handles.
 

@@ -7,13 +7,7 @@ use serde_json::json;
 /// Panics with a concatenated error message if validation fails.
 fn assert_valid(schema: &JSONSchema, value: serde_json::Value) {
     if let Err(errs) = schema.validate(&value) {
-        let msg = errs.fold(String::new(), |mut acc, e| {
-            if !acc.is_empty() {
-                acc.push_str(", ");
-            }
-            acc.push_str(&e.to_string());
-            acc
-        });
+        let msg = errs.map(|e| e.to_string()).collect::<Vec<_>>().join(", ");
         panic!("Schema validation failed: {}", msg);
     }
 }

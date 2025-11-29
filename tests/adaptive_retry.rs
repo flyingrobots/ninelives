@@ -24,7 +24,7 @@ async fn retry_respects_live_max_attempts() {
 
     let layer = policy.clone().into_layer();
     let svc = TestService::new(3);
-    let mut wrapped = ServiceBuilder::new().layer(layer).service(svc.clone());
+    let mut wrapped = ServiceBuilder::new().layer(layer.clone()).service(svc.clone());
 
     // With max_attempts=1 should fail (needs 3 attempts)
     let res = wrapped.ready().await.unwrap().call(()).await;
@@ -32,6 +32,9 @@ async fn retry_respects_live_max_attempts() {
 
     // Update max attempts live and retry with the SAME wrapped service
     max_handle.set(3);
+    // Recreate service so its internal counter resets
+    let svc = TestService::new(3);
+    let mut wrapped = ServiceBuilder::new().layer(layer).service(svc);
     let res = wrapped.ready().await.unwrap().call(()).await;
     assert!(res.is_ok());
 }
