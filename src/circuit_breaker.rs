@@ -52,6 +52,72 @@ pub struct CircuitBreakerConfig {
     half_open_max_calls: Adaptive<usize>,
 }
 
+/// Builder for [`CircuitBreakerConfig`].
+#[derive(Debug, Clone)]
+pub struct CircuitBreakerConfigBuilder {
+    failure_threshold: usize,
+    recovery_timeout: Duration,
+    half_open_max_calls: usize,
+    id: Option<String>,
+}
+
+impl Default for CircuitBreakerConfigBuilder {
+    fn default() -> Self {
+        Self {
+            failure_threshold: 5,
+            recovery_timeout: Duration::from_secs(10),
+            half_open_max_calls: 1,
+            id: None,
+        }
+    }
+}
+
+impl CircuitBreakerConfigBuilder {
+    pub fn failure_threshold(mut self, threshold: usize) -> Self {
+        self.failure_threshold = threshold;
+        self
+    }
+
+    pub fn recovery_timeout(mut self, timeout: Duration) -> Self {
+        self.recovery_timeout = timeout;
+        self
+    }
+
+    pub fn half_open_limit(mut self, limit: usize) -> Self {
+        self.half_open_max_calls = limit;
+        self
+    }
+
+    pub fn id(mut self, id: impl Into<String>) -> Self {
+        self.id = Some(id.into());
+        self
+    }
+
+    pub fn build(self) -> Result<CircuitBreakerConfig, CircuitBreakerError> {
+        if self.failure_threshold == 0 {
+            return Err(CircuitBreakerError::InvalidFailureThreshold {
+                provided: self.failure_threshold,
+            });
+        }
+        if self.recovery_timeout.is_zero() {
+            return Err(CircuitBreakerError::InvalidRecoveryTimeout(self.recovery_timeout));
+        }
+        if self.half_open_max_calls == 0 {
+            return Err(CircuitBreakerError::InvalidHalfOpenLimit {
+                provided: self.half_open_max_calls,
+            });
+        }
+        let cfg = CircuitBreakerConfig {
+            id: self.id,
+            failure_threshold: Adaptive::new(self.failure_threshold),
+            recovery_timeout: Adaptive::new(self.recovery_timeout),
+            half_open_max_calls: Adaptive::new(self.half_open_max_calls),
+        };
+        cfg.validate()?;
+        Ok(cfg)
+    }
+}
+
 /// Errors produced when validating breaker configuration.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CircuitBreakerError {
@@ -88,37 +154,23 @@ impl std::fmt::Display for CircuitBreakerError {
 impl std::error::Error for CircuitBreakerError {}
 
 impl CircuitBreakerConfig {
-    /// Create a new circuit breaker configuration with validation.
-    ///
-    /// # Errors
-    ///
-    /// Returns error if any parameter is zero or invalid.
+    /// Deprecated: use `builder()` for defaults and clarity.
+    #[deprecated(since = "0.3.0", note = "use CircuitBreakerConfig::builder() instead")]
     pub fn new(
         failure_threshold: usize,
         recovery_timeout: Duration,
         half_open_max_calls: usize,
     ) -> Result<Self, CircuitBreakerError> {
-        if failure_threshold == 0 {
-            return Err(CircuitBreakerError::InvalidFailureThreshold {
-                provided: failure_threshold,
-            });
-        }
-        if recovery_timeout.is_zero() {
-            return Err(CircuitBreakerError::InvalidRecoveryTimeout(recovery_timeout));
-        }
-        if half_open_max_calls == 0 {
-            return Err(CircuitBreakerError::InvalidHalfOpenLimit {
-                provided: half_open_max_calls,
-            });
-        }
-        let cfg = Self {
-            id: None,
-            failure_threshold: Adaptive::new(failure_threshold),
-            recovery_timeout: Adaptive::new(recovery_timeout),
-            half_open_max_calls: Adaptive::new(half_open_max_calls),
-        };
-        cfg.validate()?;
-        Ok(cfg)
+        CircuitBreakerConfigBuilder::default()
+            .failure_threshold(failure_threshold)
+            .recovery_timeout(recovery_timeout)
+            .half_open_limit(half_open_max_calls)
+            .build()
+    }
+
+    /// Start building a circuit breaker configuration with sensible defaults.
+    pub fn builder() -> CircuitBreakerConfigBuilder {
+        CircuitBreakerConfigBuilder::default()
     }
 
     /// Create a disabled circuit breaker (never opens).
@@ -313,7 +365,12 @@ mod tests {
     #[tokio::test]
     async fn breaker_opens_and_half_opens_after_timeout() {
         let clock = TestClock::new(0);
-        let cfg = CircuitBreakerConfig::new(1, Duration::from_millis(50), 2).unwrap();
+        let cfg = CircuitBreakerConfig::builder()
+            .failure_threshold(1)
+            .recovery_timeout(Duration::from_millis(50))
+            .half_open_limit(2)
+            .build()
+            .unwrap();
         let layer = CircuitBreakerLayer::with_clock(cfg, clock.clone()).unwrap();
         let service = layer.layer(FlappyService::new(true, None));
         let mut svc = service.clone();

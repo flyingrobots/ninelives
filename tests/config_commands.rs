@@ -90,8 +90,13 @@ async fn get_state_reports_open_breaker() {
     let registry = DefaultCircuitBreakerRegistry::default();
 
     // Create breaker and force it to open.
-    let cfg =
-        CircuitBreakerConfig::new(1, Duration::from_millis(1), 1).unwrap().with_id("cb_state");
+    let cfg = CircuitBreakerConfig::builder()
+        .failure_threshold(1)
+        .recovery_timeout(Duration::from_millis(1))
+        .half_open_limit(1)
+        .build()
+        .unwrap()
+        .with_id("cb_state");
     let layer = CircuitBreakerLayer::new(cfg).unwrap().with_registry(registry.clone());
     let mut svc = layer.layer(FailingSvc);
     let _ = svc.ready().await.unwrap().call(()).await;
@@ -157,8 +162,13 @@ impl Service<()> for FailingSvc {
 async fn reset_command_closes_open_breaker() {
     let registry = DefaultCircuitBreakerRegistry::default();
 
-    let cfg =
-        CircuitBreakerConfig::new(1, Duration::from_millis(1), 1).unwrap().with_id("cb_reset");
+    let cfg = CircuitBreakerConfig::builder()
+        .failure_threshold(1)
+        .recovery_timeout(Duration::from_millis(1))
+        .half_open_limit(1)
+        .build()
+        .unwrap()
+        .with_id("cb_reset");
     let layer = CircuitBreakerLayer::new(cfg).unwrap().with_registry(registry.clone());
     let mut svc = layer.layer(FailingSvc);
 
