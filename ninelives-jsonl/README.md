@@ -6,7 +6,11 @@ JSONL telemetry sink for the `ninelives` resilience library. Writes one JSON eve
 
 ```toml
 ninelives = "0.3"
-ninelives-jsonl = { path = "../ninelives-jsonl" }
+# For published crate users:
+ninelives-jsonl = "0.3"
+
+# For local monorepo development:
+# ninelives-jsonl = { path = "../ninelives-jsonl" }
 ```
 
 ```rust

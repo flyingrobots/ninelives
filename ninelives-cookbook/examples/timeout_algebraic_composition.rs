@@ -37,6 +37,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Err(e) => {
             println!("✗ Timeout occurred as expected: {:?}\n", e);
             // In production: match on specific error types for recovery
+        }
+    }
+
     // Demonstrate algebraic composition: fallback strategy
     println!("=== Algebraic Composition: Fallback ===\n");
 
@@ -57,8 +60,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Request takes 100ms - fast will timeout, slow will succeed");
     let response = fallback_svc.ready().await?.call("request").await?;
     println!("✓ Success via fallback: {}", response);
-    println!("Request takes 100ms - fast will timeout, slow will succeed");
-    let response = fallback_svc.ready().await?.call("request").await?;
+
+    println!("Second request takes 100ms - demonstrating repeat fallback");
+    let response = fallback_svc.ready().await?.call("request-2").await?;
     println!("✓ Success via fallback: {}", response);
 
     Ok(())

@@ -2,8 +2,9 @@ use ninelives::telemetry::{PolicyEvent, RetryEvent};
 use ninelives_kafka::KafkaSink;
 use rdkafka::{
     admin::{AdminClient, AdminOptions, NewTopic, TopicReplication},
-    consumer::{Consumer, ConsumerContext, StreamConsumer},
-    producer::{FutureProducer, FutureRecord},
+    client::DefaultClientContext,
+    consumer::{Consumer, StreamConsumer},
+    producer::{FutureProducer, Producer},
     ClientConfig, Message,
 };
 use std::time::Duration;
@@ -26,7 +27,7 @@ async fn publishes_events_to_kafka() {
     let consumer_group_id = format!("ninelives-test-group-{}", unique_id);
 
     // --- Admin Client to create/delete topic ---
-    let admin_client: AdminClient<ConsumerContext> = ClientConfig::new()
+    let admin_client: AdminClient<DefaultClientContext> = ClientConfig::new()
         .set("bootstrap.servers", &brokers)
         .create()
         .expect("failed to create Kafka AdminClient");
@@ -49,7 +50,6 @@ async fn publishes_events_to_kafka() {
         attempt: 1,
         delay: Duration::from_millis(50),
     });
-    let event_payload = serde_json::to_vec(&event).expect("Failed to serialize event");
 
     sink.call(event.clone())
         .await
@@ -74,7 +74,7 @@ async fn publishes_events_to_kafka() {
     // Wait for partition assignment
     let mut assigned = false;
     for _ in 0..10 {
-        if !consumer.assignment().expect("Failed to get assignment").is_empty() {
+        if consumer.assignment().expect("Failed to get assignment").count() > 0 {
             assigned = true;
             break;
         }

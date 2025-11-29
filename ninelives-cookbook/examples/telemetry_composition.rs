@@ -1,10 +1,15 @@
-//! Telemetry sink composition example.
+//! Demonstrates composing telemetry sinks with `MulticastSink` and `FallbackSink`.
 //!
-//! Demonstrates how to compose multiple telemetry sinks using MulticastSink and FallbackSink.
+//! - Goal: show how to fan out events to multiple sinks and fall back when a primary sink fails.
+//! - Behavior: Multicast sends each event to memory + log; Fallback routes to a secondary sink on error.
+//! - Expected output: printed events from the log sink, memory sink counts, and streamed events.
+//! - Run with: `cargo run --example telemetry_composition`
 
 use ninelives::prelude::*;
 use std::time::Duration;
 use tower::{Service, ServiceBuilder, ServiceExt};
+
+const STREAM_PROCESSING_POLL_DELAY_MS: u64 = 50; // Give the streaming task time to drain events before printing
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -42,7 +47,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
-    let result = svc.ready().await?.call("test").await;
+    let result = svc.ready().await?.call("test").await?;
     println!("\nResult: {:?}", result);
 
     println!("\nEvents captured in MemorySink:");
@@ -68,7 +73,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .layer(circuit_layer)
         .service_fn(|_req: &str| async move { Ok::<_, std::io::Error>("response") });
 
-    let _ = svc.ready().await?.call("test").await;
+    let response = svc.ready().await?.call("test").await?;
+    println!("Response: {}", response);
 
     println!("Events in primary MemorySink: {}", memory_sink2.len());
     for event in memory_sink2.events() {
@@ -101,11 +107,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         while let Ok(event) = receiver.recv().await {
             println!("  [stream] {}", event);
         }
+        tracing::trace!("streaming receiver closed; shutting down printer task");
     });
 
-    let _ = svc.ready().await?.call("test").await;
+    let response = svc.ready().await?.call("test").await?;
+    println!("Streaming example response: {}", response);
 
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    tokio::time::sleep(Duration::from_millis(STREAM_PROCESSING_POLL_DELAY_MS)).await;
 
     println!("\nAlso stored in memory:");
     for event in memory_sink3.events() {
@@ -113,8 +121,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Cleanup
-    drop(svc);
-    event_printer.abort();
+    drop(svc); // drop sends to close the streaming channel
+    if let Err(e) = event_printer.await {
+        eprintln!("event printer task ended with error: {e}");
+    }
 
     println!("\n✓ Telemetry composition working successfully!");
 

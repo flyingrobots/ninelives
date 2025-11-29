@@ -21,7 +21,7 @@ if [ -L "${HOOKS_DIR}" ]; then
 fi
 
 # 3. Run git config and check status
-if git config core.hooksPath "${CANONICAL_HOOKS_DIR}"; then
+if git config core.hooksPath -- "${CANONICAL_HOOKS_DIR}"; then
     echo "Success: Git hooks path set to ${CANONICAL_HOOKS_DIR}"
 else
     echo "Error: Failed to set core.hooksPath." >&2

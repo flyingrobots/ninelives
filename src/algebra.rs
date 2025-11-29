@@ -451,7 +451,7 @@ where
     S1: tower_service::Service<Request> + Clone + Send + 'static,
     S1::Future: Send + 'static,
     S1::Response: Send + 'static,
-    S1::Error: Send + 'static,
+    S1::Error: Send + 'static + std::fmt::Debug,
     S2: tower_service::Service<Request, Response = S1::Response, Error = S1::Error>
         + Clone
         + Send
