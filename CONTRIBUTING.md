@@ -114,6 +114,14 @@ Before adding a new crate, you must include the following summary in your PR des
 
 For deeper criteria and examples, follow this checklist and keep it current; if a dedicated `DEPENDENCY_POLICY.md` is added later, we will link to it here.
 
+### Dependency Versioning
+
+**NPM Dev Dependencies**: Use permissive ranges (e.g., `^1.2.3`) to allow non-breaking updates. This ensures we benefit from bug fixes and minor improvements without manual churn.
+
+**Cargo Dependencies**: Follow standard semantic versioning compatibility.
+
+**Pinning**: Exact version pinning (e.g., `1.2.3`) should only be used when strictly necessary for reproducibility or to work around specific bugs. If you pin a dependency, add a comment explaining why.
+
 ## 🚢 Releases
 
 **Automation**: Releases are automated via release-plz and trigger only when both release and release-ready labels are present on the release PR.

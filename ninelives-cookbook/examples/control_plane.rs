@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use ninelives::control::transport_channel::ChannelTransport;
+use ninelives::ChannelTransport;
 use ninelives::control::{
     AuthMode, AuthPayload, AuthRegistry, BuiltInCommand, BuiltInHandler, CommandEnvelope,
     CommandHistory, CommandMeta, CommandResult, CommandRouter, DefaultConfigRegistry,
@@ -62,7 +62,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             assert_eq!(adaptive_attempts.get(), 5, "Adaptive handle should reflect new value");
             println!("✓ Adaptive handle updated to {}", adaptive_attempts.get());
         }
-        other => println!("unexpected response: {:?}", other),
+        other => panic!("unexpected response: {:?}", other),
     }
 
     Ok(())
