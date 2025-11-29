@@ -16,15 +16,16 @@ pub struct PrometheusSink {
 
 impl PrometheusSink {
     /// Create a sink and register counters into the provided registry.
-    pub fn new(registry: Registry) -> Self {
+    ///
+    /// # Errors
+    /// Returns an error if the metric cannot be registered (e.g. name conflict).
+    pub fn new(registry: Registry) -> Result<Self, prometheus::Error> {
         let counter = IntCounterVec::new(
             prometheus::Opts::new("ninelives_events_total", "Policy events"),
             &["policy", "event"],
-        )
-        .expect("create counter");
-        let registry = Arc::new(registry);
-        registry.register(Box::new(counter.clone())).ok();
-        Self { registry, counter }
+        )?;
+        registry.register(Box::new(counter.clone()))?;
+        Ok(Self { registry: Arc::new(registry), counter })
     }
 
     /// Expose the registry for HTTP scraping.
@@ -43,17 +44,31 @@ impl tower_service::Service<PolicyEvent> for PrometheusSink {
     }
 
     fn call(&mut self, event: PolicyEvent) -> Self::Future {
-        let labels = match &event {
-            PolicyEvent::Retry(_) => ("retry", "event"),
-            PolicyEvent::CircuitBreaker(_) => ("circuit", "event"),
-            PolicyEvent::Bulkhead(_) => ("bulkhead", "event"),
-            PolicyEvent::Timeout(_) => ("timeout", "event"),
-            PolicyEvent::Request(_) => ("request", "event"),
+        let (policy_label, event_label) = match &event {
+            PolicyEvent::Retry(r) => ("retry", match r {
+                RetryEvent::Attempt { .. } => "attempt",
+                RetryEvent::Exhausted { .. } => "exhausted",
+            }),
+            PolicyEvent::CircuitBreaker(c) => ("circuit_breaker", match c {
+                CircuitBreakerEvent::Opened { .. } => "opened",
+                CircuitBreakerEvent::HalfOpen => "half_open",
+                CircuitBreakerEvent::Closed => "closed",
+            }),
+            PolicyEvent::Bulkhead(b) => ("bulkhead", match b {
+                BulkheadEvent::Acquired { .. } => "acquired",
+                BulkheadEvent::Rejected { .. } => "rejected",
+            }),
+            PolicyEvent::Timeout(t) => ("timeout", match t {
+                TimeoutEvent::Occurred { .. } => "occurred",
+            }),
+            PolicyEvent::Request(r) => ("request", match r {
+                RequestOutcome::Success { .. } => "success",
+                RequestOutcome::Failure { .. } => "failure",
+            }),
         };
         let c = self.counter.clone();
-        let (p, e) = labels;
         Box::pin(async move {
-            c.with_label_values(&[p, e]).inc();
+            c.with_label_values(&[policy_label, event_label]).inc();
             Ok(())
         })
     }

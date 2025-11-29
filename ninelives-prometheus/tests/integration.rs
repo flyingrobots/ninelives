@@ -26,7 +26,7 @@ fn get_counter_value(registry: &Registry, event_type: &str) -> f64 {
 #[tokio::test]
 async fn test_retry_event_increments() {
     let registry = Registry::new();
-    let mut sink = PrometheusSink::new(registry.clone());
+    let mut sink = PrometheusSink::new(registry.clone()).expect("Failed to create PrometheusSink");
 
     let event = PolicyEvent::Retry(RetryEvent::Attempt {
         attempt: 1,
@@ -52,7 +52,7 @@ async fn test_retry_event_increments() {
 #[tokio::test]
 async fn test_circuit_breaker_event_increments() {
     let registry = Registry::new();
-    let mut sink = PrometheusSink::new(registry.clone());
+    let mut sink = PrometheusSink::new(registry.clone()).expect("Failed to create PrometheusSink");
 
     let event = PolicyEvent::CircuitBreaker(CircuitBreakerEvent::Opened { failure_count: 5 });
 
@@ -71,7 +71,7 @@ async fn test_circuit_breaker_event_increments() {
 #[tokio::test]
 async fn test_bulkhead_event_increments() {
     let registry = Registry::new();
-    let mut sink = PrometheusSink::new(registry.clone());
+    let mut sink = PrometheusSink::new(registry.clone()).expect("Failed to create PrometheusSink");
 
     let event =
         PolicyEvent::Bulkhead(BulkheadEvent::Rejected { active_count: 10, max_concurrency: 10 });
@@ -91,7 +91,7 @@ async fn test_bulkhead_event_increments() {
 #[tokio::test]
 async fn test_timeout_event_increments() {
     let registry = Registry::new();
-    let mut sink = PrometheusSink::new(registry.clone());
+    let mut sink = PrometheusSink::new(registry.clone()).expect("Failed to create PrometheusSink");
 
     let event =
         PolicyEvent::Timeout(TimeoutEvent::Occurred { timeout: std::time::Duration::from_secs(1) });
@@ -111,7 +111,7 @@ async fn test_timeout_event_increments() {
 #[tokio::test]
 async fn test_request_outcome_event_increments() {
     let registry = Registry::new();
-    let mut sink = PrometheusSink::new(registry.clone());
+    let mut sink = PrometheusSink::new(registry.clone()).expect("Failed to create PrometheusSink");
 
     let event = PolicyEvent::Request(RequestOutcome::Success {
         duration: std::time::Duration::from_millis(100),
