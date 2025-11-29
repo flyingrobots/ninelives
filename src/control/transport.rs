@@ -106,21 +106,29 @@ where
     Conv:
         Fn(TransportEnvelope) -> Result<(CommandEnvelope<C>, CommandContext), String> + Send + Sync,
 {
-    /// Create a new `TransportRouter` connecting a transport to a command router via a converter.
-    pub fn new(router: crate::control::CommandRouter<C>, transport: T, conv: Conv) -> Self {
-        Self { router, transport, to_command: conv }
+    const MAX_REQUEST_SIZE: usize = 1024 * 1024; // 1 MiB
+
+    /// Create a new TransportRouter.
+    pub fn new(
+        router: crate::control::CommandRouter<C>,
+        transport: T,
+        to_command: Conv,
+    ) -> Self {
+        Self { router, transport, to_command }
     }
 
-    /// Handle a raw request frame and return encoded response bytes.
     pub async fn handle(&self, raw: &[u8]) -> Result<Vec<u8>, String> {
+        if raw.len() > Self::MAX_REQUEST_SIZE {
+            return Err("request exceeds maximum size".into());
+        }
         let env = self.transport.decode(raw).map_err(T::map_error)?;
 
-        // Note: We skip runtime schema validation of the incoming envelope here to avoid
-        // double-serialization (decode -> struct -> json value). The struct deserialization
-        // itself provides a baseline guarantee of shape correctness.
+        // Runtime validation of incoming envelope against JSON Schema
+        let env_val = serde_json::to_value(&env).map_err(|e| e.to_string())?;
+        validate(transport_envelope_schema(), &env_val)?;
 
         let (cmd_env, ctx) = (self.to_command)(env)?;
-        let res = self.router.execute(cmd_env).await.map_err(|e| e.to_string())?;
+        let res = self.router.execute(cmd_env).await.map_err(|e| format!("{}", e))?;
 
         // Runtime validation of outgoing CommandResult against JSON Schema
         // (Optional: can be feature-gated for performance)

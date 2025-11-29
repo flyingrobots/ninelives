@@ -13,35 +13,83 @@
         { "type": "null" },
         {
           "type": "object",
-          "required": ["type"],
-          "properties": {
-            "type": {
-              "type": "string",
-              "enum": ["jwt", "signatures", "mtls", "opaque"]
+          "oneOf": [
+            {
+              "required": ["Jwt"],
+              "properties": {
+                "Jwt": {
+                  "type": "object",
+                  "required": ["token"],
+                  "properties": { "token": { "type": "string" } },
+                  "additionalProperties": false
+                }
+              },
+              "additionalProperties": false
             },
-            "token": { "type": "string" },
-            "payload_hash": { "type": "string" },
-            "signatures": {
-              "type": "array",
-              "items": {
-                "type": "object",
-                "required": ["algorithm", "signature"],
-                "properties": {
-                  "algorithm": { "type": "string" },
-                  "signature": { "type": "string" },
-                  "key_id": { "type": "string" }
-                },
-                "additionalProperties": false
-              }
+            {
+              "required": ["Signatures"],
+              "properties": {
+                "Signatures": {
+                  "type": "object",
+                  "required": ["payload_hash", "signatures"],
+                  "properties": {
+                    "payload_hash": {
+                      "type": "array",
+                      "items": { "type": "integer", "minimum": 0, "maximum": 255 },
+                      "minItems": 32,
+                      "maxItems": 32
+                    },
+                    "signatures": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": ["algorithm", "signature"],
+                        "properties": {
+                          "algorithm": { "type": "string" },
+                          "signature": { "type": "array", "items": { "type": "integer", "minimum": 0, "maximum": 255 } },
+                          "key_id": { "type": ["string", "null"] }
+                        },
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "additionalProperties": false
             },
-            "peer_dn": { "type": "string" },
-            "cert_chain": {
-              "type": "array",
-              "items": { "type": "string" }
+            {
+              "required": ["Mtls"],
+              "properties": {
+                "Mtls": {
+                  "type": "object",
+                  "required": ["peer_dn", "cert_chain"],
+                  "properties": {
+                    "peer_dn": { "type": "string" },
+                    "cert_chain": {
+                      "type": "array",
+                      "items": {
+                        "type": "array",
+                        "items": { "type": "integer", "minimum": 0, "maximum": 255 }
+                      }
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "additionalProperties": false
             },
-            "data": { "type": "string" }
-          },
-          "additionalProperties": false
+            {
+              "required": ["Opaque"],
+              "properties": {
+                "Opaque": {
+                  "type": "array",
+                  "items": { "type": "integer", "minimum": 0, "maximum": 255 }
+                }
+              },
+              "additionalProperties": false
+            }
+          ]
         }
       ]
     }

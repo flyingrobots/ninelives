@@ -17,7 +17,7 @@ use std::task::{Context, Poll};
 /// let provider = LoggerProvider::builder().build();
 /// let sink = OtlpSink::new(provider);
 /// ```
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct OtlpSink<P> {
     provider: P,
 }

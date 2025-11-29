@@ -5,12 +5,9 @@ use tower_service::Service;
 // Requires etcd running. If NINE_LIVES_TEST_ETCD_ENDPOINT is unset, the test skips.
 #[tokio::test]
 async fn writes_events_to_etcd() {
-    let endpoint = match std::env::var("NINE_LIVES_TEST_ETCD_ENDPOINT") {
-        Ok(v) => v,
-        Err(_) => {
-            eprintln!("skipping: set NINE_LIVES_TEST_ETCD_ENDPOINT (e.g. http://127.0.0.1:2379)");
-            return;
-        }
+    let Some(endpoint) = std::env::var("NINE_LIVES_TEST_ETCD_ENDPOINT").ok() else {
+        eprintln!("skipping: set NINE_LIVES_TEST_ETCD_ENDPOINT (e.g. http://127.0.0.1:2379)");
+        return;
     };
     let mut client = etcd_client::Client::connect([endpoint.as_str()], None)
         .await

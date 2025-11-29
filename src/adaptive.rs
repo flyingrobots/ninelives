@@ -85,7 +85,7 @@ impl<T> DynamicConfig<T> {
     /// Update via closure.
     pub fn update<F>(&self, f: F)
     where
-        F: FnOnce(&T) -> T,
+        F: Fn(&T) -> T,
         T: Clone,
     {
         #[cfg(not(feature = "adaptive-rwlock"))]
@@ -93,7 +93,9 @@ impl<T> DynamicConfig<T> {
             loop {
                 let cur = self.inner.load_full();
                 let new_val = Arc::new(f(&cur));
-                if self.inner.compare_and_swap(&cur, new_val.clone()).is_ok() {
+                let prev = self.inner.compare_and_swap(&cur, new_val.clone());
+                // If CAS succeeded, the previous value matches the one we saw.
+                if Arc::ptr_eq(&prev, &cur) {
                     break;
                 }
                 // CAS failed, retry with new current value
@@ -150,7 +152,6 @@ mod tests {
 
     #[test]
     fn concurrent_get_set() {
-        const NUM_THREADS: usize = 5; // 2 writers, 3 readers
         const NUM_ITERATIONS: usize = 1_000;
         let config = StdArc::new(DynamicConfig::new(vec![1, 2, 3]));
 

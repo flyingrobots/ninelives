@@ -1,8 +1,63 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
+IFS=
+
+# Verify rustfmt is installed
+if ! command -v rustfmt &> /dev/null; then
+  echo "Error: rustfmt not found. Install with: rustup component add rustfmt" >&2
+  exit 1
+fi
+
+# Stash unstaged changes to test only what's being committed
+STASH_NAME="pre-commit-$(date +%s)"
+git stash push --quiet --keep-index --include-untracked -m "$STASH_NAME"
+
+# Ensure stash is popped on exit
+trap 'git stash pop --quiet 2>/dev/null || true' EXIT
 
 echo "[pre-commit] running cargo fmt -- --check"
-cargo fmt -- --check
+if ! cargo fmt --color=always -- --check; then
+  echo "Error: Code formatting issues detected. Run 'cargo fmt' to fix." >&2
+  exit 1
+fi
+
+echo "[pre-commit] running cargo clippy --all-targets --all-features -- -D warnings -D missing_docs"
+cargo clippy --all-targets --all-features -- -D warnings -D missing_docs
+
+echo "[pre-commit] all checks passed"
+\n\t'
+
+# Verify bash version
+if ((BASH_VERSINFO[0] < 4)); then
+  echo "Error: bash 4.0+ required" >&2
+  exit 1
+fi
+
+cleanup() {
+  local exit_code=$?
+  # Add cleanup logic here if needed
+  exit "$exit_code"
+}
+trap cleanup EXIT ERR INT TERM
+
+# Verify rustfmt is installed
+if ! command -v rustfmt &> /dev/null; then
+  echo "Error: rustfmt not found. Install with: rustup component add rustfmt" >&2
+  exit 1
+fi
+
+# Stash unstaged changes to test only what's being committed
+STASH_NAME="pre-commit-$(date +%s)"
+git stash push --quiet --keep-index --include-untracked -m "$STASH_NAME"
+
+# Ensure stash is popped on exit
+trap 'git stash pop --quiet 2>/dev/null || true' EXIT
+
+echo "[pre-commit] running cargo fmt -- --check"
+if ! cargo fmt --color=always -- --check; then
+  echo "Error: Code formatting issues detected. Run 'cargo fmt' to fix." >&2
+  exit 1
+fi
 
 echo "[pre-commit] running cargo clippy --all-targets --all-features -- -D warnings -D missing_docs"
 cargo clippy --all-targets --all-features -- -D warnings -D missing_docs

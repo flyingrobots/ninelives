@@ -1,6 +1,6 @@
 //! Control plane primitives: command envelope, auth, history, router.
 //!
-//! This is a lightweight, transport-agnostic nucleus. Transports populate
+//! This is a lightweight, transport-agnuus. Transports populate
 //! `CommandEnvelope` with an `AuthPayload`; the router dispatches to handlers
 //! after auth. History storage is pluggable.
 
@@ -23,11 +23,8 @@ use tracing::info;
 
 /// Opaque command identifier.
 pub type CommandId = String;
-
-/// Metadata for commands (extensible).
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct CommandMeta {
-    /// Unique command ID.
     pub id: CommandId,
     /// Optional correlation ID for tracing.
     pub correlation_id: Option<String>,
@@ -331,20 +328,21 @@ pub enum CommandError {
     Audit(String),
 }
 
-/// Result of a command execution.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+/// Command result type.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum CommandResult {
-    /// Command acknowledged, no value.
+    /// Command acknowledged (success).
     Ack,
-    /// Single string value.
+    /// Command returned a value.
     Value(String),
-    /// List of string values.
+    /// Command returned a list of values.
     List(Vec<String>),
     /// Reset complete.
     Reset,
     /// Error message.
     Error(String),
 }
+
 
 /// Audit record emitted after command execution.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -635,16 +633,16 @@ impl ConfigRegistry {
         entry.read()
     }
 
-    /// Check if a config key is registered.
-    pub fn contains(&self, path: &str) -> bool {
-        self.entries.contains_key(path)
-    }
-
     /// List registered config keys (sorted).
     pub fn keys(&self) -> Vec<String> {
         let mut keys: Vec<String> = self.entries.keys().cloned().collect();
         keys.sort();
         keys
+    }
+
+    /// Check whether a config key is registered.
+    pub fn contains(&self, path: &str) -> bool {
+        self.entries.contains_key(path)
     }
 }
 
@@ -746,7 +744,12 @@ impl CommandHandler<BuiltInCommand> for BuiltInHandler {
             BuiltInCommand::Set { key, value } => self.set_or_store(key, value),
             BuiltInCommand::Get { key } => Ok(self.get_from_store_or_config(&key)),
             BuiltInCommand::List => {
-                let keys = self.store.lock().unwrap().keys().cloned().collect();
+                let mut keys: Vec<String> = self.store.lock().unwrap().keys().cloned().collect();
+                if let Some(reg) = self.config_registry() {
+                    keys.extend(reg.keys());
+                }
+                keys.sort();
+                keys.dedup();
                 Ok(CommandResult::List(keys))
             }
             BuiltInCommand::Reset => {
@@ -811,10 +814,13 @@ impl CommandHandler<BuiltInCommand> for BuiltInHandler {
                             )
                         })
                         .collect();
-                    let payload = serde_json::json!({ "breakers": map });
-                    Ok(CommandResult::Value(payload.to_string()))
+                    let mut root = serde_json::Map::new();
+                    root.insert("breakers".into(), serde_json::Value::Object(map));
+                    Ok(CommandResult::Value(serde_json::to_string(&root).unwrap_or_default()))
                 } else {
-                    Ok(CommandResult::Error("circuit breaker registry not set".into()))
+                    Ok(CommandResult::Error(
+                        "circuit breaker registry not set; cannot get state".into(),
+                    ))
                 }
             }
         }

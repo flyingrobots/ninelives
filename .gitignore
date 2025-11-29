@@ -2,7 +2,7 @@
 /target
 /.cargo/
 
-# Cargo lockfile: library crate keeps it untracked
+# Cargo lockfile: library crates keep untracked; binary crates must commit
 /Cargo.lock
 
 # macOS noise
@@ -35,4 +35,5 @@ Thumbs.db
 .env
 .env.local
 .obsidian/
+# Claude conversations/artifacts (developer local)
 .claude/

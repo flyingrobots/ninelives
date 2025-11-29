@@ -1,7 +1,32 @@
-version: '3.8'
+version: '3.12'
 services:
   nats:
     image: nats:2.10-alpine
     command: -js
     ports:
+      - "127.0.0.1:4222:4222"  # if local-only
+      # or
+      # - "192.168.x.y:4222:4222"  # if specific interface required
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "4222"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    command: -js
+    volumes:
+      - nats-jetstream:/data
+    ports:
       - "4222:4222"
+
+volumes:
+  nats-jetstream:

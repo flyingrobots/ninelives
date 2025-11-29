@@ -30,9 +30,8 @@ async fn retry_respects_live_max_attempts() {
     let res = wrapped.ready().await.unwrap().call(()).await;
     assert!(res.is_err());
 
-    // Update max attempts live and try again
+    // Update max attempts live and retry with the SAME wrapped service
     max_handle.set(3);
-    let mut wrapped = ServiceBuilder::new().layer(policy.into_layer()).service(svc);
     let res = wrapped.ready().await.unwrap().call(()).await;
     assert!(res.is_ok());
 }
