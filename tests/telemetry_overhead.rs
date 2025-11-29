@@ -10,13 +10,17 @@ use tower_service::Service;
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore]
 async fn telemetry_overhead_baseline() {
-    run_bench_null(100_000, 4, Duration::from_micros(200)).await;
+    run_bench(NullSink, 100_000, 4, Duration::from_micros(200)).await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore]
 async fn telemetry_overhead_nonblocking_log() {
-    run_bench_nonblocking(50_000, 4, Duration::from_micros(500)).await;
+    let raw = NullSink; // exercises NonBlockingSink channel path (no actual slow operations)
+    let sink = NonBlockingSink::with_capacity(raw, 1024);
+    run_bench(sink.clone(), 50_000, 4, Duration::from_micros(500)).await;
+    let dropped = sink.dropped();
+    println!("NonBlockingSink dropped {} events", dropped);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -35,38 +39,18 @@ async fn telemetry_overhead_streaming_drop_visibility() {
     for h in handles {
         h.await.unwrap();
     }
-    // Should drop some when overdriven; just assert the counter is surfaced.
-    let _ = sink.dropped_count();
+    // Should drop some when overdriven; verify the counter works.
+    let dropped = sink.dropped_count();
+    assert!(dropped > 0, "Expected drops under load, got {}", dropped);
 }
 
-async fn run_bench_null(iter: usize, concurrency: usize, p99_budget: Duration) {
+async fn run_bench<S>(sink: S, iter: usize, concurrency: usize, p99_budget: Duration)
+where
+    S: tower_service::Service<PolicyEvent> + Clone + Send + 'static,
+    S::Future: Send,
+{
+    assert_eq!(iter % concurrency, 0, "iter must be divisible by concurrency");
     let mut hist: Histogram<u64> = Histogram::new(3).unwrap();
-    let mut tasks = Vec::new();
-    for _ in 0..concurrency {
-        tasks.push(tokio::spawn(async move {
-            let mut h = Histogram::new(3).unwrap();
-            for _ in 0..(iter / concurrency) {
-                let mut sink = NullSink;
-                let start = Instant::now();
-                let _ = sink.call(sample_event()).await;
-                h.record(start.elapsed().as_nanos() as u64).unwrap();
-            }
-            h
-        }));
-    }
-    for h in tasks {
-        let sub = h.await.unwrap();
-        hist += sub;
-    }
-    let p99 = Duration::from_nanos(hist.value_at_quantile(0.99));
-    assert!(p99 <= p99_budget, "p99 {:?} > budget {:?}", p99, p99_budget);
-}
-
-async fn run_bench_nonblocking(iter: usize, concurrency: usize, p99_budget: Duration) {
-    let mut hist: Histogram<u64> = Histogram::new(3).unwrap();
-    let raw = NullSink; // stand-in for slow sink; still exercises channel path
-    let sink = NonBlockingSink::with_capacity(raw, 1024);
-
     let mut tasks = Vec::new();
     for _ in 0..concurrency {
         let mut s = sink.clone();
@@ -86,8 +70,6 @@ async fn run_bench_nonblocking(iter: usize, concurrency: usize, p99_budget: Dura
     }
     let p99 = Duration::from_nanos(hist.value_at_quantile(0.99));
     assert!(p99 <= p99_budget, "p99 {:?} > budget {:?}", p99, p99_budget);
-    // Channel drops allowed but should be visible
-    let _ = sink.dropped();
 }
 
 fn sample_event() -> PolicyEvent {
