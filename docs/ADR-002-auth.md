@@ -297,7 +297,98 @@ Transports are responsible for extracting raw authentication credentials from th
 - Need to define stable `AuthPayload` serialization for JSONL/HTTP/gRPC.
 - Must document config examples for JWT and trust-quorum.
 
-## Open Questions
-- Do we support "either" JWT OR quorum in one request, or require explicit mode per env? (lean: allow `mode="first"` ordering to cover this.)
-- Should we offer built-in mTLS → JWT translation (SPIFFE/SPIRE)?
-- How to persist/rotate the trust roster (Git ref vs file vs external KMS)?
+## Open Questions & Implementation TODOs
+
+
+
+This section outlines critical concerns for the implementation RFC, with proposed approaches or explicit TODOs for further refinement.
+
+
+
+### **1. Security Concerns**
+
+
+
+*   **Timing Attack Mitigation (Constant-Time Comparisons)**:
+
+    *   **Concern**: Sensitive comparisons (e.g., JWT signatures, API keys, password hashes if ever used) could be vulnerable to timing attacks.
+
+    *   **Approach**: All security-critical string/byte comparisons within `AuthProvider` implementations MUST use constant-time comparison functions (e.g., from `subtle` crate or similar).
+
+    *   **TODO**: Ensure `jsonwebtoken` and `stargate-verifier` dependencies use or expose constant-time comparisons.
+
+*   **Credential Refresh/Rotation Policies and TTLs**:
+
+    *   **Concern**: How do `AuthProvider`s handle credential expiration (e.g., JWT expiry) and key rotation (e.g., JWKS updates, trust roster changes)?
+
+    *   **Approach**: `AuthProvider`s will be stateful and periodically refresh their configuration (e.g., JWKS URIs polled at configurable intervals, trust rosters reloaded from disk/KMS). Verification will always use the latest valid key. Expired credentials lead to `AuthError::Unauthenticated`.
+
+    *   **TODO**: Define a standard interface or mechanism for `AuthProvider`s to expose refreshable state, potentially leveraging `ninelives::Adaptive` values for refresh intervals.
+
+*   **Per-Identity Rate Limiting for Failed Authentication Attempts**:
+
+    *   **Concern**: How to prevent brute-force attacks against user/service identities.
+
+    *   **Approach**: The `AuthRegistry` will implement an optional layer of rate limiting on `AuthError::Unauthenticated` responses, keyed by `principal` (if identifiable pre-auth) or source IP. This uses `ninelives::RateLimitLayer`.
+
+    *   **TODO**: Integrate `ninelives::RateLimitLayer` with `AuthRegistry` and make it configurable.
+
+
+
+### **2. Operational Concerns**
+
+
+
+*   **Secret/KMS Storage and Rotation**:
+
+    *   **Concern**: Where are sensitive configurations (JWKS URLs, CA certs, trust rosters) stored, and how are they rotated securely without service downtime?
+
+    *   **Approach**: `AuthProvider`s will accept paths to files (e.g., PEM files, JSON files) or references to external Key Management Systems (KMS) or configuration services. Changes to these sources should trigger a hot-reload of the `AuthProvider`'s internal state.
+
+    *   **TODO**: Define a standard config interface for specifying secret locations (e.g., `file://`, `s3://`, `vault://`).
+
+*   **Behavior on Cascading Failures (External Dependencies)**:
+
+    *   **Concern**: What happens if an `AuthProvider`'s external dependency (e.g., JWKS endpoint, etcd for trust roster) is unreachable or slow? Does it block the entire authentication flow?
+
+    *   **Approach**: `AuthProvider`s that depend on external services MUST be wrapped in `ninelives` resilience policies (e.g., `TimeoutLayer`, `CircuitBreakerLayer`). A failing external dependency should *only* impact the specific `AuthProvider` and not block the entire `AuthRegistry` (e.g., `mode="first"` should continue to next provider if one times out; `mode="all"` should fail if any provider is unhealthy).
+
+    *   **TODO**: Document how `ninelives` resilience policies can be applied to `AuthProvider` implementations.
+
+*   **Testing/Mocking Interfaces for Providers**:
+
+    *   **Concern**: How to test `AuthProvider`s effectively, especially those with external dependencies, without requiring live infrastructure.
+
+    *   **Approach**: All `AuthProvider` implementations will expose clear, dependency-injectable constructors or builder patterns to allow mocking of external clients/services. Mock contexts/clients will be used in unit/integration tests.
+
+    *   **TODO**: Provide guidelines and examples for mocking `AuthProvider` dependencies.
+
+
+
+### **3. Correctness & Semantic Concerns**
+
+
+
+*   **Conflict Resolution When Providers Disagree**:
+
+    *   **Concern**: In `mode="all"`, what if two providers authenticate different principals for the same request?
+
+    *   **Approach**: If `principals` differ, the `AuthRegistry` will return an `AuthError::Misconfiguration("conflicting principals")`. For other fields (e.g., `attributes`), merge rules are defined in `Composition Semantics` (union/overwrite).
+
+    *   **TODO**: Explicitly define strictness for principal consistency.
+
+*   **Clear Distinction Between Provider Errors and Auth Failures**:
+
+    *   **Concern**: Is an `AuthError::Internal` (provider bug) distinct from `AuthError::Unauthenticated` (bad credentials)?
+
+    *   **Approach**: `AuthError::Internal` indicates a problem within the provider's logic or an unrecoverable operational issue (e.g., database connection lost). `AuthError::Unauthenticated` means credentials were bad. `AuthError::Unauthorized` means permissions were insufficient. These distinctions must be strictly maintained for accurate logging and metrics.
+
+    *   **TODO**: Review `AuthError` enum to ensure all failure modes are appropriately categorized.
+
+*   **Rules for Provider Side Effects (Logging/Telemetry)**:
+
+    *   **Concern**: When should `AuthProvider`s log, emit telemetry, or have other side effects?
+
+    *   **Approach**: `AuthProvider`s should be designed to be stateless and deterministic for the `authenticate` and `authorize` calls. All side effects (logging, metrics) should be managed by the `AuthRegistry` or an `AuditSink` based on the overall outcome (success/failure) and policy. Individual providers *may* use `tracing` for debug-level internal diagnostics.
+
+    *   **TODO**: Formalize the `AuditSink` integration into the `AuthRegistry` lifecycle for provider-specific auditing.

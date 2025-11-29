@@ -31,6 +31,7 @@ Implement a `RateLimitLayer` based on the **Token Bucket** algorithm (specifical
 - **Bulkhead Only**: Insufficient for throughput constraints (high RPS, low latency).
 
 ## Consequences
-- Adds a dependency on `governor` (or equivalent logic).
-- Enables "Shed Load" patterns in Phase 9.
-- Complements Bulkhead: Bulkhead protects memory/sockets; RateLimit protects CPU/IOPS.
+- Adds a dependency on the `governor` crate. This crate implements a robust Token Bucket algorithm and will be the chosen dependency.
+- Enables clients to shed low-priority requests under load, improving system stability.
+- Complements Bulkhead: `RateLimitLayer` primarily protects CPU/IOPS by controlling request rate, while `BulkheadLayer` protects memory/sockets by limiting concurrent operations.
+- **Composition**: When composing `RateLimitLayer` with `BulkheadLayer`, it is recommended to place `RateLimitLayer` *before* `BulkheadLayer` in the Tower stack (i.e., `RateLimitLayer + BulkheadLayer`). This ensures that excess load is shed by the rate limiter *before* requests consume valuable concurrency slots from the bulkhead, optimizing resource utilization.
