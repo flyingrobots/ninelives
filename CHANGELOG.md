@@ -4,6 +4,7 @@ All notable changes will be documented in this file.
 
 ## [Unreleased]
 
+- BREAKING: `CommandResult::Error` now wraps a structured `CommandFailure` enum instead of a `String` to support richer error reporting (e.g. `kind`, `message`); update transport serialization and pattern matching accordingly.
 - BREAKING: `ForkJoinService::Error` is now `ForkJoinError<E>` to surface both left and right errors on dual failures (previously returned only the left error); update downstream error handling for the new wrapper type. Target release: v0.3.0.
 - BREAKING: Added `std::fmt::Debug` trait bound to `S1::Error` in `ForkJoinService` to support improved error diagnostics; ensure custom error types implement `Debug`.
 - BREAKING: `ResilienceError<E>` no longer implements `Clone` due to the new `Custom(Box<dyn Error + Send + Sync>)` variant; update call sites/tests that relied on cloning to handle owned/moved errors instead.

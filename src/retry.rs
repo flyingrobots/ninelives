@@ -824,16 +824,7 @@ where
                     }
                 }
             }
-            return Err(ResilienceError::retry_exhausted(
-                max_attempts,
-                failures.into_iter().collect(),
-            ));
-            #[allow(unreachable_code)]
-            {
-                // SAFETY: the loop above either returns success or the Err arm on exhaustion;
-                // this fallback mirrors execute() and guards against future refactors.
-                unreachable!("retry_exhausted return path should be handled above")
-            }
+            Err(ResilienceError::retry_exhausted(max_attempts, failures.into_iter().collect()))
         })
     }
 }

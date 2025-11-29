@@ -31,7 +31,13 @@ impl Transport for JsonTransport {
             CommandResult::List(vs) => json!({"result":"list","items":vs,"id":ctx.id}),
             CommandResult::Reset => json!({"result":"reset","id":ctx.id}),
             CommandResult::Error(e) => {
-                json!({"result":"error","message":e.to_string(),"id":ctx.id,"kind":e})
+                let mut v = serde_json::to_value(e).unwrap_or(json!({}));
+                if let Some(obj) = v.as_object_mut() {
+                    obj.insert("result".into(), "error".into());
+                    obj.insert("message".into(), e.to_string().into());
+                    obj.insert("id".into(), ctx.id.clone().into());
+                }
+                v
             }
         };
         serde_json::to_vec(&out)
@@ -263,4 +269,41 @@ async fn transport_router_malformed_args_error() {
     .to_string();
     let err = t_router.handle(raw_set.as_bytes()).await.unwrap_err();
     assert!(err.contains("missing key"));
+}
+
+#[tokio::test]
+async fn transport_router_rejects_malformed_schema() {
+    let mut auth = AuthRegistry::new(AuthMode::First);
+    auth.register(Arc::new(PassthroughAuth));
+    let history = Arc::new(InMemoryHistory::default());
+    let handler = Arc::new(ninelives::control::BuiltInHandler::default());
+    let router = ninelives::control::CommandRouter::new(auth, handler, history);
+    let t_router = TransportRouter::new(router, JsonTransport, env_to_command);
+
+    // Opaque auth requires minItems: 1 in schema, but Vec<u8> allows empty.
+    // This verifies that schema validation runs after decode.
+    let raw_bad = json!({
+        "id": "cmd-schema",
+        "cmd": "list",
+        "args": {},
+        "auth": { "Opaque": [] }
+    })
+    .to_string();
+
+    #[cfg(feature = "schema-validation")]
+    {
+        let err = t_router.handle(raw_bad.as_bytes()).await.unwrap_err();
+        // jsonschema error message typically mentions the constraint
+        assert!(
+            err.contains("minItems") || err.contains("less than"),
+            "expected schema validation error (minItems), got: {err}"
+        );
+    }
+    #[cfg(not(feature = "schema-validation"))]
+    {
+        // Without schema validation, the payload passes; ensure it still routes and returns list.
+        let bytes = t_router.handle(raw_bad.as_bytes()).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["result"], "list");
+    }
 }

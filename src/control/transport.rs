@@ -33,7 +33,6 @@ pub struct TransportEnvelope {
 // Schema validation helpers (runtime enforced in TransportRouter)
 // -----------------------------------------------------------------------------
 
-#[cfg(feature = "schema-validation")]
 fn transport_envelope_schema() -> &'static JSONSchema {
     static SCHEMA: OnceLock<JSONSchema> = OnceLock::new();
     SCHEMA.get_or_init(|| {
@@ -45,7 +44,6 @@ fn transport_envelope_schema() -> &'static JSONSchema {
     })
 }
 
-#[cfg(feature = "schema-validation")]
 fn command_result_schema() -> &'static JSONSchema {
     static SCHEMA: OnceLock<JSONSchema> = OnceLock::new();
     SCHEMA.get_or_init(|| {
@@ -55,7 +53,6 @@ fn command_result_schema() -> &'static JSONSchema {
     })
 }
 
-#[cfg(feature = "schema-validation")]
 fn validate_envelope(env: &TransportEnvelope) -> Result<(), String> {
     // NOTE: jsonschema currently validates serde_json::Value, so we serialize here.
     // TODO: remove this allocation if jsonschema adds a Serialize-friendly validate API.
@@ -63,23 +60,11 @@ fn validate_envelope(env: &TransportEnvelope) -> Result<(), String> {
     validate(transport_envelope_schema(), &env_val)
 }
 
-#[cfg(not(feature = "schema-validation"))]
-fn validate_envelope(_env: &TransportEnvelope) -> Result<(), String> {
-    Ok(())
-}
-
-#[cfg(feature = "schema-validation")]
 fn validate_result(res: &super::CommandResult) -> Result<(), String> {
     let res_val = command_result_to_schema_value(res);
     validate(command_result_schema(), &res_val)
 }
 
-#[cfg(not(feature = "schema-validation"))]
-fn validate_result(_res: &super::CommandResult) -> Result<(), String> {
-    Ok(())
-}
-
-#[cfg(feature = "schema-validation")]
 fn validate(schema: &JSONSchema, value: &JsonValue) -> Result<(), String> {
     schema
         .validate(value)
@@ -92,8 +77,13 @@ fn command_result_to_schema_value(res: &super::CommandResult) -> JsonValue {
         super::CommandResult::Value(v) => json!({ "result": "value", "value": v }),
         super::CommandResult::List(items) => json!({ "result": "list", "items": items }),
         super::CommandResult::Reset => json!({ "result": "reset" }),
-        super::CommandResult::Error(err) => {
-            json!({ "result": "error", "kind": err, "message": err.to_string() })
+        super::CommandResult::Error(fail) => {
+            let mut v = serde_json::to_value(fail).unwrap_or(json!({}));
+            if let Some(obj) = v.as_object_mut() {
+                obj.insert("result".to_string(), json!("error"));
+                obj.insert("message".to_string(), json!(fail.to_string()));
+            }
+            v
         }
     }
 }

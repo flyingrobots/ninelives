@@ -66,7 +66,7 @@ thiserror.workspace = true
 arc-swap = { version = "1", optional = true }
 serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
-jsonschema = { workspace = true, optional = true }
+jsonschema = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }
@@ -75,7 +75,6 @@ futures.workspace = true
 hdrhistogram.workspace = true
 
 [features]
-control = ["serde", "serde_json", "jsonschema"]
+control = ["serde", "serde_json"]
 adaptive-rwlock = []
-schema-validation = ["jsonschema"]
 default = ["arc-swap"]

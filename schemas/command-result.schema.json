@@ -42,9 +42,10 @@
       "required": ["result", "message"],
       "properties": {
         "result": { "const": "error" },
-        "message": { "type": "string" }
+        "message": { "type": "string" },
+        "kind": { "type": "string" }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     }
   ]
 }

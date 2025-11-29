@@ -581,6 +581,8 @@ pub enum BuiltInCommand {
     ListConfig,
     /// Get system state snapshot.
     GetState,
+    /// Health check probe.
+    Health,
 }
 
 /// Trait for getting a string label for a command type.
@@ -601,6 +603,7 @@ impl CommandLabel for BuiltInCommand {
             BuiltInCommand::ResetCircuitBreaker { .. } => "reset_circuit_breaker",
             BuiltInCommand::ListConfig => "list_config",
             BuiltInCommand::GetState => "get_state",
+            BuiltInCommand::Health => "health",
         }
     }
 }
@@ -908,6 +911,114 @@ impl BuiltInHandler {
         Arc::make_mut(&mut self.state).config.set_registry(registry);
     }
 
+    async fn handle_config(
+        &self,
+        cmd: &BuiltInCommand,
+    ) -> Option<Result<CommandResult, CommandError>> {
+        match cmd {
+            BuiltInCommand::WriteConfig { path, value } => {
+                Some(self.state.config.write(path, value))
+            }
+            BuiltInCommand::ListConfig => Some(self.state.config.list().map(CommandResult::List)),
+            BuiltInCommand::ReadConfig { path } => Some(self.state.config.read(path)),
+            _ => None,
+        }
+    }
+
+    async fn handle_store(
+        &self,
+        cmd: &BuiltInCommand,
+    ) -> Option<Result<CommandResult, CommandError>> {
+        match cmd {
+            BuiltInCommand::Set { key, value } => {
+                Some(self.set_or_store(key.clone(), value.clone()).await)
+            }
+            BuiltInCommand::Get { key } => Some(Ok(self.get_from_store_or_config(key).await)),
+            BuiltInCommand::List => {
+                let store_keys: Vec<String> = self
+                    .state
+                    .store
+                    .keys()
+                    .await
+                    .into_iter()
+                    .map(|k| format!("store:{k}"))
+                    .collect();
+                let config_keys: Vec<String> = self
+                    .state
+                    .config
+                    .registry()
+                    .map(|reg| reg.keys().into_iter().map(|k| format!("config:{k}")))
+                    .map(|iter| iter.collect())
+                    .unwrap_or_default();
+                let mut keys: Vec<String> = store_keys.into_iter().chain(config_keys).collect();
+                keys.sort();
+                Some(Ok(CommandResult::List(keys)))
+            }
+            BuiltInCommand::Reset => {
+                self.state.store.clear().await;
+                Some(Ok(CommandResult::Reset))
+            }
+            _ => None,
+        }
+    }
+
+    async fn handle_breaker(
+        &self,
+        cmd: &BuiltInCommand,
+    ) -> Option<Result<CommandResult, CommandError>> {
+        match cmd {
+            BuiltInCommand::ResetCircuitBreaker { id } => Some(self.state.breakers.reset(id)),
+            BuiltInCommand::GetState => {
+                let breakers = match self.state.breakers.snapshot() {
+                    Ok(b) => b,
+                    Err(e) => return Some(Err(e)),
+                };
+                let breaker_map: serde_json::Map<String, serde_json::Value> = breakers
+                    .into_iter()
+                    .map(|(id, state)| {
+                        (
+                            id,
+                            serde_json::Value::String(
+                                match state {
+                                    crate::circuit_breaker::CircuitState::Closed => "Closed",
+                                    crate::circuit_breaker::CircuitState::Open => "Open",
+                                    crate::circuit_breaker::CircuitState::HalfOpen => "HalfOpen",
+                                }
+                                .into(),
+                            ),
+                        )
+                    })
+                    .collect();
+
+                let mut config_map = serde_json::Map::new();
+                if let Some(reg) = self.state.config.registry() {
+                    for key in reg.keys() {
+                        if let Ok(val) = reg.read(&key) {
+                            config_map.insert(key, serde_json::Value::String(val));
+                        }
+                    }
+                }
+
+                let mut root = serde_json::Map::new();
+                root.insert("breakers".into(), serde_json::Value::Object(breaker_map));
+                root.insert("config".into(), serde_json::Value::Object(config_map));
+
+                let res = serde_json::to_string(&root)
+                    .map(CommandResult::Value)
+                    .map_err(|e| CommandError::Handler(format!("failed to serialize state: {e}")));
+                Some(res)
+            }
+            BuiltInCommand::Health => Some(Ok(CommandResult::Value(
+                serde_json::json!({
+                    "status": "ok",
+                    "version": env!("CARGO_PKG_VERSION")
+                })
+                .to_string(),
+            ))),
+            _ => None,
+        }
+    }
+
     async fn set_or_store(
         &self,
         key: String,
@@ -942,65 +1053,16 @@ impl CommandHandler<BuiltInCommand> for BuiltInHandler {
         cmd: CommandEnvelope<BuiltInCommand>,
         _ctx: AuthContext,
     ) -> Result<CommandResult, CommandError> {
-        match cmd.cmd {
-            BuiltInCommand::Set { key, value } => self.set_or_store(key, value).await,
-            BuiltInCommand::Get { key } => Ok(self.get_from_store_or_config(&key).await),
-            BuiltInCommand::List => {
-                let store_keys: Vec<String> = self
-                    .state
-                    .store
-                    .keys()
-                    .await
-                    .into_iter()
-                    .map(|k| format!("store:{k}"))
-                    .collect();
-                let config_keys: Vec<String> = self
-                    .state
-                    .config
-                    .registry()
-                    .map(|reg| reg.keys().into_iter().map(|k| format!("config:{k}")))
-                    .map(|iter| iter.collect())
-                    .unwrap_or_default();
-                let mut keys: Vec<String> = store_keys.into_iter().chain(config_keys).collect();
-                keys.sort();
-                Ok(CommandResult::List(keys))
-            }
-            BuiltInCommand::Reset => {
-                self.state.store.clear().await;
-                Ok(CommandResult::Reset)
-            }
-            BuiltInCommand::WriteConfig { path, value } => self.state.config.write(&path, &value),
-            BuiltInCommand::ListConfig => Ok(CommandResult::List(self.state.config.list()?)),
-            BuiltInCommand::ReadConfig { path } => self.state.config.read(&path),
-            BuiltInCommand::ResetCircuitBreaker { id } => self.state.breakers.reset(&id),
-            BuiltInCommand::GetState => {
-                let breakers = self.state.breakers.snapshot()?;
-                let map: serde_json::Map<String, serde_json::Value> = breakers
-                    .into_iter()
-                    .map(|(id, state)| {
-                        (
-                            id,
-                            serde_json::Value::String(
-                                match state {
-                                    crate::circuit_breaker::CircuitState::Closed => "Closed",
-                                    crate::circuit_breaker::CircuitState::Open => "Open",
-                                    crate::circuit_breaker::CircuitState::HalfOpen => "HalfOpen",
-                                }
-                                .into(),
-                            ),
-                        )
-                    })
-                    .collect();
-                let mut root = serde_json::Map::new();
-                root.insert("breakers".into(), serde_json::Value::Object(map));
-                match serde_json::to_string(&root) {
-                    Ok(s) => Ok(CommandResult::Value(s)),
-                    Err(e) => Ok(CommandResult::Error(CommandFailure::Internal {
-                        msg: format!("failed to serialize breaker state: {e}"),
-                    })),
-                }
-            }
+        if let Some(res) = self.handle_config(&cmd.cmd).await {
+            return res;
         }
+        if let Some(res) = self.handle_store(&cmd.cmd).await {
+            return res;
+        }
+        if let Some(res) = self.handle_breaker(&cmd.cmd).await {
+            return res;
+        }
+        Err(CommandError::Handler("unknown command".into()))
     }
 }
 
