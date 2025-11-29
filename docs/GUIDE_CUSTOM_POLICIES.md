@@ -116,7 +116,10 @@ let resp = svc.ready().await?.call(\"hello\").await?;
 
 - Keep `Request` bounds aligned with the algebra (`Clone + Send + 'static` common case).
 - If your layer needs state, wrap it in `Arc` so cloned services share counters safely.
-- Emit tracing spans/logs for visibility; Nine Lives telemetry will pass spans through.
+- Emit tracing spans/logs for visibility. Nine Lives does **not** propagate tracing span
+  context for you; if you need cross-policy span propagation, attach or re-enter spans in
+  your own instrumentation (or carry context on the request) before calling downstream
+  services.
 - For async locks, prefer `tokio::sync` primitives to avoid blocking the runtime.
 
 That’s it—drop your layer into `Policy(...)` and compose with `+` (wrap), `|` (fallback), or `&` (race) like any built-in policy. Happy building!`
