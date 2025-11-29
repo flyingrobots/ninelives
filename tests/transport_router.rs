@@ -43,9 +43,10 @@ fn env_to_command(
     env: TransportEnvelope,
 ) -> Result<(CommandEnvelope<BuiltInCommand>, ninelives::control::CommandContext), String> {
     // For test, only support BuiltInCommand::List
-    let cmd = match env.cmd.as_str() {
-        "list" | "List" => BuiltInCommand::List,
-        other => return Err(format!("unsupported cmd: {other}")),
+    let cmd = if env.cmd.eq_ignore_ascii_case("list") {
+        BuiltInCommand::List
+    } else {
+        return Err(format!("unsupported cmd: {}", env.cmd));
     };
     let ctx = ninelives::control::CommandContext {
         id: env.id,

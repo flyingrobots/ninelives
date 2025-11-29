@@ -33,6 +33,7 @@ async fn bulkhead_grows_when_adaptive_increases() {
     });
 
     notify.notified().await;
+    assert_eq!(started.load(Ordering::SeqCst), 1, "holder task should have started");
 
     // Second task should be rejected with capacity=1
     let res = policy.execute(|| async { Ok::<_, ResilienceError<std::io::Error>>(()) }).await;
@@ -45,5 +46,5 @@ async fn bulkhead_grows_when_adaptive_increases() {
     let res = policy.execute(|| async { Ok::<_, ResilienceError<std::io::Error>>(()) }).await;
     assert!(res.is_ok());
 
-    let _ = holder.await;
+    holder.await.expect("holder task panicked").expect("holder task failed");
 }

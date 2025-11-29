@@ -163,10 +163,12 @@ impl CircuitBreakerState {
 
     /// Reset the circuit breaker to closed state and clear all counters.
     ///
-    /// **Note:** This operation is not atomic across all fields. Concurrent calls
-    /// may briefly observe inconsistent state (e.g., `Closed` state with non-zero failure count).
-    /// This is intended for administrative control (e.g., "allow traffic again") and is safe
-    /// for that purpose, as the worst case is a premature re-trip.
+    /// **Note:** Field resets are independent stores; snapshots are not atomic across fields.
+    /// Callers must not infer strong invariants from a single read (e.g., `Closed` does not
+    /// guarantee `failure_count == 0` or `opened_at_millis == 0`). This is a best-effort
+    /// administrative knob to allow traffic again and may briefly present mismatched state,
+    /// potentially triggering a premature re-trip. Serialize access externally if strict
+    /// consistency is required.
     pub(crate) fn reset(&self) {
         self.state.store(CircuitState::Closed.to_u8(), Ordering::SeqCst);
         self.failure_count.store(0, Ordering::SeqCst);
