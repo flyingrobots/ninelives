@@ -26,6 +26,7 @@ use tracing::info;
 pub type CommandId = String;
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct CommandMeta {
+    /// Command identifier (unique per request).
     pub id: CommandId,
     /// Optional correlation ID for tracing.
     pub correlation_id: Option<String>,
@@ -577,9 +578,13 @@ impl CommandLabel for BuiltInCommand {
 
 /// Registry of live config bindings (Adaptive values).
 pub trait ConfigRegistry: Send + Sync + std::fmt::Debug {
+    /// Write a raw string into a registered config key.
     fn write(&self, path: &str, raw: &str) -> Result<(), String>;
+    /// Read a rendered value for the given config key.
     fn read(&self, path: &str) -> Result<String, String>;
+    /// List registered keys (sorted).
     fn keys(&self) -> Vec<String>;
+    /// Check whether a key exists.
     fn contains(&self, path: &str) -> bool;
 }
 
@@ -594,6 +599,7 @@ impl std::fmt::Debug for InMemoryConfigRegistry {
     }
 }
 
+/// Default in-memory config registry implementation.
 pub type DefaultConfigRegistry = InMemoryConfigRegistry;
 
 impl Default for InMemoryConfigRegistry {
@@ -829,8 +835,7 @@ impl CommandHandler<BuiltInCommand> for BuiltInHandler {
                     .map(|reg| reg.keys().into_iter().map(|k| format!("config:{k}")))
                     .map(|iter| iter.collect())
                     .unwrap_or_default();
-                let mut keys: Vec<String> =
-                    store_keys.into_iter().chain(config_keys.into_iter()).collect();
+                let mut keys: Vec<String> = store_keys.into_iter().chain(config_keys).collect();
                 keys.sort();
                 keys.dedup();
                 Ok(CommandResult::List(keys))

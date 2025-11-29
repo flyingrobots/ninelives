@@ -27,10 +27,15 @@ impl CircuitBreakerHandle {
 
 /// Trait for breaker registries (injectable into control plane).
 pub trait CircuitBreakerRegistry: Send + Sync + std::fmt::Debug {
+    /// Register or overwrite a circuit breaker handle by id.
     fn register(&self, id: String, handle: CircuitBreakerHandle);
+    /// Get a breaker handle by id.
     fn get(&self, id: &str) -> Option<CircuitBreakerHandle>;
+    /// Reset a breaker by id, erroring if missing.
     fn reset(&self, id: &str) -> Result<(), String>;
+    /// Convenience: create and insert a new breaker state with id.
     fn register_new(&self, id: String);
+    /// Snapshot breaker states sorted by id.
     fn snapshot(&self) -> Vec<(String, CircuitState)>;
 }
 

@@ -159,11 +159,11 @@ mod tests {
         let mut handles = vec![];
 
         // Writer threads
-        for i in 0..2 {
+        for i in 0i32..2 {
             let config_clone = StdArc::clone(&config);
             handles.push(thread::spawn(move || {
-                for j in 0..NUM_ITERATIONS {
-                    config_clone.set(vec![i as i32, j as i32]);
+                for j in 0..NUM_ITERATIONS as i32 {
+                    config_clone.set(vec![i, j]);
                 }
             }));
         }

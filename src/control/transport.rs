@@ -130,6 +130,7 @@ where
     Conv:
         Fn(TransportEnvelope) -> Result<(CommandEnvelope<C>, CommandContext), String> + Send + Sync,
 {
+    /// Upper bound (bytes) on accepted transport payload size (1 MiB).
     pub const MAX_REQUEST_SIZE: usize = 1024 * 1024; // 1 MiB
 
     /// Create a new TransportRouter.
@@ -137,6 +138,7 @@ where
         Self { router, transport, to_command }
     }
 
+    /// Decode, route, and encode a response for a raw transport payload.
     pub async fn handle(&self, raw: &[u8]) -> Result<Vec<u8>, String> {
         if raw.len() > Self::MAX_REQUEST_SIZE {
             return Err("request exceeds maximum size".into());

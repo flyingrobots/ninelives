@@ -796,8 +796,7 @@ mod tests {
             Service::poll_ready(&mut svc, &mut Context::from_waker(&noop_waker())),
             Poll::Ready(Ok(()))
         ));
-        let res = svc.call(()).await.unwrap();
-        assert_eq!(res, ());
+        svc.call(()).await.unwrap();
     }
 
     #[tokio::test]

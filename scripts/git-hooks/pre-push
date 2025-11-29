@@ -18,6 +18,7 @@ echo "[pre-push] running cargo fmt -- --check"
 cargo fmt -- --check
 
 echo "[pre-push] running markdownlint (npm run lint:md)"
+npm install --ignore-scripts --no-audit --no-fund >/dev/null 2>&1 || true
 npm run --silent lint:md
 
 echo "[pre-push] running cargo clippy --all-targets --all-features -- -D warnings -D missing_docs"
