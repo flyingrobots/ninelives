@@ -8,6 +8,7 @@ pub use crate::{
     },
     bulkhead::BulkheadLayer,
     circuit_breaker::{CircuitBreakerConfig, CircuitBreakerError, CircuitBreakerLayer},
+    #[cfg(feature = "control")]
     control::{
         AuthMode, AuthPayload, AuthProvider, AuthRegistry, CommandContext, CommandEnvelope,
         CommandMeta, CommandService,
@@ -28,34 +29,41 @@ pub use crate::{
 pub mod simple {
     use std::time::Duration;
 
-    use crate::circuit_breaker::{CircuitBreakerConfig, CircuitBreakerLayer};
-    use crate::{retry::RetryPolicy, timeout::TimeoutLayer, RetryLayer};
+    use crate::circuit_breaker::{CircuitBreakerConfig, CircuitBreakerError, CircuitBreakerLayer};
+    use crate::{retry::RetryPolicy, timeout::TimeoutLayer, BuildError, RetryLayer, TimeoutError};
 
     /// Construct a circuit breaker layer with sensible defaults, overriding threshold and timeout.
-    pub fn circuit_breaker(threshold: usize, timeout: Duration) -> CircuitBreakerLayer {
+    ///
+    /// Returns `Err` if `threshold` is zero or `timeout` is zero.
+    pub fn circuit_breaker(
+        threshold: usize,
+        timeout: Duration,
+    ) -> Result<CircuitBreakerLayer, CircuitBreakerError> {
         let cfg = CircuitBreakerConfig::builder()
             .failure_threshold(threshold)
             .recovery_timeout(timeout)
             .half_open_limit(1)
-            .build()
-            .expect("circuit breaker config");
-        CircuitBreakerLayer::new(cfg).expect("circuit breaker layer")
+            .build()?;
+        CircuitBreakerLayer::new(cfg)
     }
 
     /// Construct a retry layer with a fixed max_attempts and default backoff/jitter.
-    pub fn retry<E>(max_attempts: usize) -> RetryLayer<E>
+    ///
+    /// Returns `Err` if `max_attempts` is zero.
+    pub fn retry<E>(max_attempts: usize) -> Result<RetryLayer<E>, BuildError>
     where
         E: std::error::Error + Send + Sync + 'static,
     {
-        RetryPolicy::<E>::builder()
+        Ok(RetryPolicy::<E>::builder()
             .max_attempts(max_attempts)
-            .build()
-            .expect("retry policy")
-            .into_layer()
+            .build()?
+            .into_layer())
     }
 
     /// Construct a timeout layer with the provided limit.
-    pub fn timeout(limit: Duration) -> TimeoutLayer {
-        TimeoutLayer::new(limit).expect("timeout layer")
+    ///
+    /// Returns `Err` if `limit` is zero.
+    pub fn timeout(limit: Duration) -> Result<TimeoutLayer, TimeoutError> {
+        TimeoutLayer::new(limit)
     }
 }

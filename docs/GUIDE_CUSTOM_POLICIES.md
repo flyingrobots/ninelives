@@ -72,7 +72,7 @@ where
 
         Box::pin(async move {
             let result = inner.call(req).await;
-            in_flight.fetch_sub(1, Ordering::SeqCst);
+            in_flight.fetch_sub(1, Ordering::Release);
             if let Ok(mut waiters) = waiters.lock() {
                 while let Some(w) = waiters.pop_front() {
                     w.wake();

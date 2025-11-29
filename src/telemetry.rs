@@ -34,6 +34,7 @@
 //! });
 //! ```
 
+#[cfg(feature = "control")]
 use serde_json::json;
 use std::fmt;
 use std::sync::atomic::{AtomicU64, Ordering};

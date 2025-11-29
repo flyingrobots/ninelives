@@ -154,6 +154,13 @@ where
 }
 
 /// Layer that performs schema validation before/after routing.
+/// A [`tower::Layer`] that performs JSON schema validation on [`TransportEnvelope`]s
+/// before routing and on [`super::CommandResult`]s after command execution.
+///
+/// This layer ensures that incoming commands conform to expected schemas and that
+/// outgoing results are also valid, enhancing the robustness of the control plane.
+///
+/// Validation is enabled by the `schema-validation` feature flag.
 pub struct SchemaValidationLayer;
 
 impl SchemaValidationLayer {
@@ -178,6 +185,12 @@ impl<S> tower_layer::Layer<S> for SchemaValidationLayer {
 }
 
 /// Transport router wrapper that enforces schema validation.
+/// A wrapper [`tower::Service`] that applies schema validation to an inner service.
+///
+/// This service is returned by [`SchemaValidationLayer`] and is responsible for
+/// calling the appropriate validation logic for incoming requests and outgoing responses.
+/// When wrapping a [`TransportRouter`], it will validate the [`TransportEnvelope`]
+/// before routing and the [`super::CommandResult`] after the inner router's execution.
 pub struct SchemaValidated<S> {
     inner: S,
 }

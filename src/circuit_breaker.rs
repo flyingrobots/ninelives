@@ -292,13 +292,22 @@ impl CircuitBreakerState {
             }
             CircuitState::Closed => {
                 // ensure thresholds not zero and capture current threshold; if exceeded, open
-                if self.failure_count.load(Ordering::Acquire) >= failure_threshold {
-                    // transition to open and stamp time
-                    self.state.store(CircuitState::Open.to_u8(), Ordering::Release);
-                    self.opened_at_millis.store(now, Ordering::Release);
-                    Err(CircuitBreakerEvent::Opened {
-                        failure_count: self.failure_count.load(Ordering::Acquire),
-                    })
+                let failures = self.failure_count.load(Ordering::Acquire);
+                if failures >= failure_threshold {
+                    // transition to open and stamp time via CAS to avoid races
+                    let res = self.state.compare_exchange(
+                        CircuitState::Closed.to_u8(),
+                        CircuitState::Open.to_u8(),
+                        Ordering::AcqRel,
+                        Ordering::Acquire,
+                    );
+                    if res.is_ok() {
+                        self.opened_at_millis.store(now, Ordering::Release);
+                        Err(CircuitBreakerEvent::Opened { failure_count: failures })
+                    } else {
+                        // Lost the race; another thread opened it or state changed. Treat as no-op.
+                        Ok(())
+                    }
                 } else {
                     Ok(())
                 }

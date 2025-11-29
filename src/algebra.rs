@@ -502,17 +502,21 @@ where
         &mut self,
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Result<(), Self::Error>> {
-        let left_ready = self.left.poll_ready(cx);
-        let right_ready = self.right.poll_ready(cx);
-        match (left_ready, right_ready) {
+        let left = self.left.poll_ready(cx);
+        let right = self.right.poll_ready(cx);
+
+        match (left, right) {
             (std::task::Poll::Ready(Ok(_)), std::task::Poll::Ready(Ok(_))) => {
                 std::task::Poll::Ready(Ok(()))
             }
-            (std::task::Poll::Ready(Err(e)), _) => {
-                std::task::Poll::Ready(Err(ForkJoinError { left: Some(e), right: None }))
+            (std::task::Poll::Ready(Err(l)), std::task::Poll::Ready(Err(r))) => {
+                std::task::Poll::Ready(Err(ForkJoinError { left: Some(l), right: Some(r) }))
             }
-            (_, std::task::Poll::Ready(Err(e))) => {
-                std::task::Poll::Ready(Err(ForkJoinError { left: None, right: Some(e) }))
+            (std::task::Poll::Ready(Err(l)), _) => {
+                std::task::Poll::Ready(Err(ForkJoinError { left: Some(l), right: None }))
+            }
+            (_, std::task::Poll::Ready(Err(r))) => {
+                std::task::Poll::Ready(Err(ForkJoinError { left: None, right: Some(r) }))
             }
             _ => std::task::Poll::Pending,
         }

@@ -744,7 +744,7 @@ where
 
         Box::pin(async move {
             let start = Instant::now();
-            let mut failures: Vec<E> = Vec::new();
+            let mut failures: VecDeque<E> = VecDeque::new();
 
             let max_attempts = *layer.max_attempts.get();
             let backoff = layer.backoff.get();
@@ -777,7 +777,7 @@ where
                             .await;
                             return Err(ResilienceError::Inner(e));
                         }
-                        failures.push(e);
+                        failures.push_back(e);
                         let total_duration = start.elapsed();
                         emit_best_effort(
                             sink.clone(),
@@ -794,7 +794,10 @@ where
                             }),
                         )
                         .await;
-                        Err(ResilienceError::retry_exhausted(1, failures))
+                        Err(ResilienceError::retry_exhausted(
+                            1,
+                            failures.into_iter().collect(),
+                        ))
                     }
                 };
             }
@@ -826,7 +829,11 @@ where
                             .await;
                             return Err(ResilienceError::Inner(e));
                         }
-                        failures.push(e);
+                        failures.push_back(e);
+                        while failures.len() > MAX_RETRY_FAILURES {
+                            failures.pop_front();
+                        }
+
                         if attempt + 1 >= max_attempts {
                             // Emit exhausted event
                             let total_duration = start.elapsed();
@@ -846,7 +853,10 @@ where
                                 }),
                             )
                             .await;
-                            return Err(ResilienceError::retry_exhausted(max_attempts, failures));
+                            return Err(ResilienceError::retry_exhausted(
+                                max_attempts,
+                                failures.into_iter().collect(),
+                            ));
                         }
                         let delay = jitter.apply_to(backoff.delay(attempt + 1));
 
@@ -861,7 +871,16 @@ where
                     }
                 }
             }
-            Err(ResilienceError::retry_exhausted(max_attempts, failures))
+            return Err(ResilienceError::retry_exhausted(
+                max_attempts,
+                failures.into_iter().collect(),
+            ));
+            #[allow(unreachable_code)]
+            {
+                // SAFETY: the loop above either returns success or the Err arm on exhaustion;
+                // this fallback mirrors execute() and guards against future refactors.
+                unreachable!("retry_exhausted return path should be handled above")
+            }
         })
     }
 }
