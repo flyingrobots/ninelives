@@ -1,7 +1,7 @@
 version: '3.8'
 services:
   redpanda:
-    image: docker.redpanda.com/redpanda/redpanda:v23.3.8
+    image: docker.redpanda.com/redpanda/redpanda:v25.3.1
     command:
       - redpanda
       - start
@@ -11,9 +11,9 @@ services:
       - --memory
       - 1G
       - --reserve-memory
-      - 0M
+      - 256M
       - --node-id
       - "0"
-      - --check=false
+      - --check=true
     ports:
       - "9092:9092"
