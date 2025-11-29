@@ -98,6 +98,15 @@ impl CircuitBreakerConfig {
         recovery_timeout: Duration,
         half_open_max_calls: usize,
     ) -> Result<Self, CircuitBreakerError> {
+        if failure_threshold == 0 {
+            return Err(CircuitBreakerError::InvalidFailureThreshold { provided: failure_threshold });
+        }
+        if recovery_timeout.is_zero() {
+            return Err(CircuitBreakerError::InvalidRecoveryTimeout(recovery_timeout));
+        }
+        if half_open_max_calls == 0 {
+            return Err(CircuitBreakerError::InvalidHalfOpenLimit { provided: half_open_max_calls });
+        }
         let cfg = Self {
             id: None,
             failure_threshold: Adaptive::new(failure_threshold),
@@ -401,13 +410,15 @@ where
             let now = clock.now_millis();
             let current = CircuitState::from_u8(state.state.load(Ordering::Acquire));
             let recovery_timeout = *config.recovery_timeout.get();
-            let failure_threshold = *config.failure_threshold.get();
-            let half_open_max_calls = *config.half_open_max_calls.get();
+            let failure_threshold = (*config.failure_threshold.get()).max(1);
+            let half_open_max_calls = (*config.half_open_max_calls.get()).max(1);
+            let recovery_timeout_ms =
+                recovery_timeout.as_millis().min(u128::from(u64::MAX)) as u64;
 
             match current {
                 CircuitState::Open => {
                     let opened_at = state.opened_at_millis.load(Ordering::Acquire);
-                    if now.saturating_sub(opened_at) < recovery_timeout.as_millis() as u64 {
+                    if now.saturating_sub(opened_at) < recovery_timeout_ms {
                         return Err(ResilienceError::CircuitOpen {
                             failure_count: state.failure_count.load(Ordering::Acquire),
                             open_duration: Duration::from_millis(now.saturating_sub(opened_at)),

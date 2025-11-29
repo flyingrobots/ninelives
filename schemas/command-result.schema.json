@@ -2,30 +2,49 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://github.com/flyingrobots/ninelives/schemas/command-result.schema.json",
   "title": "Nine Lives CommandResult",
-  "type": "object",
-  "required": ["result"],
-  "properties": {
-    "result": {
-      "type": "string",
-      "enum": ["ack", "value", "list", "reset", "error"]
-    },
-    "value": { "type": "string" },
-    "items": { "type": "array", "items": { "type": "string" } },
-    "message": { "type": "string" }
-  },
-  "additionalProperties": false,
-  "allOf": [
+  "oneOf": [
     {
-      "if": { "properties": { "result": { "const": "value" } } },
-      "then": { "required": ["value"] }
+      "type": "object",
+      "required": ["result"],
+      "properties": {
+        "result": { "const": "ack" }
+      },
+      "additionalProperties": false
     },
     {
-      "if": { "properties": { "result": { "const": "list" } } },
-      "then": { "required": ["items"] }
+      "type": "object",
+      "required": ["result"],
+      "properties": {
+        "result": { "const": "reset" }
+      },
+      "additionalProperties": false
     },
     {
-      "if": { "properties": { "result": { "const": "error" } } },
-      "then": { "required": ["message"] }
+      "type": "object",
+      "required": ["result", "value"],
+      "properties": {
+        "result": { "const": "value" },
+        "value": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": ["result", "items"],
+      "properties": {
+        "result": { "const": "list" },
+        "items": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": ["result", "message"],
+      "properties": {
+        "result": { "const": "error" },
+        "message": { "type": "string" }
+      },
+      "additionalProperties": false
     }
   ]
 }
