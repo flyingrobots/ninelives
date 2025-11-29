@@ -66,7 +66,7 @@ impl<T> DynamicConfig<T> {
         }
         #[cfg(feature = "adaptive-rwlock")]
         {
-            *self.inner.write().unwrap() = value;
+            *self.inner.write().expect("adaptive config lock poisoned") = value;
         }
     }
 
@@ -78,15 +78,20 @@ impl<T> DynamicConfig<T> {
     {
         #[cfg(not(feature = "adaptive-rwlock"))]
         {
-            let cur = self.inner.load_full();
-            let new_val = f(&cur);
-            self.inner.store(Arc::new(new_val));
+            loop {
+                let cur = self.inner.load_full();
+                let new_val = Arc::new(f(&cur));
+                if self.inner.compare_and_swap(&cur, new_val.clone()).is_ok() {
+                    break;
+                }
+                // CAS failed, retry with new current value
+            }
         }
         #[cfg(feature = "adaptive-rwlock")]
         {
-            let cur = self.inner.read().unwrap().clone();
+            let cur = self.inner.read().expect("adaptive config lock poisoned").clone();
             let new_val = f(&cur);
-            *self.inner.write().unwrap() = new_val;
+            *self.inner.write().expect("adaptive config lock poisoned") = new_val;
         }
     }
 }
