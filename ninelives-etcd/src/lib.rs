@@ -13,6 +13,15 @@ pub struct EtcdSink {
     client: etcd_client::Client,
 }
 
+impl std::fmt::Debug for EtcdSink {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("EtcdSink")
+            .field("prefix", &self.prefix)
+            .field("client", &"<etcd_client::Client>")
+            .finish()
+    }
+}
+
 impl EtcdSink {
     /// Create a sink using an existing etcd client; keys will be `prefix/<nanos>`.
     pub fn new(prefix: impl Into<String>, client: etcd_client::Client) -> Self {
