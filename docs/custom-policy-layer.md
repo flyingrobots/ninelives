@@ -55,7 +55,7 @@ svc.ready().await?.call("hello").await?;
 
 ## 5) Plug-in surface
 
-- If you need runtime mutability, register your knobs with `DefaultConfigRegistry` so they can be adjusted via `write_config` commands.
+- If you need runtime mutability, register your knobs with `DefaultConfigRegistry` so they can be adjusted via `WriteConfig` commands.
 - For external observability, emit tracing spans/events inside your layer; Nine Lives telemetry will propagate spans through composed layers.
 
 This pattern keeps custom behavior modular while staying compatible with the existing Nine Lives DSL and control-plane tooling.
