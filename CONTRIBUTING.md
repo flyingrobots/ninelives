@@ -5,8 +5,8 @@ Thanks for wanting to improve Nine Lives! This document provides guidelines for 
 ## 🚀 Quick Start
 
 1. Install the latest stable Rust (see <https://rustup.rs/>).
-1. Clone and Branch: git checkout -b feature/your-idea.
-1. Bootstrap once to install toolchains, npm deps, and git hooks:
+2. Clone and Branch: git checkout -b feature/your-idea.
+3. Bootstrap once to install toolchains, npm deps, and git hooks:
 
 ```bash
 ./scripts/bootstrap.sh
@@ -40,7 +40,7 @@ git config core.hooksPath scripts/git-hooks
 Check that `scripts/git-hooks` contains files like `pre-commit` and `pre-push`.
 If the setup script fails, ensure you are in the project root and have write permissions to `.git/config`.
 
-1. Open a PR with a clear description and necessary tests.
+5. Open a PR with a clear description and necessary tests.
 
 ## 🧪 Testing Notes
 

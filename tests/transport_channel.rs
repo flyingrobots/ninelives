@@ -8,12 +8,10 @@ use ninelives::ChannelTransport;
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::common::test_helpers;
+
 fn env(cmd: BuiltInCommand) -> CommandEnvelope<BuiltInCommand> {
-    CommandEnvelope {
-        cmd,
-        auth: Some(AuthPayload::Opaque(vec![])),
-        meta: CommandMeta { id: "chan-1".into(), correlation_id: None, timestamp_millis: None },
-    }
+    test_helpers::create_test_envelope(cmd, Some("chan-1"), None, None, None)
 }
 
 #[tokio::test]

@@ -25,6 +25,12 @@ impl CircuitBreakerHandle {
     }
 }
 
+/// Errors from breaker registries.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CircuitBreakerRegistryError {
+    NotFound { id: String },
+}
+
 /// Trait for breaker registries (injectable into control plane).
 pub trait CircuitBreakerRegistry: Send + Sync + std::fmt::Debug {
     /// Register or overwrite a circuit breaker handle by id.
@@ -32,9 +38,9 @@ pub trait CircuitBreakerRegistry: Send + Sync + std::fmt::Debug {
     /// Get a breaker handle by id.
     fn get(&self, id: &str) -> Option<CircuitBreakerHandle>;
     /// Reset a breaker by id, erroring if missing.
-    fn reset(&self, id: &str) -> Result<(), String>;
+    fn reset(&self, id: &str) -> Result<(), CircuitBreakerRegistryError>;
     /// Convenience: create and insert a new breaker state with id.
-    fn register_new(&self, id: String);
+    fn register_new(&self, id: impl Into<String>);
     /// Snapshot breaker states sorted by id.
     fn snapshot(&self) -> Vec<(String, CircuitState)>;
 }
@@ -49,11 +55,10 @@ pub type DefaultCircuitBreakerRegistry = InMemoryCircuitBreakerRegistry;
 
 impl CircuitBreakerRegistry for InMemoryCircuitBreakerRegistry {
     #[allow(unused_mut)]
-    fn register(&self, id: String, handle: CircuitBreakerHandle) {
+    fn register(&self, id: impl Into<String>, handle: CircuitBreakerHandle) {
         let guard = self.inner.write().expect("circuit breaker registry poisoned");
-        // allow shadowing to keep scope small
         let mut map = guard;
-        map.insert(id, handle);
+        map.insert(id.into(), handle);
     }
 
     fn get(&self, id: &str) -> Option<CircuitBreakerHandle> {
@@ -61,14 +66,14 @@ impl CircuitBreakerRegistry for InMemoryCircuitBreakerRegistry {
         guard.get(id).cloned()
     }
 
-    fn reset(&self, id: &str) -> Result<(), String> {
+    fn reset(&self, id: &str) -> Result<(), CircuitBreakerRegistryError> {
         let guard = self.inner.write().expect("circuit breaker registry poisoned");
         match guard.get(id) {
             Some(handle) => {
                 handle.reset();
                 Ok(())
             }
-            None => Err(format!("breaker id not found: {id}")),
+            None => Err(CircuitBreakerRegistryError::NotFound { id: id.to_string() }),
         }
     }
 

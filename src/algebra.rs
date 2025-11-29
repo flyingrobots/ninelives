@@ -363,7 +363,7 @@ where
 /// `Policy(A) & Policy(B)` produces `Policy<ForkJoinLayer<A, B>>`.
 ///
 /// Both services are called concurrently, and the first successful result is returned.
-/// If both fail, an error is returned (currently the left error, but this may change).
+/// If both fail, a `ForkJoinError` containing both errors is returned for diagnostics.
 ///
 /// This implements the "happy eyeballs" pattern commonly used for IPv4/IPv6 racing,
 /// cache racing, or trying multiple backends simultaneously.
@@ -688,7 +688,7 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn fork_join_returns_left_error_if_both_fail() {
+    async fn fork_join_returns_both_errors_if_both_fail() {
         #[derive(Clone, Debug)]
         struct LeftErr;
         #[derive(Clone, Debug)]
@@ -829,36 +829,6 @@ mod tests {
         let mut svc = layer.layer(TestSvc);
         let resp = svc.ready().await.unwrap().call("ok").await.unwrap();
         assert_eq!(resp, "ok");
-    }
-
-    #[tokio::test]
-    async fn fork_join_returns_both_errors_on_dual_failure() {
-        #[derive(Clone)]
-        struct FailSvc(&'static str);
-        impl tower_service::Service<&'static str> for FailSvc {
-            type Response = &'static str;
-            type Error = &'static str;
-            type Future = futures::future::Ready<Result<&'static str, &'static str>>;
-            fn poll_ready(
-                &mut self,
-                _cx: &mut std::task::Context<'_>,
-            ) -> std::task::Poll<Result<(), Self::Error>> {
-                std::task::Poll::Ready(Ok(()))
-            }
-            fn call(&mut self, _req: &'static str) -> Self::Future {
-                futures::future::ready(Err(self.0))
-            }
-        }
-
-        let left = Policy(tower::util::MapRequestLayer::new(|req: &'static str| req))
-            .layer(FailSvc("left"));
-        let right = Policy(tower::util::MapRequestLayer::new(|req: &'static str| req))
-            .layer(FailSvc("right"));
-        let mut svc = ForkJoinService { left, right };
-
-        let err = svc.call("req").await.unwrap_err();
-        assert_eq!(err.left, Some("left"));
-        assert_eq!(err.right, Some("right"));
     }
 
     #[tokio::test]

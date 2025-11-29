@@ -8,6 +8,8 @@ use ninelives::AuthorizationLayer;
 use std::sync::Arc;
 use tower::{Layer, Service, ServiceExt};
 
+use crate::common::test_helpers;
+
 #[derive(Clone)]
 struct RecordingSvc {
     called: Arc<std::sync::atomic::AtomicBool>,
@@ -49,15 +51,7 @@ impl AuthProvider for DenyAuth {
 fn env(cmd: BuiltInCommand) -> CommandEnvelope<BuiltInCommand> {
     let now =
         std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis();
-    CommandEnvelope {
-        cmd,
-        auth: Some(AuthPayload::Opaque(vec![])),
-        meta: CommandMeta {
-            id: "cmd-1".into(),
-            correlation_id: Some("corr-1".into()),
-            timestamp_millis: Some(now),
-        },
-    }
+    test_helpers::create_test_envelope(cmd, Some("cmd-1"), Some("corr-1"), None, Some(now))
 }
 
 #[tokio::test]

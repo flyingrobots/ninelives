@@ -6,13 +6,11 @@ use ninelives::telemetry::{NonBlockingSink, NullSink, PolicyEvent, RetryEvent, S
 use std::time::{Duration, Instant};
 use tower_service::Service;
 
-#[cfg(feature = "bench-telemetry")]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn telemetry_overhead_baseline() {
     run_bench(NullSink, 100_000, 4, Duration::from_micros(200)).await;
 }
 
-#[cfg(feature = "bench-telemetry")]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn telemetry_overhead_nonblocking_log() {
     let raw = NullSink; // exercises NonBlockingSink channel path (no actual slow operations)
@@ -22,7 +20,6 @@ async fn telemetry_overhead_nonblocking_log() {
     println!("NonBlockingSink dropped {} events", dropped);
 }
 
-#[cfg(feature = "bench-telemetry")]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn telemetry_overhead_streaming_drop_visibility() {
     let sink = StreamingSink::new(64);
@@ -31,6 +28,8 @@ async fn telemetry_overhead_streaming_drop_visibility() {
         let mut clone = sink.clone();
         handles.push(tokio::spawn(async move {
             for _ in 0..20_000 {
+                // Intentionally ignore result here to exercise drop behavior
+                // (do not `.expect()` or assert, otherwise the test's purpose breaks).
                 let _ = clone.call(sample_event()).await;
             }
         }));
@@ -39,6 +38,8 @@ async fn telemetry_overhead_streaming_drop_visibility() {
         h.await.unwrap();
     }
     // Should drop some when overdriven; verify the counter works.
+    // With 4 tasks sending 20,000 events each (80,000 total) into a channel
+    // with capacity 64 and no consumer, drops are guaranteed.
     let dropped = sink.dropped_count();
     assert!(dropped > 0, "Expected drops under load, got {}", dropped);
 }
