@@ -428,7 +428,7 @@ router.execute(cmd).await?;
 
 ### Architecture Overview
 
-```
+```text
 ┌─────────────────────────────────────────────────────────┐
 │                    GATOS Application                     │
 │  ┌────────────┐  ┌────────────┐  ┌────────────┐        │
