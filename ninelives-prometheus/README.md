@@ -52,4 +52,4 @@ println!("{}", output);
 cargo test -p ninelives-prometheus
 ```
 
-The integration test verifies a `PolicyEvent` increments the counter and is present in gathered metrics.
+The integration test instantiates a policy with a nonblocking sink, triggers a PolicyEvent, and verifies the ninelives_events_total counter increments with correct policy and event labels via registry.gather().
