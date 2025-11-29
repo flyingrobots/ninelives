@@ -158,4 +158,7 @@ pub use retry::{BuildError, RetryLayer, RetryPolicy, RetryPolicyBuilder, RetrySe
 pub use sleeper::{InstantSleeper, Sleeper, TokioSleeper, TrackingSleeper};
 pub use timeout::{TimeoutError, TimeoutLayer, TimeoutPolicy, MAX_TIMEOUT};
 
+#[cfg(feature = "loom")]
+extern crate loom;
+
 pub mod prelude;

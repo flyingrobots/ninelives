@@ -74,10 +74,9 @@ tracing-subscriber.workspace = true
 futures.workspace = true
 hdrhistogram.workspace = true
 serde_json.workspace = true
+loom = "0.7"
 
 [features]
 control = ["serde", "serde_json"]
 adaptive-rwlock = []
-schema-validation = []
-bench-telemetry = []
-default = ["arc-swap", "schema-validation"]
+default = ["arc-swap"]

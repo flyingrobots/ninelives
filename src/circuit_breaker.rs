@@ -462,6 +462,58 @@ mod tests {
     }
 }
 
+#[cfg(all(test, feature = "loom"))]
+mod loom_tests {
+    use super::*;
+    use loom::sync::Arc;
+    use loom::thread;
+
+    #[derive(Debug)]
+    struct LoomClock(std::sync::atomic::AtomicU64);
+    impl LoomClock {
+        fn new(t: u64) -> Self {
+            Self(std::sync::atomic::AtomicU64::new(t))
+        }
+    }
+    impl Clock for LoomClock {
+        fn now_millis(&self) -> u64 {
+            self.0.load(Ordering::SeqCst)
+        }
+    }
+
+    #[test]
+    fn concurrent_open_sets_timestamp_once() {
+        loom::model(|| {
+            let state = Arc::new(CircuitBreakerState::new());
+            // Preload failure count to trigger open on first acquire.
+            state.failure_count.store(1, Ordering::SeqCst);
+            let cfg = CircuitBreakerConfig::builder()
+                .failure_threshold(1)
+                .recovery_timeout(Duration::from_millis(50))
+                .half_open_limit(1)
+                .build()
+                .unwrap();
+            let cfg = Arc::new(cfg);
+
+            let s1 = state.clone();
+            let cfg1 = cfg.clone();
+            let clock1 = LoomClock::new(10);
+            let t1 = thread::spawn(move || {
+                let _ = s1.try_acquire(&cfg1, &clock1);
+            });
+
+            let s2 = state.clone();
+            let cfg2 = cfg.clone();
+            let clock2 = LoomClock::new(10);
+            let _ = s2.try_acquire(&cfg2, &clock2);
+
+            t1.join().unwrap();
+            assert_eq!(state.current_state(), CircuitState::Open);
+            assert_ne!(state.opened_at_millis.load(Ordering::SeqCst), 0);
+        });
+    }
+}
+
 impl<Sink> CircuitBreakerLayer<Sink>
 where
     Sink: Clone,
