@@ -49,6 +49,12 @@ tower = "0.5.2"
 tokio = { version = "1", features = ["full"] }
 ```
 
+After cloning the repo, enable the dev hooks (fmt/clippy/tests/doc/roadmap checks) with:
+
+```bash
+./scripts/setup-hooks.sh
+```
+
 ### Basic Usage
 
 ```rust

@@ -6,7 +6,13 @@ Thanks for wanting to improve Nine Lives! This document provides guidelines for 
 
 1. Install the latest stable Rust (see <https://rustup.rs/>).
 2. Clone and Branch: git checkout -b feature/your-idea.
-3. Run Checks Locally:
+3. Enable repo hooks so fmt/clippy/tests/docs run before pushes:
+
+```bash
+./scripts/setup-hooks.sh
+```
+
+4. Run Checks Locally:
 
 ```bash
 cargo test --all-features --all-targets

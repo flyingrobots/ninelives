@@ -1,5 +1,19 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
+
+# Ensure the repository is using the expected hooks path. This catches cases
+# where contributors forget to run ./scripts/setup-hooks.sh after cloning.
+HOOKS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+CONFIGURED_PATH="$(git config --get core.hooksPath || true)"
+if [ -n "$CONFIGURED_PATH" ]; then
+  CONFIGURED_PATH="$(cd "$CONFIGURED_PATH" 2>/dev/null && pwd -P || true)"
+fi
+
+if [ "$CONFIGURED_PATH" != "$HOOKS_DIR" ]; then
+  echo "[pre-commit] core.hooksPath is not set to $HOOKS_DIR" >&2
+  echo "[pre-commit] Run ./scripts/setup-hooks.sh to install the hooks." >&2
+  exit 1
+fi
 # Verify rustfmt is installed
 if ! command -v rustfmt &> /dev/null; then
   echo "Error: rustfmt not found. Install with: rustup component add rustfmt" >&2
