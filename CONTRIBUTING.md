@@ -5,14 +5,14 @@ Thanks for wanting to improve Nine Lives! This document provides guidelines for 
 ## 🚀 Quick Start
 
 1. Install the latest stable Rust (see <https://rustup.rs/>).
-2. Clone and Branch: git checkout -b feature/your-idea.
-3. Bootstrap once to install toolchains, npm deps, and git hooks:
+1. Clone and Branch: git checkout -b feature/your-idea.
+1. Bootstrap once to install toolchains, npm deps, and git hooks:
 
 ```bash
 ./scripts/bootstrap.sh
 ```
 
-4. Run Checks Locally:
+1. Run Checks Locally:
 
 ```bash
 cargo test --all-features --all-targets

@@ -8,11 +8,6 @@ pub use crate::{
     },
     bulkhead::BulkheadLayer,
     circuit_breaker::{CircuitBreakerConfig, CircuitBreakerError, CircuitBreakerLayer},
-    #[cfg(feature = "control")]
-    control::{
-        AuthMode, AuthPayload, AuthProvider, AuthRegistry, CommandContext, CommandEnvelope,
-        CommandMeta, CommandService,
-    },
     jitter::Jitter,
     retry::{BuildError, RetryLayer, RetryPolicy, RetryPolicyBuilder},
     telemetry::{
@@ -23,6 +18,12 @@ pub use crate::{
     timeout::TimeoutLayer,
     timeout::{TimeoutError, TimeoutPolicy, MAX_TIMEOUT},
     BulkheadPolicy, ResilienceError,
+};
+
+#[cfg(feature = "control")]
+pub use crate::control::{
+    AuthMode, AuthPayload, AuthProvider, AuthRegistry, CommandContext, CommandEnvelope, CommandMeta,
+    CommandService,
 };
 
 /// Simple, ready-to-use helpers.

@@ -229,6 +229,7 @@ fn clamp_u64(val: u128) -> u64 {
 }
 
 /// Convert a PolicyEvent into a JSON value for sinks.
+#[cfg(feature = "control")]
 pub fn event_to_json(event: &PolicyEvent) -> serde_json::Value {
     match event {
         PolicyEvent::Retry(r) => match r {
