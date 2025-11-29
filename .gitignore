@@ -1,6 +1,7 @@
 # Build artifacts
 /target
 /.cargo/
+/node_modules/
 
 # Ignore only the workspace-root Cargo.lock; per-crate Cargo.lock files in subdirectories are not ignored.
 /Cargo.lock
