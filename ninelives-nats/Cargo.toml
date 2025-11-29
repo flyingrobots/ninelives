@@ -15,7 +15,7 @@ serde_json.workspace = true
 tower-service = { workspace = true }
 async-nats = "0.45"
 tokio = { workspace = true, features = ["rt", "macros"] }
-tracing = "0.1"
+tracing.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full"] }

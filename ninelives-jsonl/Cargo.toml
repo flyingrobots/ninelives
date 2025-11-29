@@ -11,7 +11,7 @@ readme = "README.md"
 
 [dependencies]
 ninelives = { workspace = true }
-tracing = "0.1"
+tracing.workspace = true
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["fs", "macros"] }
 tower-service = { workspace = true }

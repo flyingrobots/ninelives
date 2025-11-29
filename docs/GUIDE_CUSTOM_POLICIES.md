@@ -55,7 +55,7 @@ where
     type Future = futures::future::BoxFuture<'static, Result<Self::Response, Self::Error>>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        if self.in_flight.load(Ordering::SeqCst) >= self.limit {
+        if self.in_flight.load(Ordering::Relaxed) >= self.limit {
             if let Ok(mut waiters) = self.waiters.lock() {
                 waiters.push_back(cx.waker().clone());
             }
@@ -68,7 +68,7 @@ where
         let mut inner = self.inner.clone();
         let in_flight = self.in_flight.clone();
         let waiters = Arc::clone(&self.waiters);
-        in_flight.fetch_add(1, Ordering::SeqCst);
+        in_flight.fetch_add(1, Ordering::Relaxed);
 
         Box::pin(async move {
             let result = inner.call(req).await;

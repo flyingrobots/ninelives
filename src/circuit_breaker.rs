@@ -113,7 +113,6 @@ impl CircuitBreakerConfigBuilder {
             recovery_timeout: Adaptive::new(self.recovery_timeout),
             half_open_max_calls: Adaptive::new(self.half_open_max_calls),
         };
-        cfg.validate()?;
         Ok(cfg)
     }
 }
