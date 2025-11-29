@@ -82,33 +82,39 @@ async fn authorization_layer_denies_and_blocks() {
     assert!(matches!(res, Err(ninelives::control::CommandError::Auth(_))));
 }
 
-#[tokio::test]
-async fn command_router_audits_denial_and_success() {
-    // Deny case
+fn make_router(
+    auth: Arc<dyn AuthProvider>,
+    audit: Arc<MemoryAuditSink>,
+) -> ninelives::control::CommandRouter<BuiltInCommand> {
     let mut reg = AuthRegistry::new(AuthMode::First);
-    reg.register(Arc::new(DenyAuth));
-    let audit = Arc::new(MemoryAuditSink::new());
+    reg.register(auth);
     let history: Arc<dyn ninelives::control::CommandHistory> =
         Arc::new(ninelives::control::InMemoryHistory::default());
     let handler = Arc::new(ninelives::control::BuiltInHandler::default());
-    let router =
-        ninelives::control::CommandRouter::new(reg, handler, history).with_audit(audit.clone());
-    let _ = router.execute(env(BuiltInCommand::List)).await;
+    ninelives::control::CommandRouter::new(reg, handler, history).with_audit(audit)
+}
+
+#[tokio::test]
+async fn command_router_audits_denial() {
+    let audit = Arc::new(MemoryAuditSink::new());
+    let router = make_router(Arc::new(DenyAuth), audit.clone());
+
+    let res = router.execute(env(BuiltInCommand::List)).await;
+    assert!(matches!(res, Err(ninelives::control::CommandError::Auth(_))));
+
     let records = audit.records();
     assert_eq!(records.len(), 1);
-    assert!(records[0].status.starts_with("denied"));
+    assert_eq!(records[0].status, "denied: unauthenticated: denied");
+}
 
-    // Success case
-    let mut reg = AuthRegistry::new(AuthMode::First);
-    reg.register(Arc::new(PassthroughAuth));
+#[tokio::test]
+async fn command_router_audits_success() {
     let audit = Arc::new(MemoryAuditSink::new());
-    let history: Arc<dyn ninelives::control::CommandHistory> =
-        Arc::new(ninelives::control::InMemoryHistory::default());
-    let handler = Arc::new(ninelives::control::BuiltInHandler::default());
-    let router =
-        ninelives::control::CommandRouter::new(reg, handler, history).with_audit(audit.clone());
+    let router = make_router(Arc::new(PassthroughAuth), audit.clone());
+
     let res = router.execute(env(BuiltInCommand::List)).await.unwrap();
     assert_eq!(res, CommandResult::List(vec![]));
+
     let records = audit.records();
     assert_eq!(records.len(), 1);
     assert_eq!(records[0].status, "ok");
