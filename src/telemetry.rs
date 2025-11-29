@@ -982,7 +982,7 @@ mod tests {
         impl TelemetrySink for Fails {
             type SinkError = std::io::Error;
         }
-        impl tower_service::Service<PolicyEvent> for Fails {
+        impl tower::Service<PolicyEvent> for Fails {
             type Response = ();
             type Error = std::io::Error;
             type Future = Pin<Box<dyn Future<Output = Result<(), Self::Error>> + Send>>;
