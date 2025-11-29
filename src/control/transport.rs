@@ -33,48 +33,51 @@ pub struct TransportEnvelope {
 // Schema validation helpers (runtime enforced in TransportRouter)
 // -----------------------------------------------------------------------------
 
+#[cfg(feature = "schema-validation")]
 fn transport_envelope_schema() -> &'static JSONSchema {
     static SCHEMA: OnceLock<JSONSchema> = OnceLock::new();
     SCHEMA.get_or_init(|| {
-        // Panic is intentional: schema is bundled at build time and validated in CI.
         let raw = include_str!("../../schemas/transport-envelope.schema.json");
         let value: JsonValue = serde_json::from_str(raw).expect("valid transport-envelope schema");
         JSONSchema::compile(&value).expect("transport-envelope schema compiles")
     })
 }
 
+#[cfg(feature = "schema-validation")]
 fn command_result_schema() -> &'static JSONSchema {
     static SCHEMA: OnceLock<JSONSchema> = OnceLock::new();
     SCHEMA.get_or_init(|| {
-        // Panic is intentional: schema is bundled at build time and validated in CI.
         let raw = include_str!("../../schemas/command-result.schema.json");
         let value: JsonValue = serde_json::from_str(raw).expect("valid command-result schema");
         JSONSchema::compile(&value).expect("command-result schema compiles")
     })
 }
 
-#[cfg(debug_assertions)]
+#[cfg(feature = "schema-validation")]
 fn validate_envelope(env: &TransportEnvelope) -> Result<(), String> {
+    // NOTE: jsonschema currently validates serde_json::Value, so we serialize here.
+    // TODO: remove this allocation if jsonschema adds a Serialize-friendly validate API.
     let env_val = serde_json::to_value(env).map_err(|e| e.to_string())?;
     validate(transport_envelope_schema(), &env_val)
 }
 
-#[cfg(not(debug_assertions))]
+#[cfg(not(feature = "schema-validation"))]
 fn validate_envelope(_env: &TransportEnvelope) -> Result<(), String> {
     Ok(())
 }
 
-#[cfg(debug_assertions)]
+#[cfg(feature = "schema-validation")]
 fn validate_result(res: &super::CommandResult) -> Result<(), String> {
     let res_val = command_result_to_schema_value(res);
     validate(command_result_schema(), &res_val)
 }
 
-#[cfg(not(debug_assertions))]
+#[cfg(not(feature = "schema-validation"))]
 fn validate_result(_res: &super::CommandResult) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(feature = "schema-validation")]
 fn validate(schema: &JSONSchema, value: &JsonValue) -> Result<(), String> {
     schema
         .validate(value)

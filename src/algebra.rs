@@ -552,6 +552,7 @@ mod tests {
     use std::sync::Arc;
     use std::task::{Context, Poll};
     use std::time::Duration;
+    use tokio::{sync::oneshot, time};
     use tower::ServiceExt;
     use tower_service::Service;
 
@@ -750,9 +751,11 @@ mod tests {
 
     #[tokio::test]
     async fn race_returns_first_success() {
+        time::pause();
         let slow = SlowService::new(Duration::from_millis(50));
         let fast = ReadyService::new();
         let mut svc = ForkJoinService { left: slow, right: fast };
+        time::advance(Duration::from_millis(1)).await;
         let res = svc.call("req").await.unwrap();
         assert_eq!(res, "req");
     }
@@ -855,5 +858,80 @@ mod tests {
         let err = svc.call("req").await.unwrap_err();
         assert_eq!(err.left, Some("left"));
         assert_eq!(err.right, Some("right"));
+    }
+
+    #[tokio::test]
+    async fn fork_join_drops_loser_future_when_winner_finishes() {
+        time::pause();
+
+        #[derive(Clone)]
+        struct DropAwareService {
+            delay: Duration,
+            drop_tx: Arc<std::sync::Mutex<Option<oneshot::Sender<()>>>>,
+        }
+
+        impl DropAwareService {
+            fn new(delay: Duration, drop_tx: oneshot::Sender<()>) -> Self {
+                Self { delay, drop_tx: Arc::new(std::sync::Mutex::new(Some(drop_tx))) }
+            }
+        }
+
+        struct DropFuture {
+            sleep: Pin<Box<time::Sleep>>,
+            resp: &'static str,
+            drop_tx: Arc<std::sync::Mutex<Option<oneshot::Sender<()>>>>,
+        }
+
+        impl Drop for DropFuture {
+            fn drop(&mut self) {
+                if let Ok(mut guard) = self.drop_tx.lock() {
+                    if let Some(tx) = guard.take() {
+                        let _ = tx.send(());
+                    }
+                }
+            }
+        }
+
+        impl futures::Future for DropFuture {
+            type Output = Result<&'static str, std::io::Error>;
+            fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+                let this = self.get_mut();
+                let sleep = Pin::new(&mut this.sleep);
+                match sleep.poll(cx) {
+                    Poll::Ready(_) => Poll::Ready(Ok(this.resp)),
+                    Poll::Pending => Poll::Pending,
+                }
+            }
+        }
+
+        impl tower_service::Service<&'static str> for DropAwareService {
+            type Response = &'static str;
+            type Error = std::io::Error;
+            type Future = DropFuture;
+
+            fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+                Poll::Ready(Ok(()))
+            }
+
+            fn call(&mut self, req: &'static str) -> Self::Future {
+                DropFuture {
+                    sleep: Box::pin(time::sleep(self.delay)),
+                    resp: req,
+                    drop_tx: self.drop_tx.clone(),
+                }
+            }
+        }
+
+        let (drop_tx, drop_rx) = oneshot::channel();
+
+        let fast = ReadyService::new();
+        let slow = DropAwareService::new(Duration::from_secs(5), drop_tx);
+        let mut svc = ForkJoinService { left: slow, right: fast };
+
+        time::advance(Duration::from_millis(1)).await;
+        let res = svc.call("ok").await.unwrap();
+        assert_eq!(res, "ok");
+
+        drop_rx.await.expect("loser future should be dropped immediately when winner completes");
     }
 }
