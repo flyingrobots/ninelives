@@ -28,8 +28,24 @@ impl CircuitBreakerHandle {
 /// Errors from breaker registries.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CircuitBreakerRegistryError {
-    NotFound { id: String },
+    /// The requested circuit breaker ID was not found.
+    NotFound {
+        /// Identifier that could not be located.
+        id: String,
+    },
 }
+
+impl std::fmt::Display for CircuitBreakerRegistryError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CircuitBreakerRegistryError::NotFound { id } => {
+                write!(f, "circuit breaker '{id}' not found")
+            }
+        }
+    }
+}
+
+impl std::error::Error for CircuitBreakerRegistryError {}
 
 /// Trait for breaker registries (injectable into control plane).
 pub trait CircuitBreakerRegistry: Send + Sync + std::fmt::Debug {
@@ -40,25 +56,26 @@ pub trait CircuitBreakerRegistry: Send + Sync + std::fmt::Debug {
     /// Reset a breaker by id, erroring if missing.
     fn reset(&self, id: &str) -> Result<(), CircuitBreakerRegistryError>;
     /// Convenience: create and insert a new breaker state with id.
-    fn register_new(&self, id: impl Into<String>);
+    fn register_new(&self, id: String);
     /// Snapshot breaker states sorted by id.
     fn snapshot(&self) -> Vec<(String, CircuitState)>;
 }
 
-/// In-memory implementation backed by a Mutex.
+/// In-memory implementation backed by an RwLock.
 #[derive(Default, Clone, Debug)]
 pub struct InMemoryCircuitBreakerRegistry {
     inner: Arc<RwLock<HashMap<String, CircuitBreakerHandle>>>,
 }
 
+/// Default registry used when none is injected.
 pub type DefaultCircuitBreakerRegistry = InMemoryCircuitBreakerRegistry;
 
 impl CircuitBreakerRegistry for InMemoryCircuitBreakerRegistry {
     #[allow(unused_mut)]
-    fn register(&self, id: impl Into<String>, handle: CircuitBreakerHandle) {
+    fn register(&self, id: String, handle: CircuitBreakerHandle) {
         let guard = self.inner.write().expect("circuit breaker registry poisoned");
         let mut map = guard;
-        map.insert(id.into(), handle);
+        map.insert(id, handle);
     }
 
     fn get(&self, id: &str) -> Option<CircuitBreakerHandle> {

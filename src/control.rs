@@ -24,6 +24,7 @@ use tracing::info;
 
 /// Opaque command identifier.
 pub type CommandId = String;
+/// Execution metadata attached to each command.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct CommandMeta {
     /// Command identifier (unique per request).
@@ -331,7 +332,10 @@ pub enum CommandError {
     Handler(String),
     /// Missing config registry when requested by a command.
     #[error("config registry missing: {hint}")]
-    ConfigRegistryMissing { hint: &'static str },
+    ConfigRegistryMissing {
+        /// Guidance on how to wire the registry into the control builder.
+        hint: &'static str,
+    },
     /// Audit recording failed.
     #[error("audit: {0}")]
     Audit(String),
@@ -754,11 +758,13 @@ pub struct ConfigService {
 }
 
 impl ConfigService {
+    /// Return a copy with a registry attached.
     pub fn with_registry<R: ConfigRegistry + 'static>(mut self, registry: R) -> Self {
         self.registry = Some(Arc::new(registry));
         self
     }
 
+    /// Set the registry on an existing service.
     pub fn set_registry<R: ConfigRegistry + 'static>(&mut self, registry: R) {
         self.registry = Some(Arc::new(registry));
     }
@@ -806,6 +812,7 @@ pub struct BreakerService {
 }
 
 impl BreakerService {
+    /// Return a copy with a circuit breaker registry attached.
     pub fn with_registry<R: CircuitBreakerRegistry + 'static>(mut self, registry: R) -> Self {
         self.registry = Some(Arc::new(registry));
         self
@@ -821,7 +828,7 @@ impl BreakerService {
         let reg = self.registry()?;
         match reg.reset(id) {
             Ok(()) => Ok(CommandResult::Ack),
-            Err(e) => Ok(CommandResult::Error(e)),
+            Err(e) => Ok(CommandResult::Error(e.to_string())),
         }
     }
 
@@ -886,6 +893,10 @@ impl BuiltInHandler {
         Ok(CommandResult::Ack)
     }
 
+    /// Retrieves a value by checking the config registry first, then falling back to the
+    /// async store. If neither contains the key, a default value (empty string for store,
+    /// or error for config) is returned. This mirrors the precedence used by [`set_or_store`](Self::set_or_store)
+    /// for consistency and maintainability.
     async fn get_from_store_or_config(&self, key: &str) -> CommandResult {
         if self.state.config.contains(key) {
             return self

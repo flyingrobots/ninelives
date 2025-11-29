@@ -157,6 +157,7 @@ where
 pub struct SchemaValidationLayer;
 
 impl SchemaValidationLayer {
+    /// Create a new schema validation layer.
     pub fn new() -> Self {
         Self
     }
@@ -176,6 +177,7 @@ impl<S> tower_layer::Layer<S> for SchemaValidationLayer {
     }
 }
 
+/// Transport router wrapper that enforces schema validation.
 pub struct SchemaValidated<S> {
     inner: S,
 }

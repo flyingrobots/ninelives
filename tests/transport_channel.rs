@@ -1,14 +1,16 @@
 #![allow(missing_docs)]
 
+mod common;
+
 use ninelives::control::{
-    AuthMode, AuthPayload, AuthRegistry, BuiltInCommand, CommandEnvelope, CommandMeta,
-    CommandResult, InMemoryHistory, PassthroughAuth,
+    AuthMode, AuthRegistry, BuiltInCommand, CommandEnvelope, CommandResult, InMemoryHistory,
+    PassthroughAuth,
 };
 use ninelives::ChannelTransport;
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::common::test_helpers;
+use common::test_helpers;
 
 fn env(cmd: BuiltInCommand) -> CommandEnvelope<BuiltInCommand> {
     test_helpers::create_test_envelope(cmd, Some("chan-1"), None, None, None)

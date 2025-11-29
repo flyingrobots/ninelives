@@ -14,12 +14,30 @@ if [ "$CONFIGURED_PATH" != "$HOOKS_DIR" ]; then
   exit 1
 fi
 
+echo "[pre-push] verifying required tools and components..."
+for cmd in cargo npm git rustup; do
+  if ! command -v "$cmd" >/dev/null 2>&1; then
+    echo "[pre-push] error: '$cmd' is not installed or not in PATH." >&2
+    exit 1
+  fi
+done
+
+if ! cargo fmt --version >/dev/null 2>&1; then
+  echo "[pre-push] error: rustfmt component missing. Run 'rustup component add rustfmt'." >&2
+  exit 1
+fi
+
+if ! cargo clippy --version >/dev/null 2>&1; then
+  echo "[pre-push] error: clippy component missing. Run 'rustup component add clippy'." >&2
+  exit 1
+fi
+
 echo "[pre-push] running cargo fmt -- --check"
 cargo fmt -- --check
 
 echo "[pre-push] running markdownlint (npm run lint:md)"
 npm install --ignore-scripts --no-audit --no-fund >/dev/null 2>&1 || true
-npm run --silent lint:md
+npm run --loglevel=error lint:md
 
 echo "[pre-push] running cargo clippy --all-targets --all-features -- -D warnings -D missing_docs"
 cargo clippy --all-targets --all-features -- -D warnings -D missing_docs
@@ -30,20 +48,39 @@ cargo test --all-features --all-targets
 echo "[pre-push] running cargo doc --no-deps with -D warnings"
 RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
 
-echo "[pre-push] syncing roadmap DAG (cargo run -p xtask --bin xtask sync-dag all)"
-cargo run -p xtask --bin xtask sync-dag all || {
-  echo "[pre-push] xtask sync-dag failed; aborting push" >&2
+ROADMAP_HASH_BEFORE=$(git hash-object docs/ROADMAP/DAG.csv 2>/dev/null || echo "none")
+
+# Try to use pre-built xtask to avoid compilation noise/delay, fall back to cargo run
+XTASK_BIN="target/debug/xtask"
+if [ -x "$XTASK_BIN" ]; then
+  echo "[pre-push] syncing roadmap DAG (using pre-built $XTASK_BIN)"
+  "$XTASK_BIN" sync-dag all || {
+    echo "[pre-push] xtask sync-dag failed; aborting push" >&2
+    exit 1
+  }
+else
+  echo "[pre-push] syncing roadmap DAG (building via cargo run...)"
+  cargo run -p xtask --bin xtask sync-dag all || {
+    echo "[pre-push] xtask sync-dag failed; aborting push" >&2
+    exit 1
+  }
+fi
+
+if [ ! -s docs/ROADMAP/DAG.csv ]; then
+  echo "[pre-push] docs/ROADMAP/DAG.csv missing or empty after sync" >&2
   exit 1
 }
 
-if [ ! -s docs/ROADMAP ]; then
-  echo "[pre-push] docs/ROADMAP missing or empty after sync" >&2
-  exit 1
-}
+ROADMAP_HASH_AFTER=$(git hash-object docs/ROADMAP/DAG.csv 2>/dev/null || echo "none")
 
-echo "[pre-push] checking for roadmap drift against HEAD"
+if [ "$ROADMAP_HASH_BEFORE" != "$ROADMAP_HASH_AFTER" ]; then
+  echo "[pre-push] xtask sync-dag modified docs/ROADMAP/DAG.csv; stage and commit these changes before pushing" >&2
+  exit 1
+fi
+
+echo "[pre-push] checking for pre-existing uncommitted roadmap changes against HEAD"
 git diff --exit-code HEAD docs/ROADMAP || {
-  echo "[pre-push] roadmap drift detected; run 'cargo run -p xtask --bin xtask sync-dag all' and commit" >&2
+  echo "[pre-push] docs/ROADMAP has uncommitted changes; commit them before pushing" >&2
   exit 1
 }
 

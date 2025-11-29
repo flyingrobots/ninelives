@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+
 use ninelives::control::AuthPayload;
 use ninelives::TransportEnvelope;
 use serde_json::json;

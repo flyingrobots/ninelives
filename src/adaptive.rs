@@ -61,7 +61,7 @@ impl<T> DynamicConfig<T> {
     /// Snapshot the current value (Clone under RwLock backend).
     #[cfg(feature = "adaptive-rwlock")]
     pub fn get(&self) -> Arc<T> {
-        self.inner.read().expect("RwLock poisoned").clone() // Clone the inner Arc<T>
+        self.inner.read().expect("adaptive config lock poisoned").clone() // Clone the inner Arc<T>
     }
 
     /// Replace the value entirely.

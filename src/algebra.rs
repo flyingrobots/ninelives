@@ -451,6 +451,32 @@ pub struct ForkJoinError<E> {
     pub right: Option<E>,
 }
 
+impl<E> std::fmt::Display for ForkJoinError<E>
+where
+    E: std::fmt::Display,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match (&self.left, &self.right) {
+            (Some(l), Some(r)) => write!(f, "ForkJoin failed on both sides. Left: {}; Right: {}", l, r),
+            (Some(l), None) => write!(f, "ForkJoin failed on left side: {}", l),
+            (None, Some(r)) => write!(f, "ForkJoin failed on right side: {}", r),
+            (None, None) => write!(f, "ForkJoin failed with no recorded errors"),
+        }
+    }
+}
+
+impl<E> std::error::Error for ForkJoinError<E>
+where
+    E: std::error::Error + 'static,
+{
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.left
+            .as_ref()
+            .map(|e| e as &dyn std::error::Error)
+            .or_else(|| self.right.as_ref().map(|e| e as &dyn std::error::Error))
+    }
+}
+
 impl<S1, S2, Request> tower_service::Service<Request> for ForkJoinService<S1, S2>
 where
     Request: Clone + Send + 'static,

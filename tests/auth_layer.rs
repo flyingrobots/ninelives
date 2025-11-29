@@ -1,5 +1,7 @@
 #![allow(missing_docs)]
 
+mod common;
+
 use ninelives::control::{
     AuthContext, AuthError, AuthMode, AuthPayload, AuthProvider, AuthRegistry, BuiltInCommand,
     CommandEnvelope, CommandMeta, CommandResult, MemoryAuditSink, PassthroughAuth,
@@ -8,7 +10,7 @@ use ninelives::AuthorizationLayer;
 use std::sync::Arc;
 use tower::{Layer, Service, ServiceExt};
 
-use crate::common::test_helpers;
+use common::test_helpers;
 
 #[derive(Clone)]
 struct RecordingSvc {
