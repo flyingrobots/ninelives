@@ -657,6 +657,7 @@ fn usage() {
   cargo run --bin tasks add <TASK_ID> <TITLE> <EST> <VALUE> <DEP1,DEP2,...|->  # create task and edges
   cargo run --bin tasks it-nats              # spin up NATS via docker compose and run integration tests
   cargo run --bin tasks it-kafka             # spin up Kafka via docker compose and run integration tests
+  cargo run --bin tasks it-etcd              # spin up etcd via docker compose and run integration tests
   cargo run --bin tasks it-elastic           # spin up Elasticsearch via docker compose and run integration tests"
     );
 }
@@ -785,6 +786,43 @@ fn cmd_it_kafka() -> Result<()> {
     Ok(())
 }
 
+fn cmd_it_etcd() -> Result<()> {
+    let env_var = "NINE_LIVES_TEST_ETCD_ENDPOINT";
+    let compose_dir = Path::new("ninelives-etcd");
+
+    let provided = std::env::var(env_var).ok();
+    let url = provided.clone().unwrap_or_else(|| "http://127.0.0.1:2379".to_string());
+    let host_port = parse_host_port(&url).unwrap_or_else(|| "127.0.0.1:2379".to_string());
+
+    let should_start_compose = provided.is_none();
+    let _guard = if should_start_compose {
+        docker_compose(&["up", "-d"], compose_dir)?;
+        struct Guard<'a> {
+            dir: &'a Path,
+        }
+        impl<'a> Drop for Guard<'a> {
+            fn drop(&mut self) {
+                let _ = docker_compose(&["down", "-v"], self.dir);
+            }
+        }
+        Some(Guard { dir: compose_dir })
+    } else {
+        None
+    };
+
+    wait_for_host(&host_port, 40, std::time::Duration::from_millis(300))
+        .with_context(|| format!("waiting for etcd at {}", host_port))?;
+
+    let status = Command::new("cargo")
+        .args(["test", "-p", "ninelives-etcd"])
+        .env(env_var, &url)
+        .status()
+        .context("running cargo test -p ninelives-etcd")?;
+    if !status.success() {
+        return Err(anyhow!("tests failed"));
+    }
+    Ok(())
+}
 fn cmd_it_elastic() -> Result<()> {
     let env_var = "NINE_LIVES_TEST_ELASTIC_URL";
     let compose_dir = Path::new("ninelives-elastic");
@@ -822,6 +860,7 @@ fn cmd_it_elastic() -> Result<()> {
     }
     Ok(())
 }
+
 fn main() -> Result<()> {
     let mut args = std::env::args().skip(1).collect::<Vec<_>>();
     if args.is_empty() {
@@ -853,6 +892,9 @@ fn main() -> Result<()> {
         }
         "it-kafka" => {
             cmd_it_kafka()?;
+        }
+        "it-etcd" => {
+            cmd_it_etcd()?;
         }
         "it-elastic" => {
             cmd_it_elastic()?;

@@ -1,40 +1,22 @@
 //! etcd telemetry sink for `ninelives` (companion crate).
-//! Default build is no-op; enable `client` to write events to etcd keys.
+//! Bring your own `etcd_client::Client`; events are stored as JSON under a prefix.
 
 use ninelives::telemetry::{PolicyEvent, TelemetrySink};
+use serde_json::json;
 use std::convert::Infallible;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct EtcdSink {
     prefix: String,
-    #[cfg(feature = "client")]
     client: etcd_client::Client,
 }
 
 impl EtcdSink {
-    /// `endpoint` like "http://127.0.0.1:2379"; events stored under `prefix/<nanos>`
-    pub async fn new<S: Into<String>>(
-        endpoint: S,
-        prefix: S,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
-        let prefix = prefix.into();
-        #[cfg(feature = "client")]
-        {
-            let client = etcd_client::Client::connect([endpoint.into()], None).await?;
-            return Ok(Self { prefix, client });
-        }
-        #[cfg(not(feature = "client"))]
-        {
-            let _ = endpoint;
-            Ok(Self { prefix, ..Self::noop() })
-        }
-    }
-
-    #[cfg(not(feature = "client"))]
-    fn noop() -> Self {
-        Self { prefix: String::new() }
+    /// Create a sink using an existing etcd client; keys will be `prefix/<nanos>`.
+    pub fn new(prefix: impl Into<String>, client: etcd_client::Client) -> Self {
+        Self { prefix: prefix.into(), client }
     }
 }
 
@@ -48,24 +30,64 @@ impl tower_service::Service<PolicyEvent> for EtcdSink {
     }
 
     fn call(&mut self, event: PolicyEvent) -> Self::Future {
-        #[cfg(feature = "client")]
-        let fut = {
-            let mut client = self.client.clone();
-            let key = format!("{}/{}", self.prefix, chrono::Utc::now().timestamp_nanos());
-            let val = format!("{:?}", event);
-            Box::pin(async move {
-                let _ = client.put(key, val, None).await;
-                Ok(())
-            })
-        };
-
-        #[cfg(not(feature = "client"))]
-        let fut = Box::pin(async move { Ok(()) });
-
-        fut
+        let mut client = self.client.clone();
+        let key = format!(
+            "{}/{}",
+            self.prefix,
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        );
+        let value = event_to_json(&event);
+        Box::pin(async move {
+            let _ = client.put(key, value.to_string(), None).await;
+            Ok(())
+        })
     }
 }
 
 impl TelemetrySink for EtcdSink {
     type SinkError = Infallible;
+}
+
+fn event_to_json(event: &PolicyEvent) -> serde_json::Value {
+    use ninelives::telemetry::{
+        BulkheadEvent, CircuitBreakerEvent, RequestOutcome, RetryEvent, TimeoutEvent,
+    };
+    match event {
+        PolicyEvent::Retry(r) => match r {
+            RetryEvent::Attempt { attempt, delay } => {
+                json!({ "kind": "retry_attempt", "attempt": attempt, "delay_ms": delay.as_millis() })
+            }
+            RetryEvent::Exhausted { total_attempts, total_duration } => {
+                json!({ "kind": "retry_exhausted", "attempts": total_attempts, "duration_ms": total_duration.as_millis() })
+            }
+        },
+        PolicyEvent::CircuitBreaker(c) => match c {
+            CircuitBreakerEvent::Opened { failure_count } => {
+                json!({ "kind": "circuit_opened", "failures": failure_count })
+            }
+            CircuitBreakerEvent::HalfOpen => json!({ "kind": "circuit_half_open" }),
+            CircuitBreakerEvent::Closed => json!({ "kind": "circuit_closed" }),
+        },
+        PolicyEvent::Bulkhead(b) => match b {
+            BulkheadEvent::Acquired { active_count, max_concurrency } => {
+                json!({ "kind": "bulkhead_acquired", "active": active_count, "max": max_concurrency })
+            }
+            BulkheadEvent::Rejected { active_count, max_concurrency } => {
+                json!({ "kind": "bulkhead_rejected", "active": active_count, "max": max_concurrency })
+            }
+        },
+        PolicyEvent::Timeout(t) => match t {
+            TimeoutEvent::Occurred { timeout } => {
+                json!({ "kind": "timeout", "timeout_ms": timeout.as_millis() })
+            }
+        },
+        PolicyEvent::Request(r) => match r {
+            RequestOutcome::Success { duration } => {
+                json!({ "kind": "request_success", "duration_ms": duration.as_millis() })
+            }
+            RequestOutcome::Failure { duration } => {
+                json!({ "kind": "request_failure", "duration_ms": duration.as_millis() })
+            }
+        },
+    }
 }
