@@ -292,10 +292,49 @@ Transports are responsible for extracting raw authentication credentials from th
 - Feature flags avoid pulling heavy deps when not needed.
 - Per-env policy lets dev/test be lax and prod strict.
 
-## Consequences
-- Adds an auth registry to the control-plane crate; command handlers receive an `AuthContext`.
-- Need to define stable `AuthPayload` serialization for JSONL/HTTP/gRPC.
-- Must document config examples for JWT and trust-quorum.
+## Consequences & Implementation Notes
+
+### **1. Migration & Breaking Changes**
+
+*   **Plan**: Initial implementation will be `0.x.0` with potential for breaking changes in minor versions until 1.0. API stability (e.g., `AuthPayload` enum, `AuthProvider` trait) is a high priority.
+*   **Deprecation Strategy**: New versions will initially support old and new formats, logging warnings on deprecated usage. Old formats will be removed in subsequent major versions.
+*   **Rollout**: Incremental rollout by feature flag toggles for new `AuthProvider`s.
+
+### **2. Performance Impact**
+
+*   **Per-Request Latency**: Authentication adds overhead. Performance-sensitive `AuthProviders` will implement caching mechanisms (e.g., JWT signature validation results, JWKS fetches) and avoid synchronous blocking I/O. Asynchronous authentication should be used where possible.
+*   **Zero-Copy Options**: Where feasible, `AuthPayload` will use `Bytes` or `Cow<[u8]>` to avoid unnecessary data copies, especially for `Opaque` and `Jwt` tokens.
+*   **Benchmarking**: Critical auth paths will have dedicated benchmarks to track performance regressions.
+
+### **3. Observability & Logging Guidelines**
+
+*   **What to Log**:
+    *   Authentication/Authorization **Success**: Info level (e.g., `principal`, `provider`, `command_label`).
+    *   Authentication/Authorization **Failure**: Warn/Error level (e.g., `principal` if known, `provider`, `error_type`, `sanitized_error_message`). Avoid logging raw credentials.
+    *   **Misconfiguration**: Error level (e.g., `AuthMode` conflicts, provider registration issues).
+    *   **External Dependency Failures**: Warn/Error level (e.g., JWKS endpoint unreachable).
+*   **Privacy Considerations**: Sensitive data (raw tokens, passwords, full certificate chains) MUST NOT be logged. `principal` and `key_id` should be logged only after appropriate redaction or hashing for privacy compliance.
+*   **Metrics to Emit**:
+    *   `auth_requests_total`: Counter, labeled by `provider`, `status` (success/failure), `error_type`.
+    *   `auth_latency_seconds`: Histogram, labeled by `provider`.
+    *   `auth_misconfigurations_total`: Counter.
+
+### **4. Error Propagation Semantics**
+
+*   **Internal Diagnostics**: `AuthError` variants will capture rich internal details (e.g., underlying crypto errors, network issues) using `thiserror` `#[source]` for debugging.
+*   **Client-Facing Errors**: External transports (HTTP/gRPC) will map internal `AuthError`s to generic, client-safe error messages and appropriate status codes (e.g., HTTP `401 Unauthorized`, `403 Forbidden`, `500 Internal Server Error`) to prevent information leakage.
+
+### **5. External Dependencies & Update Policy**
+
+*   **Dependency Introduction**: Each built-in `AuthProvider` (JWT, mTLS, trust-quorum) introduces specific external Rust crates (e.g., `jsonwebtoken`, `rustls`, `stargate-verifier`). These will be feature-gated.
+*   **Versioning & Pinning**: Dependencies will be pinned to specific major/minor versions (e.g., `jsonwebtoken = "~8.0"` or `"=8.2.0"`) to prevent unexpected breaking changes from transitive updates.
+*   **Update Policy**: Dependencies will be reviewed and updated regularly (e.g., quarterly) to incorporate security patches and new features, or as needed for critical vulnerabilities.
+
+### **6. Deployment Safety**
+
+*   **Registry Loading**: The `AuthRegistry` will be loaded at service startup via configuration. Dynamic runtime updates to providers (add/remove) are not supported in `0.x` but may be considered for `1.x`.
+*   **Reload Behavior**: Credential stores (JWKS, CA bundles) will support hot-reloading (without service restart) via `ninelives::Adaptive` or similar mechanisms.
+*   **Misconfiguration Handling**: As defined in the `Misconfiguration Handling` section of `Composition`, default is fail-closed in production and configurable in dev/test. All misconfigurations will trigger high-severity alerts.
 
 ## Open Questions & Implementation TODOs
 
