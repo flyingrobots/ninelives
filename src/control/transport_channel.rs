@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use futures::FutureExt;
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
 
@@ -131,6 +130,3 @@ where
         }
     }
 }
-
-// Helper trait for catch_unwind
-use futures::FutureExt;

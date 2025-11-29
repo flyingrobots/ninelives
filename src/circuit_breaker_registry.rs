@@ -57,7 +57,7 @@ impl CircuitBreakerRegistry {
     /// Reset a registered circuit breaker by ID.
     /// Returns error if the ID is not found.
     pub fn reset(&self, id: &str) -> Result<(), String> {
-        let mut map = self.lock();
+        let map = self.lock();
         match map.get(id) {
             Some(handle) => {
                 handle.reset();

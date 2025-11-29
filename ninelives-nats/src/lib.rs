@@ -23,8 +23,7 @@
 //! # Ok(()) }
 //! ```
 
-use ninelives::telemetry::{PolicyEvent, TelemetrySink};
-use serde_json::json;
+use ninelives::telemetry::{event_to_json, PolicyEvent, TelemetrySink};
 use std::convert::Infallible;
 use std::pin::Pin;
 use std::task::{Context, Poll};

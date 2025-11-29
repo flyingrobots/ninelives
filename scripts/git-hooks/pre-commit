@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
-IFS=
-
 # Verify rustfmt is installed
 if ! command -v rustfmt &> /dev/null; then
   echo "Error: rustfmt not found. Install with: rustup component add rustfmt" >&2

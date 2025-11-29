@@ -1,4 +1,4 @@
-version: '3.12'
+version: '3.8'
 services:
   nats:
     image: nats:2.10-alpine
@@ -22,11 +22,8 @@ services:
       timeout: 5s
       retries: 3
       start_period: 5s
-    command: -js
     volumes:
       - nats-jetstream:/data
-    ports:
-      - "4222:4222"
 
 volumes:
   nats-jetstream:

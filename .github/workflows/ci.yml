@@ -29,24 +29,24 @@ jobs:
         id: base
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "ref=${{ github.event.pull_request.base.sha }}" >> $GITHUB_OUTPUT
+            echo "ref=${{ github.event.pull_request.base.sha }}" >> "$GITHUB_OUTPUT"
           else
-            echo "ref=origin/main" >> $GITHUB_OUTPUT
+            echo "ref=origin/main" >> "$GITHUB_OUTPUT"
           fi
       - name: Inspect commit message
         id: msg
         run: |
           msg=$(git log -1 --pretty=%s)
-          echo "msg=$msg" >> $GITHUB_OUTPUT
+          echo "msg=$msg" >> "$GITHUB_OUTPUT"
           echo "Commit message: $msg"
       - name: Ensure feat/fix add tests
         if: startsWith(steps.msg.outputs.msg, 'feat') || startsWith(steps.msg.outputs.msg, 'fix')
         run: |
           # For push events the ref is already present (fetch-depth: 0); skip fetching origin/* refs.
           if [[ ! "${{ steps.base.outputs.ref }}" =~ ^origin/ ]]; then
-            git fetch origin ${{ steps.base.outputs.ref }} --quiet
+            git fetch origin "${{ steps.base.outputs.ref }}" --quiet
           fi
-          files=$(git diff --name-only ${{ steps.base.outputs.ref }}...HEAD)
+          files=$(git diff --name-only "${{ steps.base.outputs.ref }}"...HEAD)
           if echo "$files" | grep -E '(tests?/|_test\\.rs|tests\\.rs)' >/dev/null; then
             echo "Tests detected in diff"
           else
@@ -60,11 +60,11 @@ jobs:
           cargo install cargo-llvm-cov --locked --version 0.6.21
           # Skip fetch for push events where the ref is already present (origin/*).
           if [[ ! "${{ steps.base.outputs.ref }}" =~ ^origin/ ]]; then
-            git fetch origin ${{ steps.base.outputs.ref }} --quiet
+            git fetch origin "${{ steps.base.outputs.ref }}" --quiet
           fi
           # Ensure a clean target directory for the worktree.
           rm -rf /tmp/base
-          git worktree add /tmp/base ${{ steps.base.outputs.ref }}
+          git worktree add /tmp/base "${{ steps.base.outputs.ref }}"
           run_cov() {
             dir=$1
             pushd "$dir" >/dev/null

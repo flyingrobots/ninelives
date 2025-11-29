@@ -224,13 +224,14 @@ impl AuthorizationLayer {
 #[derive(Clone)]
 pub struct AuthorizationService<S> {
     inner: S,
+    registry: Arc<AuthRegistry>,
 }
 
 impl<S> tower_layer::Layer<S> for AuthorizationLayer {
     type Service = AuthorizationService<S>;
 
     fn layer(&self, inner: S) -> Self::Service {
-        AuthorizationService { inner }
+        AuthorizationService { inner, registry: self.registry.clone() }
     }
 }
 
@@ -255,7 +256,7 @@ where
     }
 
     fn call(&mut self, req: CommandEnvelope<C>) -> Self::Future {
-        let registry = self._registry.clone();
+        let registry = self.registry.clone();
         let mut inner = self.inner.clone();
         Box::pin(async move {
             registry.authenticate(&req).map_err(CommandError::Auth)?;
@@ -434,10 +435,7 @@ impl AuditSink for MemoryAuditSink {
                 guard.push(record);
                 Ok(())
             }
-            Err(poison) => Err(CommandError::Internal(format!(
-                "audit lock poisoned: {}",
-                poison
-            ))),
+            Err(poison) => Err(CommandError::Audit(format!("audit lock poisoned: {}", poison))),
         }
     }
 }
@@ -754,14 +752,15 @@ impl CommandHandler<BuiltInCommand> for BuiltInHandler {
             BuiltInCommand::Set { key, value } => self.set_or_store(key, value),
             BuiltInCommand::Get { key } => Ok(self.get_from_store_or_config(&key)),
             BuiltInCommand::List => {
-                let store_keys =
-                    self.store.lock().unwrap().keys().cloned().map(|k| format!("store:{k}"));
-                let config_keys = self
+                let store_keys: Vec<String> = {
+                    let store = self.store.lock().unwrap();
+                    store.keys().cloned().map(|k| format!("store:{k}")).collect()
+                };
+                let config_keys: Vec<String> = self
                     .config_registry()
-                    .map(|reg| reg.keys().into_iter().map(|k| format!("config:{k}")))
-                    .into_iter()
-                    .flatten();
-                let mut keys: Vec<String> = store_keys.chain(config_keys).collect();
+                    .map(|reg| reg.keys().into_iter().map(|k| format!("config:{k}"))).map(|iter| iter.collect())
+                    .unwrap_or_default();
+                let mut keys: Vec<String> = store_keys.into_iter().chain(config_keys.into_iter()).collect();
                 keys.sort();
                 keys.dedup();
                 Ok(CommandResult::List(keys))
