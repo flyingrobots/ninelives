@@ -145,21 +145,6 @@ Turn static configs into live knobs. Nine Lives includes a runtime configuration
     "auth": { "Jwt": { "token": "your-jwt" } }
   }
   ```
-| Feature                               | Nine Lives | Resilience4j (Java) | Polly (C#) | go-kit (Go) | `tower` (Rust) |
-| :------------------------------------ | :-----------: | :-----------------: | :--------: | :---------: | :------------: |
-| **1. Uniform `Service` Abstraction**  |       ✅       |          ❌          |     ❌      |      ✅      |       ✅        |
-| **2. Fractal/Recursive Architecture** |       ✅       |          ❌          |     ❌      |      ❌      |       ✅        |
-| **3. Algebraic Composition** (`+`, `&#124;`, `&`)  |       ✅       |          ❌          |     ❌      |      ❌      |       ❌        |
-| **4. Composable Telemetry Sinks**     |       ✅       |          ❌          |     ❌      |      ❌      |       ❌        |
-| **5. Live Policy Updates**            |       ✅       |          ✅          |     ✅      |   Partial   |       ❌        |
-| **6. Pluggable Control Plane**        |       ✅       |          ❌          |     ❌      |      ❌      |       ❌        |
-| **7. Autonomous Self-Healing Loop**   |       ✅       |          ❌          |     ❌      |      ❌      |       ❌        |
-| **8. Distributed/Fleet Policies**     |       ✅       |          ❌          |  Partial   |      ❌      |       ❌        |
-| **9. Lock-Free Core**                 |       ✅       |          ⚠️          |     ⚠️      |      ⚠️      |       ⚠️        |
-  - `OtlpSink` (OpenTelemetry)
-  - `StreamingSink` (Broadcast to NATS/Kafka)
-- **Introspection:** Query the state of any circuit breaker at runtime.
-
 ### 🔌 Ecosystem
 Nine Lives is designed to integrate with your infrastructure:
 - [`ninelives-elastic`](ninelives-elastic/README.md)

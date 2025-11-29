@@ -36,6 +36,7 @@ pub struct TransportEnvelope {
 fn transport_envelope_schema() -> &'static JSONSchema {
     static SCHEMA: OnceLock<JSONSchema> = OnceLock::new();
     SCHEMA.get_or_init(|| {
+        // Panic is intentional: schema is bundled at build time and validated in CI.
         let raw = include_str!("../../schemas/transport-envelope.schema.json");
         let value: JsonValue = serde_json::from_str(raw).expect("valid transport-envelope schema");
         JSONSchema::compile(&value).expect("transport-envelope schema compiles")
@@ -45,6 +46,7 @@ fn transport_envelope_schema() -> &'static JSONSchema {
 fn command_result_schema() -> &'static JSONSchema {
     static SCHEMA: OnceLock<JSONSchema> = OnceLock::new();
     SCHEMA.get_or_init(|| {
+        // Panic is intentional: schema is bundled at build time and validated in CI.
         let raw = include_str!("../../schemas/command-result.schema.json");
         let value: JsonValue = serde_json::from_str(raw).expect("valid command-result schema");
         JSONSchema::compile(&value).expect("command-result schema compiles")
@@ -106,7 +108,7 @@ where
     Conv:
         Fn(TransportEnvelope) -> Result<(CommandEnvelope<C>, CommandContext), String> + Send + Sync,
 {
-    const MAX_REQUEST_SIZE: usize = 1024 * 1024; // 1 MiB
+    pub const MAX_REQUEST_SIZE: usize = 1024 * 1024; // 1 MiB
 
     /// Create a new TransportRouter.
     pub fn new(
