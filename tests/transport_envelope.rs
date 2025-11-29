@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+
 
 use ninelives::control::AuthPayload;
 use ninelives::TransportEnvelope;
@@ -13,8 +13,8 @@ fn transport_envelope_roundtrip_json() {
         auth: Some(AuthPayload::Opaque(vec![1, 2, 3])),
     };
 
-    let serialized = serde_json::to_string(&env).unwrap();
-    let de: TransportEnvelope = serde_json::from_str(&serialized).unwrap();
+    let serialized = serde_json::to_string(&env).expect(&format!("failed to serialize TransportEnvelope: {:?}", env));
+    let de: TransportEnvelope = serde_json::from_str(&serialized).expect(&format!("failed to deserialize TransportEnvelope from JSON: {}", serialized));
 
     assert_eq!(env.id, de.id, "id field mismatch");
     assert_eq!(env.cmd, de.cmd, "cmd field mismatch");
