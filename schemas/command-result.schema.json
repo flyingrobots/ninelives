@@ -39,13 +39,26 @@
     },
     {
       "type": "object",
-      "required": ["result", "message"],
+      "required": ["result", "kind", "message"],
       "properties": {
         "result": { "const": "error" },
         "message": { "type": "string" },
-        "kind": { "type": "string" }
+        "kind": {
+          "type": "object",
+          "required": ["kind"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": ["invalid_args", "not_found", "registry_missing", "internal"]
+            },
+            "msg": { "type": "string" },
+            "what": { "type": "string" },
+            "hint": { "type": "string" }
+          },
+          "additionalProperties": true
+        }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     }
   ]
 }

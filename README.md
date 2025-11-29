@@ -148,6 +148,9 @@ All project/test environment variables are prefixed with `NINE_LIVES_`.
 ### 🎛️ Control Plane (Adaptive)
 
 Turn static configs into live knobs. Nine Lives includes a runtime configuration system (`ConfigRegistry`, `CommandRouter`) that lets you adjust max retries, timeouts, or circuit breaker thresholds without restarting the service.
+* Health: built-in `Health` command for liveness/readiness probes (expose via your transport).
+* Validation: JSON schema validation for envelopes/results is **enabled by default** (`schema-validation` feature).
+* Ops: see `docs/OPERATIONS.md` for guidance on telemetry wiring and registry persistence.
 
 ### 🛰️ Control Plane Wire Format
 
