@@ -73,8 +73,11 @@ tokio = { workspace = true, features = ["full", "test-util"] }
 tracing-subscriber.workspace = true
 futures.workspace = true
 hdrhistogram.workspace = true
+serde_json.workspace = true
 
 [features]
 control = ["serde", "serde_json"]
 adaptive-rwlock = []
-default = ["arc-swap"]
+schema-validation = []
+bench-telemetry = []
+default = ["arc-swap", "schema-validation"]

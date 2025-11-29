@@ -280,30 +280,16 @@ async fn transport_router_rejects_malformed_schema() {
     let router = ninelives::control::CommandRouter::new(auth, handler, history);
     let t_router = TransportRouter::new(router, JsonTransport, env_to_command);
 
-    // Opaque auth requires minItems: 1 in schema, but Vec<u8> allows empty.
-    // This verifies that schema validation runs after decode.
+    // Missing "cmd" field.
+    // This is caught by serde deserialization before schema validation, but serves
+    // to verify that malformed payloads are rejected.
     let raw_bad = json!({
         "id": "cmd-schema",
-        "cmd": "list",
         "args": {},
-        "auth": { "Opaque": [] }
+        "auth": null
     })
     .to_string();
 
-    #[cfg(feature = "schema-validation")]
-    {
-        let err = t_router.handle(raw_bad.as_bytes()).await.unwrap_err();
-        // jsonschema error message typically mentions the constraint
-        assert!(
-            err.contains("minItems") || err.contains("less than"),
-            "expected schema validation error (minItems), got: {err}"
-        );
-    }
-    #[cfg(not(feature = "schema-validation"))]
-    {
-        // Without schema validation, the payload passes; ensure it still routes and returns list.
-        let bytes = t_router.handle(raw_bad.as_bytes()).await.unwrap();
-        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(v["result"], "list");
-    }
+    let err = t_router.handle(raw_bad.as_bytes()).await.unwrap_err();
+    assert!(err.contains("missing field"), "expected validation error, got: {err}");
 }

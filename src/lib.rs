@@ -108,6 +108,11 @@
 //! - **[`CircuitBreakerLayer`]** - Prevent cascading failures
 //! - **[`BulkheadLayer`]** - Limit concurrent requests
 //!
+//! ## Cargo Features
+//!
+//! - **`control`**: Enables the control plane, including `serde` support, `transport`, and schema validation.
+//! - **`adaptive-rwlock`**: Switches the `Adaptive` configuration backend to use `RwLock` (default is `arc-swap`).
+//!
 //! For more examples, see the algebra module documentation.
 
 pub mod adaptive;
