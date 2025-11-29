@@ -10,7 +10,12 @@ All notable changes will be documented in this file.
 - **Built-in Commands**: `Set`, `Get`, `List`, `ResetCircuitBreaker`, `GetState`, `ReadConfig`, `WriteConfig`.
 - **Dynamic Configuration**: `ConfigRegistry` to expose `Adaptive<T>` values for runtime updates via the control plane.
 - **Telemetry**: Added `ninelives::telemetry` with `PolicyEvent`, `LogSink`, `MemorySink`, and `StreamingSink`.
-- **Backoff refactor**: concrete strategy types (`Constant`, `Linear`, `Exponential`), `BackoffStrategy` trait, `with_max` validation, helper codes/messages, and monotonic/cap tests.
+- **Backoff**: Introduced concrete strategy types (`Constant`, `Linear`, `Exponential`).
+- **Backoff**: `BackoffStrategy` trait introduced for custom backoff implementations.
+- **Backoff**: `with_max` validation added to ensure maximum backoff is respected.
+- **Backoff**: Helper codes and messages added for backoff errors.
+- **Backoff**: Monotonic invariant tests added to verify strategies are non-decreasing across retries.
+- **Backoff**: Upper-bound cap tests added to ensure `with_max` enforces an upper bound on backoff duration.
 - Decorrelated jitter invariants documented; added concurrent/stateful tests and upper-bound checks.
 - Retry builder accepts `Into<Backoff>`; added predicate short-circuit test; zero-attempt validation.
 - Timeout: `new_with_max`, improved error message, boundary tests; executable doctests.
@@ -23,7 +28,7 @@ All notable changes will be documented in this file.
 - rustfmt note on heuristics; gitignore cleaned.
 
 ### Fixed
-- **Bulkhead**: Fixed potential deadlock in tests regarding service cloning and semaphore permits.
+- **Bulkhead**: Fixed test flake: potential deadlock in test setup for bulkhead service clones.
 - Removed stray Obsidian files; documentation typos.
 
 ## [0.1.0] - Initial
