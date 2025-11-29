@@ -11,9 +11,9 @@
   - Done for NATS/Kafka/etcd/Elastic/OTLP/Prometheus/JSONL.
 
 ## Phase 2 — Coverage to ≥80%
-- [ ] Add `cargo llvm-cov` dev dependency/tooling; script/alias to run:
-      `cargo llvm-cov --all-features --workspace --exclude xtask --exclude target --html --fail-under-lines 80`
-- [ ] Add GH job `coverage.yml` to run the above, upload HTML artifact, fail under 80%.
+- [x] Add `cargo llvm-cov` tooling; use:
+      `cargo llvm-cov --workspace --all-features --exclude xtask --exclude ninelives-nats --exclude ninelives-kafka --exclude ninelives-elastic --exclude ninelives-etcd --exclude ninelives-otlp --exclude ninelives-prometheus --exclude ninelives-jsonl --html --fail-under-lines 80`
+- [x] Add GH job (in CI) to run the above and fail under 80% (no sinks/xtask counted).
 - [ ] Add targeted tests:
   - `algebra`: edge cases for fallback/fork-join errors
   - `retry`: property-based tests (proptest) for backoff/jitter monotonicity & max-attempts enforcement

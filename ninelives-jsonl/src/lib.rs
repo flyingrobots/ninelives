@@ -35,6 +35,7 @@ impl tower_service::Service<PolicyEvent> for JsonlSink {
             let mut file =
                 tokio::fs::OpenOptions::new().create(true).append(true).open(path).await?;
             file.write_all(line.as_bytes()).await?;
+            file.flush().await?;
             Ok(())
         })
     }

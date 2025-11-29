@@ -17,5 +17,7 @@ async fn writes_json_lines() {
     sink.call(event).await.unwrap();
 
     let contents = std::fs::read_to_string(&path).expect("file");
-    assert!(contents.contains("retry_attempt"));
+    let first_line = contents.lines().next().expect("line");
+    let val: serde_json::Value = serde_json::from_str(first_line).expect("json line");
+    assert_eq!(val["kind"], "retry_attempt");
 }
