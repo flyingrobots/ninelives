@@ -10,11 +10,12 @@ use std::task::{Context, Poll};
 #[derive(Clone, Debug)]
 pub struct JsonlSink {
     path: std::path::PathBuf,
+    file: std::sync::Arc<tokio::sync::Mutex<Option<tokio::fs::File>>>,
 }
 
 impl JsonlSink {
     pub fn new<P: Into<std::path::PathBuf>>(path: P) -> Self {
-        Self { path: path.into() }
+        Self { path: path.into(), file: std::sync::Arc::new(tokio::sync::Mutex::new(None)) }
     }
 }
 
@@ -29,13 +30,19 @@ impl tower_service::Service<PolicyEvent> for JsonlSink {
 
     fn call(&mut self, event: PolicyEvent) -> Self::Future {
         let path = self.path.clone();
+        let file = self.file.clone();
         let line = json!(event_to_json(&event)).to_string() + "\n";
         Box::pin(async move {
             use tokio::io::AsyncWriteExt;
-            let mut file =
-                tokio::fs::OpenOptions::new().create(true).append(true).open(path).await?;
-            file.write_all(line.as_bytes()).await?;
-            file.flush().await?;
+            let mut guard = file.lock().await;
+            if guard.is_none() {
+                let f = tokio::fs::OpenOptions::new().create(true).append(true).open(path).await?;
+                *guard = Some(f);
+            }
+            if let Some(f) = guard.as_mut() {
+                f.write_all(line.as_bytes()).await?;
+                f.flush().await?;
+            }
             Ok(())
         })
     }

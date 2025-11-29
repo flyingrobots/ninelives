@@ -2,11 +2,12 @@
 
 use ninelives::control::{
     AuthMode, AuthRegistry, BuiltInCommand, CommandEnvelope, CommandMeta, CommandResult,
-    InMemoryHistory, PassthroughAuth,
+    ConfigRegistry, InMemoryHistory, PassthroughAuth,
 };
 use ninelives::{Transport, TransportEnvelope, TransportRouter};
 use serde_json::json;
 use std::sync::Arc;
+use ninelives::adaptive::Adaptive;
 
 // Simple JSON transport for testing.
 #[derive(Clone)]
@@ -55,6 +56,16 @@ fn env_to_command(
             BuiltInCommand::Get { key: key.into() }
         }
         "reset" => BuiltInCommand::Reset,
+        "write_config" => {
+            let path = env.args.get("path").and_then(|v| v.as_str()).ok_or("missing path")?;
+            let value = env.args.get("value").and_then(|v| v.as_str()).ok_or("missing value")?;
+            BuiltInCommand::WriteConfig { path: path.into(), value: value.into() }
+        }
+        "read_config" => {
+            let path = env.args.get("path").and_then(|v| v.as_str()).ok_or("missing path")?;
+            BuiltInCommand::ReadConfig { path: path.into() }
+        }
+        "list_config" => BuiltInCommand::ListConfig,
         _ => return Err(format!("unsupported cmd: {}", env.cmd)),
     };
     let ctx = ninelives::control::CommandContext {
@@ -166,4 +177,80 @@ async fn transport_router_get_unknown_errors() {
     let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(v["result"], "value");
     assert_eq!(v["value"], "");
+}
+
+#[tokio::test]
+async fn transport_router_write_and_read_config() {
+    let mut auth = AuthRegistry::new(AuthMode::First);
+    auth.register(Arc::new(PassthroughAuth));
+    let mut cfg = ConfigRegistry::new();
+    cfg.register_fromstr("retry.max_attempts", Adaptive::new(3usize));
+    let history = Arc::new(InMemoryHistory::default());
+    let handler = Arc::new(ninelives::control::BuiltInHandler::default().with_config_registry(cfg));
+    let router = ninelives::control::CommandRouter::new(auth, handler, history);
+    let t_router = TransportRouter::new(router, JsonTransport, env_to_command);
+
+    let raw_write = json!({
+        "id": "cmd-write",
+        "cmd": "write_config",
+        "args": { "path": "retry.max_attempts", "value": "5" },
+        "auth": null
+    })
+    .to_string();
+    let bytes = t_router.handle(raw_write.as_bytes()).await.unwrap();
+    let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(v["result"], "ack");
+
+    let raw_read = json!({
+        "id": "cmd-read",
+        "cmd": "read_config",
+        "args": { "path": "retry.max_attempts" },
+        "auth": null
+    })
+    .to_string();
+    let bytes = t_router.handle(raw_read.as_bytes()).await.unwrap();
+    let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(v["result"], "value");
+    assert_eq!(v["value"], "5");
+}
+
+#[tokio::test]
+async fn transport_router_write_config_errors_without_registry() {
+    let mut auth = AuthRegistry::new(AuthMode::First);
+    auth.register(Arc::new(PassthroughAuth));
+    let history = Arc::new(InMemoryHistory::default());
+    let handler = Arc::new(ninelives::control::BuiltInHandler::default());
+    let router = ninelives::control::CommandRouter::new(auth, handler, history);
+    let t_router = TransportRouter::new(router, JsonTransport, env_to_command);
+
+    let raw_write = json!({
+        "id": "cmd-write-err",
+        "cmd": "write_config",
+        "args": { "path": "retry.max_attempts", "value": "5" },
+        "auth": null
+    })
+    .to_string();
+    let bytes = t_router.handle(raw_write.as_bytes()).await.unwrap();
+    let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(v["result"], "error");
+}
+
+#[tokio::test]
+async fn transport_router_malformed_args_error() {
+    let mut auth = AuthRegistry::new(AuthMode::First);
+    auth.register(Arc::new(PassthroughAuth));
+    let history = Arc::new(InMemoryHistory::default());
+    let handler = Arc::new(ninelives::control::BuiltInHandler::default());
+    let router = ninelives::control::CommandRouter::new(auth, handler, history);
+    let t_router = TransportRouter::new(router, JsonTransport, env_to_command);
+
+    let raw_set = json!({
+        "id": "cmd-bad",
+        "cmd": "set",
+        "args": { "value": "missing-key" },
+        "auth": null
+    })
+    .to_string();
+    let err = t_router.handle(raw_set.as_bytes()).await.unwrap_err();
+    assert!(err.contains("missing key"));
 }
