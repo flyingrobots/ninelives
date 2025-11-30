@@ -17,8 +17,29 @@ pub mod transport_channel;
 /// Shared control-plane data types.
 pub mod types;
 
-// Re-export everything for convenience and backward compatibility.
-pub use auth::*;
-pub use handler::*;
-pub use router::*;
-pub use types::*;
+// Re-exports from types
+pub use types::{
+    AuditRecord, AuthContext, AuthError, AuthPayload, CommandContext, CommandEnvelope,
+    CommandError, CommandFailure, CommandId, CommandLabel, CommandMeta, CommandResult, DetachedSig,
+    HistoryRecord,
+};
+
+// Re-exports from auth
+pub use auth::{
+    AuthMode, AuthProvider, AuthRegistry, AuthorizationLayer, AuthorizationService, PassthroughAuth,
+};
+
+// Re-exports from handler
+pub use handler::{
+    BuiltInCommand, BuiltInHandler, CommandHandler, CommandService, ConfigRegistry,
+    DefaultConfigRegistry, InMemoryConfigRegistry,
+};
+
+// Re-exports from router
+pub use router::{
+    AuditSink, CommandHistory, CommandRouter, InMemoryHistory, MemoryAuditSink, TracingAuditSink,
+};
+
+// Document why these are intentionally omitted from public re-exports
+// transport and transport_channel are modules and generally accessed via their full path
+// (e.g., `crate::control::transport::Transport`) to prevent namespace pollution.

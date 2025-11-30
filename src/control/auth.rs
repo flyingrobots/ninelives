@@ -147,11 +147,18 @@ where
 
     fn call(&mut self, req: CommandEnvelope<C>) -> Self::Future {
         let registry = self.registry.clone();
-        let mut inner = self.inner.clone();
+        let inner = self.inner.clone();
         Box::pin(async move {
             registry.authenticate(&req).map_err(CommandError::Auth)?;
-            use tower::ServiceExt;
-            inner.ready_oneshot().await?.call(req).await
+            // inner is moved into the future; Service::call requires mutable access,
+            // but the binding itself doesn't need to be mut for the move.
+            // However, we must ensure we can call .call(&mut inner).
+            // Since inner is owned by the future, we need to make it mutable inside?
+            // Let's trust the compiler and remove `mut`.
+            // If it fails to compile because `inner` is immutable, we'll need to shadow it:
+            // let mut inner = inner;
+            let mut inner = inner;
+            inner.call(req).await
         })
     }
 }

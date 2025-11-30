@@ -27,8 +27,12 @@ fi
 echo "[bootstrap] installing rustfmt and clippy components"
 rustup component add rustfmt clippy >/dev/null
 
-echo "[bootstrap] installing JS dev dependencies via npm ci"
-npm ci
+if [ -f "package.json" ]; then
+  echo "[bootstrap] installing JS dev dependencies via npm ci"
+  npm ci
+else
+  echo "[bootstrap] no package.json found, skipping npm ci"
+fi
 
 echo "[bootstrap] installing git hooks"
 ./scripts/setup-hooks.sh

@@ -563,15 +563,19 @@ impl CommandHandler<BuiltInCommand> for BuiltInHandler {
         cmd: CommandEnvelope<BuiltInCommand>,
         _ctx: AuthContext,
     ) -> Result<CommandResult, CommandError> {
-        if let Some(res) = self.handle_config(&cmd.cmd).await {
-            return res;
+        match &cmd.cmd {
+            BuiltInCommand::WriteConfig { .. }
+            | BuiltInCommand::ListConfig
+            | BuiltInCommand::ReadConfig { .. } => self.handle_config(&cmd.cmd).await.unwrap(),
+
+            BuiltInCommand::Set { .. }
+            | BuiltInCommand::Get { .. }
+            | BuiltInCommand::List
+            | BuiltInCommand::Reset => self.handle_store(&cmd.cmd).await.unwrap(),
+
+            BuiltInCommand::ResetCircuitBreaker { .. }
+            | BuiltInCommand::GetState
+            | BuiltInCommand::Health => self.handle_breaker(&cmd.cmd).await.unwrap(),
         }
-        if let Some(res) = self.handle_store(&cmd.cmd).await {
-            return res;
-        }
-        if let Some(res) = self.handle_breaker(&cmd.cmd).await {
-            return res;
-        }
-        Err(CommandError::Handler("unknown command".into()))
     }
 }

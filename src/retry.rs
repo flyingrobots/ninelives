@@ -741,6 +741,9 @@ where
         self.inner.poll_ready(cx).map_err(|e| ResilienceError::Inner(e))
     }
 
+    /// **Note:** Adaptive configuration values (`max_attempts`, `backoff`, `jitter`) are
+    /// captured at the start of each call. Updates to adaptive handles during a retry
+    /// loop only affect subsequent calls to `call()`, not the in-flight operation.
     fn call(&mut self, req: Request) -> Self::Future {
         let layer = self.layer.clone();
         let mut inner = self.inner.clone();
@@ -755,7 +758,7 @@ where
             let jitter = layer.jitter.get();
 
             for attempt in 0..max_attempts {
-                // Note: For max_attempts=1, this executes once with no sleep (unless it fails and max_attempts > 1).
+                // Loop runs max_attempts times; sleeps only between retries
                 match inner.call(req.clone()).await {
                     Ok(resp) => {
                         // Emit success event (best effort - honor readiness)
@@ -795,14 +798,6 @@ where
                                 PolicyEvent::Retry(RetryEvent::Exhausted {
                                     total_attempts: max_attempts,
                                     total_duration,
-                                }),
-                            )
-                            .await;
-                            let duration = start.elapsed();
-                            emit_best_effort(
-                                sink.clone(),
-                                PolicyEvent::Request(crate::telemetry::RequestOutcome::Failure {
-                                    duration,
                                 }),
                             )
                             .await;

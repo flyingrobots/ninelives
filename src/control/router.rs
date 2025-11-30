@@ -2,9 +2,15 @@ use super::auth::AuthRegistry;
 use super::handler::CommandHandler;
 use super::types::*;
 use async_trait::async_trait;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use base64::Engine;
+use serde_json::Value as JsonValue;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::info;
+
+/// Default capacity for InMemoryHistory.
+pub const DEFAULT_HISTORY_CAPACITY: usize = 1_000;
 
 /// Audit sink interface.
 #[async_trait]
@@ -44,7 +50,22 @@ pub struct InMemoryHistory {
 
 impl Default for InMemoryHistory {
     fn default() -> Self {
-        Self { entries: Arc::new(Mutex::new(std::collections::VecDeque::new())), capacity: 1_000 }
+        Self::new(DEFAULT_HISTORY_CAPACITY)
+    }
+}
+
+impl InMemoryHistory {
+    /// Create a new in-memory history with a specific capacity.
+    pub fn new(capacity: usize) -> Self {
+        Self {
+            entries: Arc::new(Mutex::new(std::collections::VecDeque::new())),
+            capacity: capacity.max(1), // Ensure capacity is at least 1
+        }
+    }
+
+    /// Returns the configured capacity of the history.
+    pub fn capacity(&self) -> usize {
+        self.capacity
     }
 }
 
@@ -78,7 +99,11 @@ impl MemoryAuditSink {
     pub fn new() -> Self {
         Self::default()
     }
-    /// Retrieve recorded audit records.
+
+    /// Retrieve recorded audit records (testing/diagnostics only).
+    ///
+    /// # Warning
+    /// Clones the entire history; avoid in hot paths.
     pub async fn records(&self) -> Vec<AuditRecord> {
         self.records.lock().await.clone()
     }
@@ -122,6 +147,8 @@ where
 
     /// Execute a command envelope through the router (auth -> handler -> history/audit).
     pub async fn execute(&self, env: CommandEnvelope<C>) -> Result<CommandResult, CommandError> {
+        // Extract a best-effort principal even if auth ultimately fails.
+        let fallback_principal = extract_principal(&env);
         // Auth path: audit denials too.
         let auth_result = self.auth.authenticate(&env);
         let ctx = match auth_result {
@@ -131,7 +158,7 @@ where
                     let record = AuditRecord {
                         id: env.meta.id.clone(),
                         label: env.cmd.label().into(),
-                        principal: "unknown".into(),
+                        principal: fallback_principal,
                         status: format!("denied: {}", e),
                     };
                     sink.record(record).await?;
@@ -158,4 +185,36 @@ where
         }
         Ok(res)
     }
+}
+
+/// Attempt to extract a caller identity string without failing hard.
+fn extract_principal<C: Clone>(env: &CommandEnvelope<C>) -> String {
+    if let Some(auth) = &env.auth {
+        match auth {
+            AuthPayload::Mtls { peer_dn, .. } => return peer_dn.clone(),
+            AuthPayload::Signatures { signatures, .. } => {
+                if let Some(sig) = signatures.first() {
+                    if let Some(kid) = &sig.key_id {
+                        return kid.clone();
+                    }
+                }
+            }
+            AuthPayload::Jwt { token } => {
+                let parts: Vec<&str> = token.split('.').collect();
+                if parts.len() == 3 {
+                    if let Ok(payload) = URL_SAFE_NO_PAD.decode(parts[1]) {
+                        if let Ok(json) = serde_json::from_slice::<JsonValue>(&payload) {
+                            if let Some(sub) = json.get("sub").and_then(|v| v.as_str()) {
+                                return sub.to_string();
+                            }
+                        }
+                    }
+                }
+            }
+            AuthPayload::Opaque(_) => {}
+        }
+    }
+
+    // Fall back to any identity hint in metadata (e.g., correlation id) or "unknown".
+    env.meta.correlation_id.clone().unwrap_or_else(|| "unknown".to_string())
 }

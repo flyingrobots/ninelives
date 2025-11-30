@@ -30,6 +30,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let handler = BuiltInHandler::default().with_config_registry(registry);
 
     // 4) Exercise a command to mutate state (write_config).
+    // For demonstration purposes only. In production, configure a proper AuthProvider
+    // (e.g., JWT/mTLS) as per SECURITY.md, and ensure AuthPayload is not Opaque.
     let env = CommandEnvelope {
         cmd: BuiltInCommand::WriteConfig { path: "retry.max_attempts".into(), value: "5".into() },
         auth: Some(AuthPayload::Opaque(vec![])),

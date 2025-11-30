@@ -18,7 +18,7 @@ elasticsearch = { version = "8.19.0-alpha.1", default-features = false, features
 tokio = { workspace = true, features = ["rt", "macros"] }
 
 [dev-dependencies]
-uuid = { version = "1", features = ["v4"] }
+uuid.workspace = true
 
 [features]
 default = []

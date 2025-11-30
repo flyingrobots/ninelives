@@ -62,6 +62,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ## 5) Plug-in surface
 
 - If you need runtime mutability, register your knobs with `DefaultConfigRegistry` so they can be adjusted via `WriteConfig` commands.
-- For external observability, emit tracing spans/events inside your layer; Nine Lives telemetry will propagate spans through composed layers.
+- For external observability, emit tracing spans/events inside your layer. Note that Nine Lives does **not** propagate tracing span context for you; if you need cross-policy span propagation, attach or re-enter spans in your own instrumentation (or carry context on the request) before calling downstream services.
 
 This pattern keeps custom behavior modular while staying compatible with the existing Nine Lives DSL and control-plane tooling.

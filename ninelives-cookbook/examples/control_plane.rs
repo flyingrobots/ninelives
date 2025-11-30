@@ -18,7 +18,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_sleeper(TokioSleeper::default())
         .build()?;
     let adaptive_attempts = retry.adaptive_max_attempts();
-    println!("Initial retry.max_attempts = {}", adaptive_attempts.get());
+    let initial_attempts = *adaptive_attempts.get();
+    println!("Initial retry.max_attempts = {}", initial_attempts);
 
     // Register adaptive knob with the config registry
     let mut cfg = DefaultConfigRegistry::new();
@@ -58,8 +59,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         CommandResult::Value(val) => {
             assert_eq!(val, "5", "Expected value to be '5', got '{}'", val);
             println!("✓ retry.max_attempts is now {}", val);
-            assert_eq!(adaptive_attempts.get(), 5, "Adaptive handle should reflect new value");
-            println!("✓ Adaptive handle updated to {}", adaptive_attempts.get());
+            let updated_attempts = *adaptive_attempts.get();
+            assert_eq!(updated_attempts, 5, "Adaptive handle should reflect new value");
+            println!("✓ Adaptive handle updated to {}", updated_attempts);
         }
         other => panic!("unexpected response: {:?}", other),
     }

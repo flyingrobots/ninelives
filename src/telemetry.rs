@@ -224,6 +224,8 @@ impl fmt::Display for PolicyEvent {
     }
 }
 
+#[cfg(feature = "control")]
+#[inline]
 fn clamp_u64(val: u128) -> u64 {
     val.min(u128::from(u64::MAX)) as u64
 }
@@ -279,6 +281,103 @@ pub fn event_to_json(event: &PolicyEvent) -> serde_json::Value {
                 "duration_ms": clamp_u64(duration.as_millis())
             }),
         },
+    }
+}
+
+#[cfg(all(test, feature = "control"))]
+mod json_tests {
+    use super::*;
+
+    #[test]
+    fn retry_attempt_json() {
+        let v = event_to_json(&PolicyEvent::Retry(RetryEvent::Attempt {
+            attempt: 3,
+            delay: Duration::from_millis(150),
+        }));
+        assert_eq!(v["kind"], "retry_attempt");
+        assert_eq!(v["attempt"], 3);
+        assert_eq!(v["delay_ms"], 150);
+    }
+
+    #[test]
+    fn retry_exhausted_json() {
+        let v = event_to_json(&PolicyEvent::Retry(RetryEvent::Exhausted {
+            total_attempts: 5,
+            total_duration: Duration::from_millis(1200),
+        }));
+        assert_eq!(v["kind"], "retry_exhausted");
+        assert_eq!(v["attempts"], 5);
+        assert_eq!(v["duration_ms"], 1200);
+    }
+
+    #[test]
+    fn circuit_opened_json() {
+        let v = event_to_json(&PolicyEvent::CircuitBreaker(CircuitBreakerEvent::Opened {
+            failure_count: 4,
+        }));
+        assert_eq!(v["kind"], "circuit_opened");
+        assert_eq!(v["failures"], 4);
+    }
+
+    #[test]
+    fn circuit_half_open_json() {
+        let v = event_to_json(&PolicyEvent::CircuitBreaker(CircuitBreakerEvent::HalfOpen));
+        assert_eq!(v["kind"], "circuit_half_open");
+    }
+
+    #[test]
+    fn circuit_closed_json() {
+        let v = event_to_json(&PolicyEvent::CircuitBreaker(CircuitBreakerEvent::Closed));
+        assert_eq!(v["kind"], "circuit_closed");
+    }
+
+    #[test]
+    fn bulkhead_acquired_json() {
+        let v = event_to_json(&PolicyEvent::Bulkhead(BulkheadEvent::Acquired {
+            active_count: 2,
+            max_concurrency: 5,
+        }));
+        assert_eq!(v["kind"], "bulkhead_acquired");
+        assert_eq!(v["active"], 2);
+        assert_eq!(v["max"], 5);
+    }
+
+    #[test]
+    fn bulkhead_rejected_json() {
+        let v = event_to_json(&PolicyEvent::Bulkhead(BulkheadEvent::Rejected {
+            active_count: 5,
+            max_concurrency: 5,
+        }));
+        assert_eq!(v["kind"], "bulkhead_rejected");
+        assert_eq!(v["active"], 5);
+        assert_eq!(v["max"], 5);
+    }
+
+    #[test]
+    fn timeout_json() {
+        let v = event_to_json(&PolicyEvent::Timeout(TimeoutEvent::Occurred {
+            timeout: Duration::from_millis(2500),
+        }));
+        assert_eq!(v["kind"], "timeout");
+        assert_eq!(v["timeout_ms"], 2500);
+    }
+
+    #[test]
+    fn request_success_json() {
+        let v = event_to_json(&PolicyEvent::Request(RequestOutcome::Success {
+            duration: Duration::from_millis(42),
+        }));
+        assert_eq!(v["kind"], "request_success");
+        assert_eq!(v["duration_ms"], 42);
+    }
+
+    #[test]
+    fn request_failure_json() {
+        let v = event_to_json(&PolicyEvent::Request(RequestOutcome::Failure {
+            duration: Duration::from_millis(99),
+        }));
+        assert_eq!(v["kind"], "request_failure");
+        assert_eq!(v["duration_ms"], 99);
     }
 }
 

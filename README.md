@@ -100,8 +100,6 @@ let strategy = fast_path | (retry + breaker + slow_path);
 
 ---
 
-
-
 ## 📦 Cargo Features
 
 * **`control`**: Enables the Control Plane (schema-validated JSON transport, command router, auth). *Default: enabled in full build, opt-in.*

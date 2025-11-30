@@ -170,8 +170,8 @@ async fn transport_router_set_get_reset() {
 
     let bytes = t_router.handle(raw_get.as_bytes()).await.unwrap();
     let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-    assert_eq!(v["result"], "value");
-    assert_eq!(v["value"], "");
+    assert_eq!(v["result"], "error");
+    assert!(v["message"].as_str().unwrap_or("").contains("not found"));
 }
 
 #[tokio::test]
@@ -192,15 +192,15 @@ async fn transport_router_get_unknown_errors() {
     .to_string();
     let bytes = t_router.handle(raw_get.as_bytes()).await.unwrap();
     let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-    assert_eq!(v["result"], "value");
-    assert_eq!(v["value"], "");
+    assert_eq!(v["result"], "error");
+    assert!(v["message"].as_str().unwrap_or("").contains("not found"));
 }
 
 #[tokio::test]
 async fn transport_router_write_and_read_config() {
     let mut auth = AuthRegistry::new(AuthMode::First);
     auth.register(Arc::new(PassthroughAuth));
-    let mut cfg = DefaultConfigRegistry::new();
+    let cfg = DefaultConfigRegistry::new();
     cfg.register_fromstr("retry.max_attempts", Adaptive::new(3usize));
     let history = Arc::new(InMemoryHistory::default());
     let handler = Arc::new(ninelives::control::BuiltInHandler::default().with_config_registry(cfg));
@@ -292,4 +292,28 @@ async fn transport_router_rejects_malformed_schema() {
 
     let err = t_router.handle(raw_bad.as_bytes()).await.unwrap_err();
     assert!(err.contains("missing field"), "expected validation error, got: {err}");
+}
+
+#[tokio::test]
+async fn transport_router_rejects_missing_required_fields_when_validation_on() {
+    let mut auth = AuthRegistry::new(AuthMode::First);
+    auth.register(Arc::new(PassthroughAuth));
+    let history = Arc::new(InMemoryHistory::default());
+    let handler = Arc::new(ninelives::control::BuiltInHandler::default());
+    let router = ninelives::control::CommandRouter::new(auth, handler, history);
+    let t_router = TransportRouter::new(router, JsonTransport, env_to_command);
+
+    // Missing required \"id\" field should fail schema validation.
+    let raw = json!({
+        "cmd": "list",
+        "args": {},
+        "auth": null
+    })
+    .to_string();
+
+    let err = t_router.handle(raw.as_bytes()).await.err().unwrap();
+    assert!(
+        err.contains("required property") || err.contains("missing field"),
+        "expected schema validation failure, got {err}"
+    );
 }

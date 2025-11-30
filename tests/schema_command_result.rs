@@ -13,7 +13,7 @@ fn command_result_matches_schema_variants() {
         json!({"result": "value", "value": "ok"}),
         json!({"result": "list", "items": ["a", "b"]}),
         json!({"result": "reset"}),
-        json!({"result": "error", "message": "boom", "kind": {"kind":"invalid_args","msg":"boom"}}),
+        json!({"result": "error", "message": "boom", "failure": {"kind":"invalid_args","msg":"boom"}}),
     ];
 
     for sample in samples {

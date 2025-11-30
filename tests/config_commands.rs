@@ -28,7 +28,7 @@ async fn config_commands_update_retry_adaptive() {
 
     let adapt = policy.adaptive_max_attempts();
 
-    let mut registry = DefaultConfigRegistry::new();
+    let registry = DefaultConfigRegistry::new();
     registry.register_fromstr("max_attempts", adapt.clone());
 
     let handler = BuiltInHandler::default().with_config_registry(registry);
@@ -66,7 +66,7 @@ async fn read_config_without_registry_returns_error_variant() {
 
 #[tokio::test]
 async fn list_config_returns_registered_keys() {
-    let mut registry = DefaultConfigRegistry::new();
+    let registry = DefaultConfigRegistry::new();
     registry.register_fromstr("max_attempts", Adaptive::new(1usize));
     registry.register_fromstr("timeout_ms", Adaptive::new(100usize));
 

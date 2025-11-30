@@ -46,9 +46,9 @@ async fn telemetry_overhead_streaming_drop_visibility() {
 
 async fn run_bench<S>(sink: S, iter: usize, concurrency: usize, p99_budget: Duration)
 where
-    S: tower_service::Service<PolicyEvent> + Clone + Send + 'static,
+    S: Service<PolicyEvent> + Clone + Send + 'static,
     S::Future: Send,
-    <S as tower_service::Service<PolicyEvent>>::Error: std::fmt::Debug,
+    <S as Service<PolicyEvent>>::Error: std::fmt::Debug,
 {
     assert!(concurrency != 0, "concurrency must be non-zero");
 

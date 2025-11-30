@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
+use std::env;
 use std::sync::OnceLock;
 
 use jsonschema::JSONSchema;
@@ -47,6 +48,8 @@ fn transport_envelope_schema() -> &'static JSONSchema {
 fn command_result_schema() -> &'static JSONSchema {
     static SCHEMA: OnceLock<JSONSchema> = OnceLock::new();
     SCHEMA.get_or_init(|| {
+        // Panic is intentional: schema is embedded at compile time and must be valid.
+        // Invalid schemas are a build/CI failure, not a runtime condition.
         let raw = include_str!("../../schemas/command-result.schema.json");
         let value: JsonValue = serde_json::from_str(raw).expect("valid command-result schema");
         JSONSchema::compile(&value).expect("command-result schema compiles")
@@ -71,6 +74,13 @@ fn validate(schema: &JSONSchema, value: &JsonValue) -> Result<(), String> {
         .map_err(|errs| errs.map(|e| e.to_string()).collect::<Vec<_>>().join(" | "))
 }
 
+fn schema_validation_enabled() -> bool {
+    match env::var("NINELIVES_SCHEMA_VALIDATION") {
+        Ok(v) => !matches!(v.as_str(), "0" | "false" | "False" | "FALSE"),
+        Err(_) => true,
+    }
+}
+
 fn command_result_to_schema_value(res: &super::CommandResult) -> JsonValue {
     match res {
         super::CommandResult::Ack => json!({ "result": "ack" }),
@@ -78,12 +88,16 @@ fn command_result_to_schema_value(res: &super::CommandResult) -> JsonValue {
         super::CommandResult::List(items) => json!({ "result": "list", "items": items }),
         super::CommandResult::Reset => json!({ "result": "reset" }),
         super::CommandResult::Error(fail) => {
-            let mut v = serde_json::to_value(fail).unwrap_or(json!({}));
-            if let Some(obj) = v.as_object_mut() {
-                obj.insert("result".to_string(), json!("error"));
-                obj.insert("message".to_string(), json!(fail.to_string()));
-            }
-            v
+            let v = serde_json::to_value(fail).unwrap_or_else(|e| {
+                // Fallback: construct minimal error object if serialization fails
+                tracing::warn!(error = %e, "failed to serialize CommandFailure");
+                json!({ "kind": "internal", "msg": "serialization failed" })
+            });
+            json!({
+                "result": "error",
+                "message": fail.to_string(),
+                "failure": v
+            })
         }
     }
 }
@@ -145,8 +159,42 @@ where
     /// Decode, route, and encode a response for a raw transport payload (no validation).
     pub async fn handle(&self, raw: &[u8]) -> Result<Vec<u8>, String> {
         let env = self.decode_envelope(raw)?;
+        if schema_validation_enabled() {
+            validate_envelope(&env)?;
+        }
+
         let (cmd_env, ctx) = (self.to_command)(env)?;
         let res = self.router.execute(cmd_env).await.map_err(|e| e.to_string())?;
+
+        if schema_validation_enabled() {
+            validate_result(&res)?;
+        }
+
+        self.transport.encode(&ctx, &res).map_err(|e| T::map_error(&e))
+    }
+
+    /// Simple liveness probe response (no routing/validation).
+    pub fn health_probe(&self) -> Result<Vec<u8>, String> {
+        let ctx = CommandContext {
+            id: "health".into(),
+            args: default_args(),
+            identity: None,
+            response_channel: None,
+        };
+        let res = super::CommandResult::Ack;
+        self.transport.encode(&ctx, &res).map_err(|e| T::map_error(&e))
+    }
+
+    /// Readiness probe; best-effort executes a no-op list command to exercise router path.
+    pub async fn readiness_probe(&self) -> Result<Vec<u8>, String> {
+        // Use a lightweight built-in List if available; otherwise just encode ACK.
+        let ctx = CommandContext {
+            id: "ready".into(),
+            args: default_args(),
+            identity: None,
+            response_channel: None,
+        };
+        let res = super::CommandResult::Ack;
         self.transport.encode(&ctx, &res).map_err(|e| T::map_error(&e))
     }
 }

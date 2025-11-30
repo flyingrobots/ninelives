@@ -112,6 +112,7 @@
 //!
 //! - **`control`**: Enables the control plane, including `serde` support, `transport`, and schema validation.
 //! - **`adaptive-rwlock`**: Switches the `Adaptive` configuration backend to use `RwLock` (default is `arc-swap`).
+//! - **`arc-swap`**: (Default) Enables the lock-free configuration backend using `arc-swap`.
 //!
 //! For more examples, see the algebra module documentation.
 
