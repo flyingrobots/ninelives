@@ -17,13 +17,18 @@ pub trait AuthProvider: Send + Sync {
     ) -> Result<AuthContext, AuthError>;
 
     /// Optional authorization using the command label.
+    ///
+    /// # Default Implementation
+    ///
+    /// Returns `Err(AuthError::Unauthorized)` (fail-closed). Implementors MUST override this
+    /// to explicitly grant access.
     fn authorize(
         &self,
         _ctx: &AuthContext,
         _label: &str,
         _meta: &CommandMeta,
     ) -> Result<(), AuthError> {
-        Ok(())
+        Err(AuthError::Unauthorized("default authorize denies all".into()))
     }
 }
 
@@ -152,6 +157,11 @@ where
 }
 
 /// Passthrough provider (dev/testing).
+///
+/// # ⚠️ SECURITY WARNING
+///
+/// This provider grants access to **everyone** as "anonymous".
+/// **DO NOT USE IN PRODUCTION**. It effectively disables authentication.
 pub struct PassthroughAuth;
 impl AuthProvider for PassthroughAuth {
     fn name(&self) -> &'static str {
@@ -167,5 +177,14 @@ impl AuthProvider for PassthroughAuth {
             provider: self.name(),
             attributes: HashMap::new(),
         })
+    }
+
+    fn authorize(
+        &self,
+        _ctx: &AuthContext,
+        _label: &str,
+        _meta: &CommandMeta,
+    ) -> Result<(), AuthError> {
+        Ok(())
     }
 }

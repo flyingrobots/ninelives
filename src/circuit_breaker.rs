@@ -15,6 +15,7 @@ const STATE_HALF_OPEN: u8 = 2;
 
 /// Circuit breaker state machine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum CircuitState {
     /// Circuit is closed - requests flow normally
     Closed,
@@ -43,6 +44,17 @@ impl CircuitState {
                 CircuitState::Closed
             }
         }
+    }
+}
+
+impl std::fmt::Display for CircuitState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            CircuitState::Closed => "Closed",
+            CircuitState::Open => "Open",
+            CircuitState::HalfOpen => "HalfOpen",
+        };
+        f.write_str(s)
     }
 }
 

@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use futures::future::BoxFuture;
 use std::collections::HashMap;
 use std::fmt::Display;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use tower::Service;
 
 /// Command handler trait.
@@ -122,12 +122,16 @@ pub trait ConfigRegistry: Send + Sync + std::fmt::Debug {
 
 /// In-memory implementation of a config registry.
 pub struct InMemoryConfigRegistry {
-    entries: HashMap<String, Box<dyn ConfigEntry>>,
+    entries: RwLock<HashMap<String, Box<dyn ConfigEntry>>>,
 }
 
 impl std::fmt::Debug for InMemoryConfigRegistry {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "InMemoryConfigRegistry{{entries:{}}}", self.entries.len())
+        write!(
+            f,
+            "InMemoryConfigRegistry{{entries:{}}}",
+            self.entries.read().expect("config registry poisoned").len()
+        )
     }
 }
 
@@ -143,15 +147,12 @@ impl Default for InMemoryConfigRegistry {
 impl InMemoryConfigRegistry {
     /// Create a new config registry.
     pub fn new() -> Self {
-        Self { entries: HashMap::new() }
+        Self { entries: RwLock::new(HashMap::new()) }
     }
 
     /// Register a value using FromStr/Display for parsing/formatting.
-    pub fn register_fromstr<T>(
-        &mut self,
-        path: impl Into<String>,
-        handle: crate::adaptive::Adaptive<T>,
-    ) where
+    pub fn register_fromstr<T>(&self, path: impl Into<String>, handle: crate::adaptive::Adaptive<T>)
+    where
         T: Clone + Send + Sync + 'static,
         T: std::str::FromStr,
         <T as std::str::FromStr>::Err: Display,
@@ -167,7 +168,7 @@ impl InMemoryConfigRegistry {
 
     /// Register with custom parse/render functions.
     pub fn register<T, P, R>(
-        &mut self,
+        &self,
         path: impl Into<String>,
         handle: crate::adaptive::Adaptive<T>,
         parse: P,
@@ -177,7 +178,7 @@ impl InMemoryConfigRegistry {
         P: Fn(&str) -> Result<T, String> + Send + Sync + 'static,
         R: Fn(&T) -> String + Send + Sync + 'static,
     {
-        self.entries.insert(
+        self.entries.write().expect("config registry lock poisoned").insert(
             path.into(),
             Box::new(GenericConfig { handle, parse: Arc::new(parse), render: Arc::new(render) }),
         );
@@ -185,26 +186,29 @@ impl InMemoryConfigRegistry {
 
     /// Write a value to a registered config key.
     pub fn write(&self, path: &str, raw: &str) -> Result<(), String> {
-        let entry = self.entries.get(path).ok_or_else(|| format!("unknown config path: {path}"))?;
+        let guard = self.entries.read().expect("config registry lock poisoned");
+        let entry = guard.get(path).ok_or_else(|| format!("unknown config path: {path}"))?;
         entry.write(raw)
     }
 
     /// Read a value from a registered config key.
     pub fn read(&self, path: &str) -> Result<String, String> {
-        let entry = self.entries.get(path).ok_or_else(|| format!("unknown config path: {path}"))?;
+        let guard = self.entries.read().expect("config registry lock poisoned");
+        let entry = guard.get(path).ok_or_else(|| format!("unknown config path: {path}"))?;
         entry.read()
     }
 
     /// List registered config keys (sorted).
     pub fn keys(&self) -> Vec<String> {
-        let mut keys: Vec<String> = self.entries.keys().cloned().collect();
+        let mut keys: Vec<String> =
+            self.entries.read().expect("config registry lock poisoned").keys().cloned().collect();
         keys.sort();
         keys
     }
 
     /// Check whether a config key is registered.
     pub fn contains(&self, path: &str) -> bool {
-        self.entries.contains_key(path)
+        self.entries.read().expect("config registry lock poisoned").contains_key(path)
     }
 }
 
@@ -492,19 +496,7 @@ impl BuiltInHandler {
                 };
                 let breaker_map: serde_json::Map<String, serde_json::Value> = breakers
                     .into_iter()
-                    .map(|(id, state)| {
-                        (
-                            id,
-                            serde_json::Value::String(
-                                match state {
-                                    crate::circuit_breaker::CircuitState::Closed => "Closed",
-                                    crate::circuit_breaker::CircuitState::Open => "Open",
-                                    crate::circuit_breaker::CircuitState::HalfOpen => "HalfOpen",
-                                }
-                                .into(),
-                            ),
-                        )
-                    })
+                    .map(|(id, state)| (id, serde_json::Value::String(state.to_string())))
                     .collect();
 
                 let mut config_map = serde_json::Map::new();
@@ -549,17 +541,18 @@ impl BuiltInHandler {
     }
 
     /// Retrieves a value by checking the config registry first, then falling back to the
-    /// async store. If neither contains the key, a default value (empty string for store,
-    /// or error for config) is returned. This mirrors the precedence used by [`set_or_store`](Self::set_or_store)
-    /// for consistency and maintainability.
+    /// async store. If neither contains the key, `NotFound` is returned.
     async fn get_from_store_or_config(&self, key: &str) -> CommandResult {
         if self.state.config.contains(key) {
             return self.state.config.read(key).unwrap_or(CommandResult::Error(
                 CommandFailure::Internal { msg: "read failed".into() },
             ));
         }
-        let val = self.state.store.get(key).await.unwrap_or_default();
-        CommandResult::Value(val)
+        if let Some(val) = self.state.store.get(key).await {
+            CommandResult::Value(val)
+        } else {
+            CommandResult::Error(CommandFailure::NotFound { what: key.into() })
+        }
     }
 }
 
