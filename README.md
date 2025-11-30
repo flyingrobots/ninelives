@@ -12,6 +12,62 @@
 
 ---
 
+## 🚀 Quick Start (5 min)
+
+1) Install & bootstrap (ensures fmt/clippy/hooks):
+```bash
+./scripts/bootstrap.sh
+```
+
+2) Add dependency (control enables the runtime command plane; schema-validation is on by default):
+```toml
+[dependencies]
+ninelives = { version = "0.3", features = ["control"] }
+tower = "0.5.2"
+tokio = { version = "1", features = ["full"] }
+```
+
+3) Smoke test:
+```bash
+cargo test --all-features --all-targets
+```
+
+4) Minimal policy usage:
+```rust
+use ninelives::prelude::*;
+use std::time::Duration;
+use tower::{ServiceBuilder, ServiceExt};
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let retry = simple::retry(3)?;              // default backoff/jitter
+    let timeout = simple::timeout(Duration::from_secs(1))?;
+    let policy = Policy(timeout) + Policy(retry);
+
+    let mut svc = ServiceBuilder::new()
+        .layer(policy)
+        .service_fn(|req: &str| async move { Ok::<_, std::io::Error>(format!("echo: {req}")) });
+
+    let out = svc.ready().await?.call("hi").await?;
+    println!("{out}");
+    Ok(())
+}
+```
+
+5) Control-plane health & error shape (JSON, default schema validation enabled):
+```json
+// Health request (via your transport)
+{ "id":"cmd-1", "cmd":"health", "args":{}, "auth": null }
+
+// Error response example (structured CommandFailure)
+{ "result":"error",
+  "kind":{"kind":"invalid_args","msg":"missing key"},
+  "message":"missing key" }
+```
+For more on payloads and validation see `docs/CONTROL_PLANE_SCHEMA.md` (schema-validation is on by default).
+
+---
+
 ## ⚗️ The Algebra of Resilience
 
 These operators are recursive: a composed `Policy` is just another `Policy`, allowing you to snap them together like Lego blocks into arbitrarily complex supervision trees.
@@ -38,135 +94,117 @@ let strategy = fast_path | (retry + breaker + slow_path);
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Quick Start (5 min)
 
-After cloning, run a single bootstrap to install toolchains, npm deps, and git hooks:
+1. **Install & Bootstrap:**
+   ```bash
+   ./scripts/bootstrap.sh
+   ```
 
-```bash
-./scripts/bootstrap.sh
+2. **Add Dependency:**
+   ```toml
+   [dependencies]
+   ninelives = { version = "0.3", features = ["control"] } # control feature enables runtime config
+   tower = "0.5.2"
+   tokio = { version = "1", features = ["full"] }
+   ```
+
+3. **Run Tests:**
+   Ensure your environment is healthy.
+   ```bash
+   cargo test --all-features --all-targets
+   ```
+
+4. **Code:**
+   Use `ninelives::prelude::*` to import core types efficiently.
+   ```rust
+   use ninelives::prelude::*;
+   use std::time::Duration;
+   use tower::{ServiceBuilder, ServiceExt};
+
+   #[tokio::main]
+   async fn main() -> Result<(), Box<dyn std::error::Error>> {
+       // Define a policy: Retry 3 times with backoff
+       let retry = simple::retry(3)?; // 3 attempts, default backoff
+
+       let policy = Policy(TimeoutLayer::new(Duration::from_secs(1))?) + Policy(retry);
+
+       let svc = ServiceBuilder::new()
+           .layer(policy)
+           .service_fn(|req: &str| async move {
+               Ok::<_, std::io::Error>(format!("Echo: {}", req))
+           });
+
+       let response = svc.ready().await?.call("hello").await?;
+       println!("{}", response);
+       Ok(())
+   }
+   ```
+
+5. **Next Steps:**
+   - Explore [`ninelives-cookbook`](ninelives-cookbook/) for recipes.
+   - See `docs/control-plane.md` to enable runtime configuration.
+
+---
+
+## 📦 Cargo Features
+
+* **`control`**: Enables the Control Plane (schema-validated JSON transport, command router, auth). *Default: enabled in full build, opt-in.*
+* **`adaptive-rwlock`**: Switches the `Adaptive<T>` configuration backend to use `RwLock` (stronger consistency) instead of the default lock-free `ArcSwap` (higher performance).
+* **`arc-swap`**: (Default) Enables the lock-free configuration backend.
+
+---
+
+## 🎛️ Control Plane
+
+Turn static configs into live knobs. Nine Lives includes a runtime configuration system that lets you adjust max retries, timeouts, or circuit breaker thresholds without restarting the service.
+
+### Wire Format & Schema
+
+The Control Plane uses a canonical JSON envelope. Schema validation is **enabled by default** via `jsonschema`.
+
+**Request Envelope:**
+```json
+{
+  "id": "req-123",
+  "cmd": "write_config",
+  "args": { "path": "retry.max_attempts", "value": "5" },
+  "auth": {
+    "Jwt": { "token": "eyJhbG..." }
+  }
+}
+```
+*Supported AuthPayloads:* `Jwt`, `Signatures`, `Mtls`, `Opaque`.
+
+**Response (Success):**
+```json
+{ "result": "ack", "id": "req-123" }
 ```
 
-Then add to `Cargo.toml`:
-
-```toml
-[dependencies]
-ninelives = "0.3"
-tower = "0.5.2"
-tokio = { version = "1", features = ["full"] }
-```
-
-After cloning the repo, enable the dev hooks (fmt/clippy/tests/doc/roadmap checks) with:
-
-```bash
-./scripts/setup-hooks.sh
-```
-
-### Basic Usage
-
-```rust
-use ninelives::prelude::*;
-use std::time::Duration;
-use tower::{ServiceBuilder, ServiceExt};
-
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Define a policy: Retry 3 times with backoff, wrapped in a 1s timeout
-    let retry = RetryPolicy::builder()
-        .max_attempts(3)
-        .backoff(Backoff::exponential(Duration::from_millis(50)))
-        .build()?
-        .into_layer();
-
-    let policy = Policy(TimeoutLayer::new(Duration::from_secs(1))?) + Policy(retry);
-
-    let svc = ServiceBuilder::new()
-        .layer(policy)
-        .service_fn(|req: &str| async move {
-            // Your potentially failing logic here
-            Ok::<_, std::io::Error>(format!("Echo: {}", req))
-        });
-
-    let response = svc.ready().await?.call("hello").await?;
-    println!("{}", response);
-    Ok(())
+**Response (Error):**
+Errors return a structured `CommandFailure` object.
+```json
+{
+  "result": "error",
+  "id": "req-123",
+  "message": "unknown config path: foo",
+  "kind": { "kind": "invalid_args", "msg": "unknown config path: foo" }
 }
 ```
 
----
+**⚠️ Persistence Warning:**
+The `ConfigRegistry` is in-memory only. Configuration changes are volatile and will be lost on restart. To persist changes, you must implement the "Snapshot & Restore" pattern using the `GetState` command (export) and `apply_snapshot` API (import). See [docs/ADR-012-config-persistence.md](docs/ADR-012-config-persistence.md).
 
-## 🍳 Cookbook
+For full details, see [docs/CONTROL_PLANE_SCHEMA.md](docs/CONTROL_PLANE_SCHEMA.md) and [docs/control-plane.md](docs/control-plane.md).
 
-Pick a recipe from [`ninelives-cookbook`](https://docs.rs/ninelives-cookbook/latest/ninelives_cookbook/):
-
-* **Simple retry:** [`retry_fast`](https://docs.rs/ninelives-cookbook/latest/ninelives_cookbook/fn.retry_fast.html) — 3 attempts, 50ms exp backoff + jitter.
-* **Latency guard:** [`timeout_p95`](https://docs.rs/ninelives-cookbook/latest/ninelives_cookbook/fn.timeout_p95.html) — 300ms budget.
-* **Bulkhead:** [`bulkhead_isolate`](https://docs.rs/ninelives-cookbook/latest/ninelives_cookbook/fn.bulkhead_isolate.html) — protect shared deps.
-* **API guardrail (intermediate):** [`api_guardrail`](https://docs.rs/ninelives-cookbook/latest/ninelives_cookbook/fn.api_guardrail.html) — timeout + breaker + bulkhead.
-* **Reliable read (advanced):** [`reliable_read`](https://docs.rs/ninelives-cookbook/latest/ninelives_cookbook/fn.reliable_read.html) — fast path then fallback stack.
-* **Hedged read (tricky):** [`hedged_read`](https://docs.rs/ninelives-cookbook/latest/ninelives_cookbook/fn.hedged_read.html) — fork-join two differently tuned stacks.
-* **Hedge + fallback (god tier):** [`hedged_then_fallback`](https://docs.rs/ninelives-cookbook/latest/ninelives_cookbook/fn.hedged_then_fallback.html) — race two fast paths, then fall back to a sturdy stack.
-* **Sensible defaults:** [`sensible_defaults`](https://docs.rs/ninelives-cookbook/latest/ninelives_cookbook/fn.sensible_defaults.html) — timeout + retry + bulkhead starter pack.
-
-Advanced: see `docs/custom-policy-layer.md` for building and wiring your own Tower layer into the algebra and control plane.
-Most recipes are adaptive: retry/timeout/circuit/bulkhead knobs can be updated live via the `Adaptive<T>` handles.
-
-See [`ninelives-cookbook/examples/`](ninelives-cookbook/examples) for runnable demos.
+### 🎯 What to read next
+- Payload contracts and schemas: `docs/CONTROL_PLANE_SCHEMA.md`
+- Operations (health, validation defaults, snapshot/restore): `docs/OPERATIONS.md`
+- Persistence stance and snapshot hook: `docs/ADR-012-config-persistence.md`
 
 ---
 
-## 🧭 Repo Layout (workspace)
-
-* `src/` — core policies, algebra, control plane.
-* `schemas/` — JSON Schemas for control-plane envelopes/results.
-* `ninelives-*` — integration crates (nats, kafka, elastic, etcd, prometheus, otlp, jsonl).
-* `ninelives-cookbook/` — ready-made policy recipes + examples.
-* `xtask/` — dev automation and integration test runners (`xtask it-*`).
-
-## Appendix: Environment Variables
-
-All project/test environment variables are prefixed with `NINE_LIVES_`.
-
-| Name | Purpose | Used by | Default / Example |
-| --- | --- | --- | --- |
-| `NINE_LIVES_TEST_NATS_URL` | NATS endpoint for integration tests | `ninelives-nats` tests, `xtask it-nats` | `nats://127.0.0.1:4222` |
-| `NINE_LIVES_TEST_KAFKA_BROKERS` | Kafka bootstrap list for integration tests | `ninelives-kafka` tests, `xtask it-kafka` | `127.0.0.1:9092` |
-| `NINE_LIVES_TEST_ETCD_ENDPOINT` | etcd HTTP endpoint for integration tests | `ninelives-etcd` tests, `xtask it-etcd` | `http://127.0.0.1:2379` |
-| `NINE_LIVES_TEST_ELASTIC_URL` | Elasticsearch URL for integration tests | `ninelives-elastic` tests, `xtask it-elastic` | `http://127.0.0.1:9200` |
-| `NINE_LIVES_TEST_OTLP_ENDPOINT` | OTLP HTTP endpoint for integration tests | `ninelives-otlp` tests, `xtask it-otlp` | `http://127.0.0.1:4318` |
-
----
-
-## 🔋 Features
-
-### 🛡️ Standard Primitives
-
-* **Retry:** Exponential/Linear/Constant backoff with full jitter support.
-* **Circuit Breaker:** Lock-free implementation. Automatically opens on failure spikes to protect downstream.
-* **Bulkhead:** Semaphored concurrency limits to prevent resource exhaustion.
-* **Timeout:** Strict latency bounds.
-
-### 🎛️ Control Plane (Adaptive)
-
-Turn static configs into live knobs. Nine Lives includes a runtime configuration system (`ConfigRegistry`, `CommandRouter`) that lets you adjust max retries, timeouts, or circuit breaker thresholds without restarting the service.
-* Health: built-in `Health` command for liveness/readiness probes (expose via your transport).
-* Validation: JSON schema validation for envelopes/results is **enabled by default** (`schema-validation` feature).
-* Ops: see `docs/OPERATIONS.md` for guidance on telemetry wiring and registry persistence.
-
-### 🛰️ Control Plane Wire Format
-
-* Canonical wire envelope: `TransportEnvelope { id, cmd, args, auth }`
-* Auth payload matches the Rust enum shape, e.g.:
-
-  ```json
-  {
-    "id": "cmd-1",
-    "cmd": "write_config",
-    "args": { "path": "max_attempts", "value": "5" },
-    "auth": { "Jwt": { "token": "your-jwt" } }
-  }
-  ```
-
-### 🔌 Ecosystem
+## 🔌 Ecosystem
 
 Nine Lives is designed to integrate with your infrastructure:
 
