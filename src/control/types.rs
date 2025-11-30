@@ -130,13 +130,25 @@ pub enum CommandError {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum CommandFailure {
     /// Caller provided invalid arguments.
-    InvalidArgs { msg: String },
+    InvalidArgs {
+        /// human-friendly description of the invalid input
+        msg: String,
+    },
     /// Requested resource was not found.
-    NotFound { what: String },
+    NotFound {
+        /// identifier of missing resource
+        what: String,
+    },
     /// Required registry dependency missing.
-    RegistryMissing { hint: String },
+    RegistryMissing {
+        /// how to supply the missing registry
+        hint: String,
+    },
     /// Catch-all internal error.
-    Internal { msg: String },
+    Internal {
+        /// internal error message
+        msg: String,
+    },
 }
 
 impl std::fmt::Display for CommandFailure {

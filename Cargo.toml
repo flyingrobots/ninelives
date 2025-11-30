@@ -67,6 +67,7 @@ arc-swap = { version = "1", optional = true }
 serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 jsonschema = { workspace = true }
+loom = { version = "0.7", optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }
@@ -74,9 +75,11 @@ tracing-subscriber.workspace = true
 futures.workspace = true
 hdrhistogram.workspace = true
 serde_json.workspace = true
-loom = "0.7"
 
 [features]
 control = ["serde", "serde_json"]
 adaptive-rwlock = []
-default = ["arc-swap"]
+schema-validation = []
+bench-telemetry = []
+loom = ["dep:loom"]
+default = ["arc-swap", "schema-validation"]
