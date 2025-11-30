@@ -38,7 +38,10 @@ impl CircuitState {
             STATE_CLOSED => CircuitState::Closed,
             STATE_OPEN => CircuitState::Open,
             STATE_HALF_OPEN => CircuitState::HalfOpen,
-            _ => CircuitState::Closed,
+            other => {
+                debug_assert!(false, "invalid circuit state byte: {}", other);
+                CircuitState::Closed
+            }
         }
     }
 }
@@ -281,13 +284,22 @@ impl CircuitBreakerState {
                 Ok(())
             }
             CircuitState::HalfOpen => {
-                let calls = self.half_open_calls.fetch_add(1, Ordering::AcqRel) + 1;
-                if calls > half_open_max_calls {
-                    Err(CircuitBreakerEvent::Opened {
-                        failure_count: self.failure_count.load(Ordering::Acquire),
-                    })
-                } else {
-                    Ok(())
+                loop {
+                    let cur = self.half_open_calls.load(Ordering::Acquire);
+                    if cur >= half_open_max_calls {
+                        return Err(CircuitBreakerEvent::Opened {
+                            failure_count: self.failure_count.load(Ordering::Acquire),
+                        });
+                    }
+                    let desired = cur + 1;
+                    if self
+                        .half_open_calls
+                        .compare_exchange(cur, desired, Ordering::AcqRel, Ordering::Acquire)
+                        .is_ok()
+                    {
+                        return Ok(());
+                    }
+                    // retry if CAS failed
                 }
             }
             CircuitState::Closed => {
@@ -607,11 +619,27 @@ where
             match inner.call(req).await {
                 Ok(resp) => {
                     let prev_state = CircuitState::from_u8(state.state.load(Ordering::Acquire));
-                    state.state.store(CircuitState::Closed.to_u8(), Ordering::Release);
-                    state.failure_count.store(0, Ordering::Release);
+                    // Only transition to Closed if we're still in HalfOpen or Closed
+                    let transitioned = match prev_state {
+                        CircuitState::HalfOpen => state
+                            .state
+                            .compare_exchange(
+                                CircuitState::HalfOpen.to_u8(),
+                                CircuitState::Closed.to_u8(),
+                                Ordering::AcqRel,
+                                Ordering::Acquire,
+                            )
+                            .is_ok(),
+                        CircuitState::Closed => true,
+                        CircuitState::Open => false,
+                    };
 
-                    // Emit closed event if transitioning from non-closed state
-                    if prev_state != CircuitState::Closed {
+                    if transitioned {
+                        state.failure_count.store(0, Ordering::Release);
+                    }
+
+                    // Emit closed event if transitioning from non-closed state (HalfOpen -> Closed)
+                    if transitioned && prev_state == CircuitState::HalfOpen {
                         emit_best_effort(
                             sink.clone(),
                             PolicyEvent::CircuitBreaker(CircuitBreakerEvent::Closed),
@@ -642,6 +670,10 @@ where
                                     Ordering::Acquire,
                                 );
                                 if prev.is_ok() {
+                                    state.half_open_calls.store(0, Ordering::Release);
+                                    state
+                                        .opened_at_millis
+                                        .store(clock.now_millis(), Ordering::Release);
                                     emit_best_effort(
                                         sink.clone(),
                                         PolicyEvent::CircuitBreaker(CircuitBreakerEvent::Opened {
@@ -650,8 +682,6 @@ where
                                     )
                                     .await;
                                 }
-                                state.half_open_calls.store(0, Ordering::Release);
-                                state.opened_at_millis.store(clock.now_millis(), Ordering::Release);
                             }
                         }
                         CircuitState::HalfOpen => {

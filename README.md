@@ -104,31 +104,59 @@ let strategy = fast_path | (retry + breaker + slow_path);
 
 1. **Install & Bootstrap:**
 
+
+
    ```bash
+
    ./scripts/bootstrap.sh
+
    ```
+
+
 
 2. **Add Dependency:**
 
+
+
    ```toml
+
    [dependencies]
+
    ninelives = { version = "0.3", features = ["control"] } # control feature enables runtime config
+
    tower = "0.5.2"
+
    tokio = { version = "1", features = ["full"] }
+
    ```
+
+
 
 3. **Run Tests:**
+
    Ensure your environment is healthy.
 
+
+
    ```bash
+
    cargo test --all-features --all-targets
+
    ```
 
+
+
 4. **Code:**
+
    Use `ninelives::prelude::*` to import core types efficiently.
 
+
+
    ```rust
+
    use ninelives::prelude::*;
+
+
    use std::time::Duration;
    use tower::{ServiceBuilder, ServiceExt};
 
@@ -239,7 +267,7 @@ Nine Lives is designed to integrate with your infrastructure:
 | :------------------------------------ | :-----------: | :-----------------: | :--------: | :---------: | :------------: |
 | **1. Uniform `Service` Abstraction**  |       ✅       |          ❌          |     ❌      |      ✅      |       ✅        |
 | **2. Fractal/Recursive Architecture** |       ✅       |          ❌          |     ❌      |      ❌      |       ✅        |
-| **3. Algebraic Composition**      |          ✅          |     ❌      |      ❌      |       ❌        | ❌   |
+| **3. Algebraic Composition**          |       ✅       |          ❌          |     ❌      |      ❌      |       ❌        |
 | **4. Composable Telemetry Sinks**     |       ✅       |          ❌          |     ❌      |      ❌      |       ❌        |
 | **5. Live Policy Updates**            |       ✅       |          ✅          |     ✅      |   Partial   |       ❌        |
 | **6. Pluggable Control Plane**        |       ✅       |          ❌          |     ❌      |      ❌      |       ❌        |
