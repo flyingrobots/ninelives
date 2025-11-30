@@ -50,6 +50,8 @@ where
     S::Future: Send,
     <S as tower_service::Service<PolicyEvent>>::Error: std::fmt::Debug,
 {
+    assert!(concurrency != 0, "concurrency must be non-zero");
+
     let mut hist: Histogram<u64> = Histogram::new(3).unwrap();
     let mut tasks = Vec::new();
 

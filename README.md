@@ -213,7 +213,7 @@ For full details, see [docs/control-plane.md](docs/control-plane.md).
 
 ### 🎯 What to read next
 
-*   Payload contracts and schemas: `docs/CONTROL_PLANE_SCHEMA.md`
+* Payload contracts and schemas: `docs/CONTROL_PLANE_SCHEMA.md`
 * Operations (health, validation defaults, snapshot/restore): `docs/OPERATIONS.md`
 * Persistence stance and snapshot hook: `docs/ADR-012-config-persistence.md`
 
