@@ -20,3 +20,7 @@ Do **not** add built-in file/DB persistence to `ConfigRegistry`. Treat the contr
 
 - Core remains dependency-free and deterministic.
 - Users must wire their own storage, but the API surface makes this trivial.
+- Import semantics (apply_snapshot):
+  - Unknown keys: ignored; only registered keys are applied.
+  - Atomicity: best-effort; collects per-key errors and returns `Err(Vec<String>)` when any key fails to parse/write.
+  - Caller guidance: log and surface the failed keys; on startup, consider failing fast if `Err` is returned, or proceed but emit operator guidance (as in `state_persistence.rs`, which would log and report any failed keys).
