@@ -15,11 +15,13 @@
 ## 🚀 Quick Start (5 min)
 
 1) Install & bootstrap (ensures fmt/clippy/hooks):
+
 ```bash
 ./scripts/bootstrap.sh
 ```
 
-2) Add dependency (control enables the runtime command plane; schema-validation is on by default):
+1) Add dependency (control enables the runtime command plane; schema-validation is on by default):
+
 ```toml
 [dependencies]
 ninelives = { version = "0.3", features = ["control"] }
@@ -27,12 +29,14 @@ tower = "0.5.2"
 tokio = { version = "1", features = ["full"] }
 ```
 
-3) Smoke test:
+1) Smoke test:
+
 ```bash
 cargo test --all-features --all-targets
 ```
 
-4) Minimal policy usage:
+1) Minimal policy usage:
+
 ```rust
 use ninelives::prelude::*;
 use std::time::Duration;
@@ -54,7 +58,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-5) Control-plane health & error shape (JSON, default schema validation enabled):
+1) Control-plane health & error shape (JSON, default schema validation enabled):
+
 ```json
 // Health request (via your transport)
 { "id":"cmd-1", "cmd":"health", "args":{}, "auth": null }
@@ -64,6 +69,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
   "kind":{"kind":"invalid_args","msg":"missing key"},
   "message":"missing key" }
 ```
+
 For more on payloads and validation see `docs/CONTROL_PLANE_SCHEMA.md` (schema-validation is on by default).
 
 ---
@@ -97,11 +103,13 @@ let strategy = fast_path | (retry + breaker + slow_path);
 ## 🚀 Quick Start (5 min)
 
 1. **Install & Bootstrap:**
+
    ```bash
    ./scripts/bootstrap.sh
    ```
 
 2. **Add Dependency:**
+
    ```toml
    [dependencies]
    ninelives = { version = "0.3", features = ["control"] } # control feature enables runtime config
@@ -111,12 +119,14 @@ let strategy = fast_path | (retry + breaker + slow_path);
 
 3. **Run Tests:**
    Ensure your environment is healthy.
+
    ```bash
    cargo test --all-features --all-targets
    ```
 
 4. **Code:**
    Use `ninelives::prelude::*` to import core types efficiently.
+
    ```rust
    use ninelives::prelude::*;
    use std::time::Duration;
@@ -142,8 +152,8 @@ let strategy = fast_path | (retry + breaker + slow_path);
    ```
 
 5. **Next Steps:**
-   - Explore [`ninelives-cookbook`](ninelives-cookbook/) for recipes.
-   - See `docs/control-plane.md` to enable runtime configuration.
+   * Explore [`ninelives-cookbook`](ninelives-cookbook/) for recipes.
+   * See `docs/control-plane.md` to enable runtime configuration.
 
 ---
 
@@ -164,6 +174,7 @@ Turn static configs into live knobs. Nine Lives includes a runtime configuration
 The Control Plane uses a canonical JSON envelope. Schema validation is **enabled by default** via `jsonschema`.
 
 **Request Envelope:**
+
 ```json
 {
   "id": "req-123",
@@ -174,15 +185,18 @@ The Control Plane uses a canonical JSON envelope. Schema validation is **enabled
   }
 }
 ```
+
 *Supported AuthPayloads:* `Jwt`, `Signatures`, `Mtls`, `Opaque`.
 
 **Response (Success):**
+
 ```json
 { "result": "ack", "id": "req-123" }
 ```
 
 **Response (Error):**
 Errors return a structured `CommandFailure` object.
+
 ```json
 {
   "result": "error",
@@ -198,9 +212,9 @@ The `ConfigRegistry` is in-memory only. Configuration changes are volatile and w
 For full details, see [docs/CONTROL_PLANE_SCHEMA.md](docs/CONTROL_PLANE_SCHEMA.md) and [docs/control-plane.md](docs/control-plane.md).
 
 ### 🎯 What to read next
-- Payload contracts and schemas: `docs/CONTROL_PLANE_SCHEMA.md`
-- Operations (health, validation defaults, snapshot/restore): `docs/OPERATIONS.md`
-- Persistence stance and snapshot hook: `docs/ADR-012-config-persistence.md`
+* Payload contracts and schemas: `docs/CONTROL_PLANE_SCHEMA.md`
+* Operations (health, validation defaults, snapshot/restore): `docs/OPERATIONS.md`
+* Persistence stance and snapshot hook: `docs/ADR-012-config-persistence.md`
 
 ---
 

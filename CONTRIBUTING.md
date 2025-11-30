@@ -12,7 +12,7 @@ Thanks for wanting to improve Nine Lives! This document provides guidelines for 
 ./scripts/bootstrap.sh
 ```
 
-4. Run Checks Locally:
+1. Run Checks Locally:
 
 ```bash
 cargo test --all-features --all-targets
@@ -40,7 +40,7 @@ git config core.hooksPath scripts/git-hooks
 Check that `scripts/git-hooks` contains files like `pre-commit` and `pre-push`.
 If the setup script fails, ensure you are in the project root and have write permissions to `.git/config`.
 
-5. Open a PR with a clear description and necessary tests.
+1. Open a PR with a clear description and necessary tests.
 
 ## 🧪 Testing Notes
 
