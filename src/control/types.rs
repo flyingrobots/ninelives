@@ -6,7 +6,7 @@ use std::collections::HashMap;
 pub type CommandId = String;
 
 /// Execution metadata attached to each command.
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct CommandMeta {
     /// Command identifier (unique per request).
     pub id: CommandId,
@@ -188,6 +188,15 @@ pub struct AuditRecord {
     pub principal: String,
     /// Status/Result of execution.
     pub status: String,
+}
+
+/// Record of a command execution for history.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct HistoryRecord {
+    /// Metadata from the request.
+    pub meta: CommandMeta,
+    /// Result of the execution.
+    pub result: CommandResult,
 }
 
 /// Trait for getting a string label for a command type.

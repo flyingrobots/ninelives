@@ -135,7 +135,9 @@ where
         &mut self,
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Result<(), CommandError>> {
-        self.inner.poll_ready(cx)
+        // This service clones the inner per-call, so it is always ready.
+        let _ = cx;
+        std::task::Poll::Ready(Ok(()))
     }
 
     fn call(&mut self, req: CommandEnvelope<C>) -> Self::Future {
@@ -143,7 +145,8 @@ where
         let mut inner = self.inner.clone();
         Box::pin(async move {
             registry.authenticate(&req).map_err(CommandError::Auth)?;
-            inner.call(req).await
+            use tower::ServiceExt;
+            inner.ready_oneshot().await?.call(req).await
         })
     }
 }
