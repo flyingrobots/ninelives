@@ -102,7 +102,8 @@ impl CommandLabel for BuiltInCommand {
     }
 }
 
-/// Registry of live config bindings (Adaptive values).
+/// Registry of live config bindings (Adaptive values). Implementations are **volatile** by default;
+/// use `GetState` to export a snapshot and `apply_snapshot` to restore from your own persistence layer.
 pub trait ConfigRegistry: Send + Sync + std::fmt::Debug {
     /// Write a raw string into a registered config key.
     fn write(&self, path: &str, raw: &str) -> Result<(), String>;
@@ -112,6 +113,11 @@ pub trait ConfigRegistry: Send + Sync + std::fmt::Debug {
     fn keys(&self) -> Vec<String>;
     /// Check whether a key exists.
     fn contains(&self, path: &str) -> bool;
+    /// Apply a bulk snapshot of key/value pairs. Returns per-key errors.
+    fn apply_snapshot(
+        &self,
+        snapshot: std::collections::HashMap<String, String>,
+    ) -> Result<(), Vec<String>>;
 }
 
 /// In-memory implementation of a config registry.
@@ -214,6 +220,23 @@ impl ConfigRegistry for InMemoryConfigRegistry {
     }
     fn contains(&self, path: &str) -> bool {
         InMemoryConfigRegistry::contains(self, path)
+    }
+
+    fn apply_snapshot(
+        &self,
+        snapshot: std::collections::HashMap<String, String>,
+    ) -> Result<(), Vec<String>> {
+        let mut errors = Vec::new();
+        for (k, v) in snapshot {
+            if let Err(e) = self.write(&k, &v) {
+                errors.push(format!("{k}: {e}"));
+            }
+        }
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors)
+        }
     }
 }
 

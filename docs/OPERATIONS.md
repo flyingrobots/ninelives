@@ -15,3 +15,4 @@
 ## Disaster Recovery / Persistence
 - Config and breaker registries are in-memory by default. Implement `ConfigRegistry` / `CircuitBreakerRegistry` with your persistence backend (e.g., database or KV store) and inject via `ControlBuilder::with_config_registry` / `with_circuit_breaker_registry`.
 - Snapshot breaker state periodically (e.g., using `snapshot()` on the registry) and store in durable storage; restore on startup before wiring the control plane.
+- Use `ConfigRegistry::apply_snapshot` to hydrate configs on startup from your own source (file, Redis, etc.). Pair with `GetState`/`ListConfig` to export before shutdown.
