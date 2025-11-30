@@ -12,15 +12,13 @@
 
 use std::time::Duration;
 
-use ninelives::algebra::{CombinedLayer, FallbackLayer, ForkJoinLayer, Policy};
-use ninelives::bulkhead::BulkheadLayer;
-use ninelives::circuit_breaker::{CircuitBreakerConfig, CircuitBreakerLayer};
-use ninelives::retry::RetryLayer;
-use ninelives::timeout::TimeoutLayer;
-use ninelives::{Backoff, Jitter};
+use ninelives::{
+    Backoff, BulkheadLayer, CircuitBreakerConfig, CircuitBreakerLayer, CombinedLayer,
+    FallbackLayer, ForkJoinLayer, Jitter, Policy, RetryLayer, TimeoutLayer,
+};
 
 /// Simple, fast retry: 3 attempts, exponential backoff starting at 50ms, full jitter.
-pub fn retry_fast<E>() -> Result<Policy<RetryLayer<E>>, ninelives::retry::BuildError>
+pub fn retry_fast<E>() -> Result<Policy<RetryLayer<E>>, ninelives::BuildError>
 where
     E: std::error::Error + Send + Sync + 'static,
 {
@@ -34,20 +32,19 @@ where
 }
 
 /// Latency guard: 95th percentile focused timeout at 300ms.
-pub fn timeout_p95() -> Result<Policy<TimeoutLayer>, ninelives::timeout::TimeoutError> {
+pub fn timeout_p95() -> Result<Policy<TimeoutLayer>, ninelives::TimeoutError> {
     Ok(Policy(TimeoutLayer::new(Duration::from_millis(300))?))
 }
 
 /// Bulkhead for noisy neighbors: cap at `max_in_flight` with immediate rejection.
 pub fn bulkhead_isolate(
     max_in_flight: usize,
-) -> Result<Policy<BulkheadLayer>, ninelives::bulkhead::BulkheadError> {
+) -> Result<Policy<BulkheadLayer>, ninelives::BulkheadError> {
     Ok(Policy(BulkheadLayer::new(max_in_flight)?))
 }
 
 /// Circuit breaker tuned for flapping services.
-pub fn circuit_flap_guard(
-) -> Result<Policy<CircuitBreakerLayer>, ninelives::circuit_breaker::CircuitBreakerError> {
+pub fn circuit_flap_guard() -> Result<Policy<CircuitBreakerLayer>, ninelives::CircuitBreakerError> {
     let cfg = CircuitBreakerConfig::new(5, Duration::from_secs(5), 3)?;
     Ok(Policy(CircuitBreakerLayer::new(cfg)?))
 }

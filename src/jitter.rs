@@ -147,6 +147,11 @@ impl Jitter {
         }
     }
 
+    /// Apply jitter, letting the strategy decide whether to use stateful logic.
+    pub fn apply_to(&self, delay: Duration) -> Duration {
+        self.apply_with_state(delay)
+    }
+
     fn as_millis_saturated(duration: Duration) -> u64 {
         duration.as_millis().try_into().unwrap_or(u64::MAX) // Saturate extremely large durations
     }

@@ -1,32 +1,55 @@
 # ninelives-prometheus
 
-In-process Prometheus metrics sink for `ninelives`.
+Prometheus metrics sink for the `ninelives` resilience library. Bring your own `prometheus::Registry`; the sink registers `ninelives_events_total{policy,event}` counters and increments them for each policy event.
 
 ## Usage
 
 ```toml
-ninelives = "0.2"
-ninelives-prometheus = { path = "../ninelives-prometheus", features = ["client"] }
+ninelives = "0.3"
+ninelives-prometheus = "0.3"
+prometheus = "0.13"
 ```
 
 ```rust
+use ninelives::telemetry::{NonBlockingSink, PolicyEvent, RetryEvent};
 use ninelives_prometheus::PrometheusSink;
-use ninelives::telemetry::NonBlockingSink;
-use prometheus::{TextEncoder, Encoder};
-# async fn run() {
-let raw = PrometheusSink::new();
-let sink = NonBlockingSink::with_capacity(raw.clone(), 1024);
-// expose metrics via HTTP
-# let metric_families = raw.registry().gather();
-# let mut buf = Vec::new();
-# TextEncoder::new().encode(&metric_families, &mut buf).unwrap();
-# }
+use prometheus::{Registry, Encoder, TextEncoder};
+use std::time::Duration;
+use tower::Service;
+
+// 1. Create Registry and Sink
+let registry = Registry::new();
+let prom_sink = PrometheusSink::new(registry.clone()); // can return Err; handle in real code
+let mut sink = NonBlockingSink::with_capacity(prom_sink, 1024);
+
+// 2. Emit an event (normally done automatically by policies)
+let event = PolicyEvent::Retry(RetryEvent::Attempt {
+    attempt: 1,
+    delay: Duration::from_millis(50),
+});
+sink.call(event).await.unwrap();
+
+// 3. Verify Metrics (e.g. for serving at /metrics)
+let metric_families = registry.gather();
+assert!(!metric_families.is_empty());
+
+// Encode to text format
+let mut buffer = vec![];
+let encoder = TextEncoder::new();
+encoder.encode(&metric_families, &mut buffer).unwrap();
+let output = String::from_utf8(buffer).unwrap();
+
+println!("{}", output);
+// Output:
+// # HELP ninelives_events_total Total number of policy events
+// # TYPE ninelives_events_total counter
+// ninelives_events_total{event="Retry::Attempt",policy="retry"} 1
 ```
 
-## Behavior
-- Increments `ninelives_events_total{policy="...",event="event"}` per PolicyEvent.
-- Expose via your own HTTP endpoint using the provided registry.
-- Wrap with `NonBlockingSink` to keep request paths fast.
+## Test
 
-## Features
-- `client` (off by default): pulls in `prometheus` crate.
+```bash
+cargo test -p ninelives-prometheus
+```
+
+The integration test instantiates a policy with a nonblocking sink, triggers a PolicyEvent, and verifies the ninelives_events_total counter increments with correct policy and event labels via registry.gather().

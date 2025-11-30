@@ -108,13 +108,23 @@
 //! - **[`CircuitBreakerLayer`]** - Prevent cascading failures
 //! - **[`BulkheadLayer`]** - Limit concurrent requests
 //!
+//! ## Cargo Features
+//!
+//! - **`control`**: Enables the control plane, including `serde` support, `transport`, and schema validation.
+//! - **`adaptive-rwlock`**: Switches the `Adaptive` configuration backend to use `RwLock` (default is `arc-swap`).
+//! - **`arc-swap`**: (Default) Enables the lock-free configuration backend using `arc-swap`.
+//!
 //! For more examples, see the algebra module documentation.
 
+pub mod adaptive;
 mod algebra;
 mod backoff;
 mod bulkhead;
 mod circuit_breaker;
+pub mod circuit_breaker_registry;
 mod clock;
+#[cfg(feature = "control")]
+pub mod control;
 mod error;
 mod jitter;
 mod retry;
@@ -137,6 +147,12 @@ pub use circuit_breaker::{
     CircuitBreakerConfig, CircuitBreakerError, CircuitBreakerLayer, CircuitState,
 };
 pub use clock::{Clock, MonotonicClock};
+#[cfg(feature = "control")]
+pub use control::transport::{Transport, TransportEnvelope, TransportRouter};
+#[cfg(feature = "control")]
+pub use control::transport_channel::ChannelTransport;
+#[cfg(feature = "control")]
+pub use control::{AuthorizationLayer, MemoryAuditSink};
 pub use error::ResilienceError;
 pub use jitter::Jitter;
 pub use retry::{BuildError, RetryLayer, RetryPolicy, RetryPolicyBuilder, RetryService};

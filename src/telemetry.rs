@@ -34,6 +34,8 @@
 //! });
 //! ```
 
+#[cfg(feature = "control")]
+use serde_json::json;
 use std::fmt;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -180,20 +182,7 @@ pub enum BulkheadEvent {
         active_count: usize,
         /// Maximum concurrency limit
         max_concurrency: usize,
-        /// Reason for rejection
-        reason: BulkheadRejectReason,
     },
-    /// The bulkhead semaphore was closed; no further requests accepted.
-    Closed,
-}
-
-/// Reasons a bulkhead rejected a request.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BulkheadRejectReason {
-    /// No permits available (saturated).
-    Saturated,
-    /// Semaphore was closed.
-    Closed,
 }
 
 /// Events emitted by timeout policies.
@@ -235,6 +224,163 @@ impl fmt::Display for PolicyEvent {
     }
 }
 
+#[cfg(feature = "control")]
+#[inline]
+fn clamp_u64(val: u128) -> u64 {
+    val.min(u128::from(u64::MAX)) as u64
+}
+
+/// Convert a PolicyEvent into a JSON value for sinks.
+#[cfg(feature = "control")]
+pub fn event_to_json(event: &PolicyEvent) -> serde_json::Value {
+    match event {
+        PolicyEvent::Retry(r) => match r {
+            RetryEvent::Attempt { attempt, delay } => json!({
+                "kind": "retry_attempt",
+                "attempt": *attempt,
+                "delay_ms": clamp_u64(delay.as_millis()),
+            }),
+            RetryEvent::Exhausted { total_attempts, total_duration } => json!({
+                "kind": "retry_exhausted",
+                "attempts": *total_attempts,
+                "duration_ms": clamp_u64(total_duration.as_millis()),
+            }),
+        },
+        PolicyEvent::CircuitBreaker(c) => match c {
+            CircuitBreakerEvent::Opened { failure_count } => {
+                json!({ "kind": "circuit_opened", "failures": *failure_count })
+            }
+            CircuitBreakerEvent::HalfOpen => json!({ "kind": "circuit_half_open" }),
+            CircuitBreakerEvent::Closed => json!({ "kind": "circuit_closed" }),
+        },
+        PolicyEvent::Bulkhead(b) => match b {
+            BulkheadEvent::Acquired { active_count, max_concurrency } => json!({
+                "kind": "bulkhead_acquired",
+                "active": *active_count,
+                "max": *max_concurrency
+            }),
+            BulkheadEvent::Rejected { active_count, max_concurrency } => json!({
+                "kind": "bulkhead_rejected",
+                "active": *active_count,
+                "max": *max_concurrency
+            }),
+        },
+        PolicyEvent::Timeout(t) => match t {
+            TimeoutEvent::Occurred { timeout } => json!({
+                "kind": "timeout",
+                "timeout_ms": clamp_u64(timeout.as_millis())
+            }),
+        },
+        PolicyEvent::Request(r) => match r {
+            RequestOutcome::Success { duration } => json!({
+                "kind": "request_success",
+                "duration_ms": clamp_u64(duration.as_millis())
+            }),
+            RequestOutcome::Failure { duration } => json!({
+                "kind": "request_failure",
+                "duration_ms": clamp_u64(duration.as_millis())
+            }),
+        },
+    }
+}
+
+#[cfg(all(test, feature = "control"))]
+mod json_tests {
+    use super::*;
+
+    #[test]
+    fn retry_attempt_json() {
+        let v = event_to_json(&PolicyEvent::Retry(RetryEvent::Attempt {
+            attempt: 3,
+            delay: Duration::from_millis(150),
+        }));
+        assert_eq!(v["kind"], "retry_attempt");
+        assert_eq!(v["attempt"], 3);
+        assert_eq!(v["delay_ms"], 150);
+    }
+
+    #[test]
+    fn retry_exhausted_json() {
+        let v = event_to_json(&PolicyEvent::Retry(RetryEvent::Exhausted {
+            total_attempts: 5,
+            total_duration: Duration::from_millis(1200),
+        }));
+        assert_eq!(v["kind"], "retry_exhausted");
+        assert_eq!(v["attempts"], 5);
+        assert_eq!(v["duration_ms"], 1200);
+    }
+
+    #[test]
+    fn circuit_opened_json() {
+        let v = event_to_json(&PolicyEvent::CircuitBreaker(CircuitBreakerEvent::Opened {
+            failure_count: 4,
+        }));
+        assert_eq!(v["kind"], "circuit_opened");
+        assert_eq!(v["failures"], 4);
+    }
+
+    #[test]
+    fn circuit_half_open_json() {
+        let v = event_to_json(&PolicyEvent::CircuitBreaker(CircuitBreakerEvent::HalfOpen));
+        assert_eq!(v["kind"], "circuit_half_open");
+    }
+
+    #[test]
+    fn circuit_closed_json() {
+        let v = event_to_json(&PolicyEvent::CircuitBreaker(CircuitBreakerEvent::Closed));
+        assert_eq!(v["kind"], "circuit_closed");
+    }
+
+    #[test]
+    fn bulkhead_acquired_json() {
+        let v = event_to_json(&PolicyEvent::Bulkhead(BulkheadEvent::Acquired {
+            active_count: 2,
+            max_concurrency: 5,
+        }));
+        assert_eq!(v["kind"], "bulkhead_acquired");
+        assert_eq!(v["active"], 2);
+        assert_eq!(v["max"], 5);
+    }
+
+    #[test]
+    fn bulkhead_rejected_json() {
+        let v = event_to_json(&PolicyEvent::Bulkhead(BulkheadEvent::Rejected {
+            active_count: 5,
+            max_concurrency: 5,
+        }));
+        assert_eq!(v["kind"], "bulkhead_rejected");
+        assert_eq!(v["active"], 5);
+        assert_eq!(v["max"], 5);
+    }
+
+    #[test]
+    fn timeout_json() {
+        let v = event_to_json(&PolicyEvent::Timeout(TimeoutEvent::Occurred {
+            timeout: Duration::from_millis(2500),
+        }));
+        assert_eq!(v["kind"], "timeout");
+        assert_eq!(v["timeout_ms"], 2500);
+    }
+
+    #[test]
+    fn request_success_json() {
+        let v = event_to_json(&PolicyEvent::Request(RequestOutcome::Success {
+            duration: Duration::from_millis(42),
+        }));
+        assert_eq!(v["kind"], "request_success");
+        assert_eq!(v["duration_ms"], 42);
+    }
+
+    #[test]
+    fn request_failure_json() {
+        let v = event_to_json(&PolicyEvent::Request(RequestOutcome::Failure {
+            duration: Duration::from_millis(99),
+        }));
+        assert_eq!(v["kind"], "request_failure");
+        assert_eq!(v["duration_ms"], 99);
+    }
+}
+
 impl fmt::Display for RetryEvent {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -266,10 +412,9 @@ impl fmt::Display for BulkheadEvent {
             BulkheadEvent::Acquired { active_count, max_concurrency } => {
                 write!(f, "Acquired({}/{})", active_count, max_concurrency)
             }
-            BulkheadEvent::Rejected { active_count, max_concurrency, reason } => {
-                write!(f, "Rejected({}/{}, reason={:?})", active_count, max_concurrency, reason)
+            BulkheadEvent::Rejected { active_count, max_concurrency } => {
+                write!(f, "Rejected({}/{})", active_count, max_concurrency)
             }
-            BulkheadEvent::Closed => write!(f, "Closed"),
         }
     }
 }
@@ -858,6 +1003,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::future::Future;
 
     #[test]
     fn test_retry_event_display() {
@@ -875,11 +1021,7 @@ mod tests {
 
     #[test]
     fn test_bulkhead_event_display() {
-        let event = BulkheadEvent::Rejected {
-            active_count: 10,
-            max_concurrency: 10,
-            reason: BulkheadRejectReason::Saturated,
-        };
+        let event = BulkheadEvent::Rejected { active_count: 10, max_concurrency: 10 };
         assert!(event.to_string().contains("Rejected"));
         assert!(event.to_string().contains("10/10"));
     }
@@ -953,12 +1095,80 @@ mod tests {
         tx.call(PolicyEvent::Bulkhead(BulkheadEvent::Rejected {
             active_count: 1,
             max_concurrency: 1,
-            reason: BulkheadRejectReason::Saturated,
         }))
         .await
         .unwrap();
 
         assert!(sink.dropped_count() >= 1);
+    }
+
+    #[tokio::test]
+    async fn test_streaming_sink_last_drop_updates() {
+        use tower::Service;
+
+        let sink = StreamingSink::new(1);
+        let mut tx = sink.clone();
+
+        // drop once to set last_drop
+        tx.call(PolicyEvent::Retry(RetryEvent::Attempt {
+            attempt: 1,
+            delay: Duration::from_millis(5),
+        }))
+        .await
+        .unwrap();
+
+        assert!(sink.last_drop().is_some());
+    }
+
+    #[tokio::test]
+    async fn test_streaming_sink_delivers_to_subscriber() {
+        use tower::Service;
+        let sink = StreamingSink::new(8);
+        let mut rx = sink.subscribe();
+        let mut tx = sink.clone();
+
+        tx.call(PolicyEvent::Timeout(TimeoutEvent::Occurred { timeout: Duration::from_millis(5) }))
+            .await
+            .unwrap();
+        let got = rx.recv().await.expect("message");
+        assert!(matches!(got, PolicyEvent::Timeout(_)));
+    }
+
+    #[tokio::test]
+    async fn test_emit_best_effort_swallows_errors() {
+        #[derive(Clone)]
+        struct Fails;
+        impl TelemetrySink for Fails {
+            type SinkError = std::io::Error;
+        }
+        impl tower::Service<PolicyEvent> for Fails {
+            type Response = ();
+            type Error = std::io::Error;
+            type Future = Pin<Box<dyn Future<Output = Result<(), Self::Error>> + Send>>;
+            fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+                Poll::Ready(Ok(()))
+            }
+            fn call(&mut self, _req: PolicyEvent) -> Self::Future {
+                Box::pin(async { Err(std::io::Error::new(std::io::ErrorKind::Other, "fail")) })
+            }
+        }
+
+        // Should not panic even though sink errors
+        emit_best_effort(
+            Fails,
+            PolicyEvent::Timeout(TimeoutEvent::Occurred { timeout: Duration::from_millis(1) }),
+        )
+        .await;
+    }
+
+    #[test]
+    fn test_policy_event_request_variants_display() {
+        let ok =
+            PolicyEvent::Request(RequestOutcome::Success { duration: Duration::from_millis(5) });
+        let err =
+            PolicyEvent::Request(RequestOutcome::Failure { duration: Duration::from_millis(7) });
+        assert!(format!("{}", ok).contains("Success"));
+        assert!(format!("{}", err).contains("Failure"));
     }
 
     #[tokio::test]

@@ -1,39 +1,60 @@
 # ninelives-otlp
 
-OTLP telemetry sink for the `ninelives` resilience library.
+OTLP telemetry sink for the `ninelives` resilience library. Bring your own `opentelemetry_sdk::logs::SdkLoggerProvider`; events are emitted as OTLP log records (export destination is up to your pipeline).
 
-## Why
-Send `PolicyEvent`s to your existing OTLP collector so you can view Nine Lives telemetry alongside service logs and traces.
+## Usage
 
-## Add to Cargo.toml
 ```toml
-ninelives = "0.2"
-ninelives-otlp = { path = "../ninelives-otlp", features = ["client"] }
+ninelives = "0.3"
+# Published crate usage
+ninelives-otlp = "0.3"
+# For local workspace development, you can instead use:
+# ninelives-otlp = { path = "../ninelives-otlp" }
+opentelemetry = { version = "0.31", features = ["logs"] }
+opentelemetry_sdk = { version = "0.31", features = ["logs", "rt-tokio"] }
+opentelemetry-otlp = { version = "0.31", features = ["logs", "http-proto", "reqwest-client", "reqwest-rustls"] }
+anyhow = "1"
 ```
 
-## Minimal usage
 ```rust
 use ninelives::telemetry::NonBlockingSink;
 use ninelives_otlp::OtlpSink;
+use opentelemetry_otlp::WithExportConfig;
+use std::time::Duration;
 
-// OTEL_EXPORTER_OTLP_ENDPOINT controls where logs go, e.g. http://localhost:4317
 #[tokio::main]
-async fn main() {
-    let sink = NonBlockingSink::with_capacity(OtlpSink::new(), 1024);
-    // attach with .with_sink(sink) on your policies
+async fn main() -> anyhow::Result<()> {
+    let exporter = opentelemetry_otlp::new_exporter()
+        .http()
+        .with_endpoint("http://127.0.0.1:4318")
+        .with_timeout(Duration::from_secs(5))
+        .build_log_exporter()
+        .await?;
+
+    let processor = opentelemetry_sdk::logs::BatchLogProcessor::builder(
+        exporter,
+        opentelemetry_sdk::runtime::Tokio,
+    )
+    .build();
+
+    let provider = opentelemetry_sdk::logs::SdkLoggerProvider::builder()
+        .with_log_processor(processor)
+        .build();
+
+    let raw = OtlpSink::new(provider);
+    let sink = NonBlockingSink::with_capacity(raw, 1024);
+    // attach via .with_sink(...) on your policy layer
+    Ok(())
 }
 ```
 
-## Environment
-- `OTEL_EXPORTER_OTLP_ENDPOINT` (e.g. `http://localhost:4317`)
-- Optional: `OTEL_RESOURCE_ATTRIBUTES` to add service metadata.
+## Integration Test (real OTLP collector)
 
-## What we emit
-- One OTLP Log per `PolicyEvent`
-- Attributes: `component=ninelives`, `event_kind` (retry|circuit_breaker|bulkhead|timeout|request), plus event-specific fields (attempt, delay_ms, failure_count, duration_ms, etc.)
-- Severity: `INFO` for normal flow, `WARN` for failures/timeouts/rejections/exhausted retries.
+```bash
+docker compose up -d
+export NINE_LIVES_TEST_OTLP_ENDPOINT=http://127.0.0.1:4318
+cargo test -p ninelives-otlp
+docker compose down
+```
 
-## Caveats
-- Feature `client` must be enabled; otherwise the sink is a no-op.
-- The current pipeline uses the OTLP log exporter; tracing spans are not emitted.
-- Wrap with `NonBlockingSink` to avoid blocking request paths.
+The test builds an OTLP HTTP log exporter pointed at the collector from `docker-compose.yml` and verifies a `PolicyEvent` is exported successfully.

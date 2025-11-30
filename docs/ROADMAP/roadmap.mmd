@@ -1,0 +1,485 @@
+%% --------------------------------------------------------------------------
+%% Nine Lives Roadmap Diagram
+%% This diagram illustrates the phased development roadmap for the Nine Lives
+%% resilience framework, showing dependencies between tasks and phases.
+%%
+%% Phases:
+%% P1: Core Primitives (Resilience Foundation) - Basic patterns (Retry, Circuit Breaker, Bulkhead, Timeout)
+%% P2: Control Plane (Configuration & Management) - Command router, auth/authz, audit, dynamic config
+%% P3: Observation Plane (Metrics & Aggregation) - Telemetry sinks, event aggregation, control laws
+%% P4: Algebraic Composition (Advanced Policy Patterns) - Fork-Join, Race operators
+%% P5: Autonomous Control Loop (Sentinel Core) - Sentinel, Rhai scripting, meta-policy loop, hot-reload
+%% P6: Safe Policy Promotion (Shadowing & Safety) - Shadowing, shadow events, atomic promotion
+%% P7: Modularization (Crate & Workspace Split) - Extract core, control, observer, sentinel crates
+%% P8: Transport Adapters (External Integration) - HTTP/REST, gRPC, JSONL transports
+%% P9: Advanced Recipes (Operational Patterns) - Canary, Blue/Green, Failover, Auto-Scale scripts
+%% P10: Performance & Stability (Optimization) - Benchmarking, lock/alloc review, chaos tools, tracing
+%%
+%% Status Legend:
+%%   - closed: Task completed (green)
+%%   - blocked: Task is blocked by dependencies (red)
+%%   - open: Task is ready to be picked up (yellow)
+%%
+%% Diagram Direction: TD (Top-Down)
+%% --------------------------------------------------------------------------
+graph TD
+    classDef closed stroke:#28a745,stroke-width:3px;
+    classDef blocked stroke:#dc3545,stroke-width:3px;
+    classDef open stroke:#ffc107,stroke-width:3px;
+    classDef P1 fill:#e1f5fe;
+    classDef P2 fill:#fff3e0;
+    classDef P3 fill:#f3e5f5;
+    classDef P4 fill:#e8eaf6;
+    classDef P5 fill:#fbe9e7;
+    classDef P6 fill:#fce4ec;
+    classDef P7 fill:#e8f5e9;
+    classDef P8 fill:#e0f7fa;
+    classDef P9 fill:#fff8e1;
+    classDef P10 fill:#eceff1;
+    P1.09(["P1.09"])
+    class P1.09 closed,P1
+    P10.01a["Benchmark Crate"]
+    class P10.01a open,P10
+    P10.01b{{"Microbenchmarks"}}
+    class P10.01b blocked,P10
+    P10.01c{{"Profiling Setup"}}
+    class P10.01c blocked,P10
+    P10.01d{{"Targets & Baseline"}}
+    class P10.01d blocked,P10
+    P10.02a{{"Lock Review"}}
+    class P10.02a blocked,P10
+    P10.02b{{"Lock-Free Refactor"}}
+    class P10.02b blocked,P10
+    P10.02c{{"Alloc Review"}}
+    class P10.02c blocked,P10
+    P10.02d{{"LTO/Codegen"}}
+    class P10.02d blocked,P10
+    P10.03a{{"Chaos Tools"}}
+    class P10.03a blocked,P10
+    P10.03b{{"Chaos Test"}}
+    class P10.03b blocked,P10
+    P10.03c{{"Soak Harness"}}
+    class P10.03c blocked,P10
+    P10.03d{{"Load Harness"}}
+    class P10.03d blocked,P10
+    P10.03e{{"Failure Injection"}}
+    class P10.03e blocked,P10
+    P10.04a{{"Tracing Spans"}}
+    class P10.04a blocked,P10
+    P10.04b{{"Prometheus Sink"}}
+    class P10.04b blocked,P10
+    P10.04c{{"Adaptive Metrics"}}
+    class P10.04c blocked,P10
+    P10.04d{{"Flamegraph Docs"}}
+    class P10.04d blocked,P10
+    P2.01(["P2.01"])
+    class P2.01 closed,P2
+    P2.02(["Adaptive RwLock feature flag parity"])
+    class P2.02 closed,P2
+    P2.03(["P2.03"])
+    class P2.03 closed,P2
+    P2.04(["P2.04"])
+    class P2.04 closed,P2
+    P2.05(["P2.05"])
+    class P2.05 closed,P2
+    P2.06(["P2.06"])
+    class P2.06 closed,P2
+    P2.07(["CommandContext schema (id, args, identity, response channel placeholder)"])
+    class P2.07 closed,P2
+    P2.08(["CommandHandler trait (tower::Service<CommandContext>)"])
+    class P2.08 closed,P2
+    P2.09(["ControlPlaneRouter skeleton (auth, dispatch, history)"])
+    class P2.09 closed,P2
+    P2.10(["P2.10"])
+    class P2.10 closed,P2
+    P2.11["System State Query (Debug)"]
+    class P2.11 open,P2
+    P2.12(["ResetCircuitBreaker handler"])
+    class P2.12 closed,P2
+    P2.121(["Circuit breaker registry + ids"])
+    class P2.121 closed,P2
+    P2.13["ListConfig handler"]
+    class P2.13 open,P2
+    P2.14a["Transport Trait & Envelope"]
+    class P2.14a open,P2
+    P2.14b{{"TransportRouter Wrapper"}}
+    class P2.14b blocked,P2
+    P2.15{{"In-process transport (channels)"}}
+    class P2.15 blocked,P2
+    P2.16a["AuthorizationLayer Structure"]
+    class P2.16a open,P2
+    P2.16b{{"Authorization Logic Integration"}}
+    class P2.16b blocked,P2
+    P2.17(["Audit layer"])
+    class P2.17 closed,P2
+    P2.18{{"Router wrapping with AuthZ + Audit policies"}}
+    class P2.18 blocked,P2
+    P2.19{{"Package ninelives-control crate"}}
+    class P2.19 blocked,P2
+    P2.20{{"Docs + examples for control plane"}}
+    class P2.20 blocked,P2
+    P3.01a["Sliding Window Structure"]
+    class P3.01a open,P3
+    P3.01b{{"Window Statistics"}}
+    class P3.01b blocked,P3
+    P3.02a{{"Aggregator Storage"}}
+    class P3.02a blocked,P3
+    P3.02b{{"TelemetrySink Implementation"}}
+    class P3.02b blocked,P3
+    P3.03a{{"ControlLaw Trait"}}
+    class P3.03a blocked,P3
+    P3.03b{{"Feedback Loop Runner"}}
+    class P3.03b blocked,P3
+    P3.04a{{"AIMD Logic"}}
+    class P3.04a blocked,P3
+    P3.04b{{"AIMD Integration"}}
+    class P3.04b blocked,P3
+    P3.05a{{"Retry Budget Logic"}}
+    class P3.05a blocked,P3
+    P3.05b{{"Retry Budget Integration"}}
+    class P3.05b blocked,P3
+    P3.06{{"System State Query Interface"}}
+    class P3.06 blocked,P3
+    P3.07a{{"RateLimitLayer Struct"}}
+    class P3.07a blocked,P3
+    P3.07b{{"Adaptive Quota Integration"}}
+    class P3.07b blocked,P3
+    P3.07c{{"Rate Limiting Recipe"}}
+    class P3.07c blocked,P3
+    P4.01a["ForkJoinService Logic"]
+    class P4.01a open,P4
+    P4.01b{{"ForkJoin Cancellation"}}
+    class P4.01b blocked,P4
+    P4.02a{{"BitAnd Operator"}}
+    class P4.02a blocked,P4
+    P4.03a{{"Race Tests"}}
+    class P4.03a blocked,P4
+    P4.03b{{"Cancellation Tests"}}
+    class P4.03b blocked,P4
+    P4.04a{{"ForkJoin Docs"}}
+    class P4.04a blocked,P4
+    P4.04b{{"ForkJoin Cookbook"}}
+    class P4.04b blocked,P4
+    P5.01a["Sentinel Crate & Struct"]
+    class P5.01a open,P5
+    P5.01b{{"Sentinel Lifecycle"}}
+    class P5.01b blocked,P5
+    P5.01c{{"Sentinel Tests"}}
+    class P5.01c blocked,P5
+    P5.02a{{"Rhai Integration"}}
+    class P5.02a blocked,P5
+    P5.02b{{"Sentinel Observe API"}}
+    class P5.02b blocked,P5
+    P5.02c{{"Sentinel Act API"}}
+    class P5.02c blocked,P5
+    P5.02d{{"Script Sandbox & Validation"}}
+    class P5.02d blocked,P5
+    P5.03a{{"Meta-Policy Loop"}}
+    class P5.03a blocked,P5
+    P5.03b{{"Script Loader"}}
+    class P5.03b blocked,P5
+    P5.03c{{"Hot Reload"}}
+    class P5.03c blocked,P5
+    P5.04a{{"AIMD Script"}}
+    class P5.04a blocked,P5
+    P5.04b{{"Budget Script"}}
+    class P5.04b blocked,P5
+    P5.04c{{"Sentinel Cookbook"}}
+    class P5.04c blocked,P5
+    P6.01a["ShadowLayer Struct"]
+    class P6.01a open,P6
+    P6.01b{{"Adaptive Shadow Support"}}
+    class P6.01b blocked,P6
+    P6.01c{{"Shadow Isolation"}}
+    class P6.01c blocked,P6
+    P6.01d{{"ShadowLayer Unit Tests"}}
+    class P6.01d blocked,P6
+    P6.01e{{"ShadowLayer Integration"}}
+    class P6.01e blocked,P6
+    P6.02a{{"ShadowEvent Definition"}}
+    class P6.02a blocked,P6
+    P6.02b{{"Shadow Emission"}}
+    class P6.02b blocked,P6
+    P6.02c{{"Aggregator Shadow Support"}}
+    class P6.02c blocked,P6
+    P6.02d{{"Metrics Separation Tests"}}
+    class P6.02d blocked,P6
+    P6.03a{{"Atomic Swap Logic"}}
+    class P6.03a blocked,P6
+    P6.03b{{"Promotion Command"}}
+    class P6.03b blocked,P6
+    P6.03c{{"Promotion Meta-Policy"}}
+    class P6.03c blocked,P6
+    P6.03d{{"End-to-End Promotion"}}
+    class P6.03d blocked,P6
+    P6.04a{{"Safety ADR"}}
+    class P6.04a blocked,P6
+    P6.04b{{"Shadow Cookbook"}}
+    class P6.04b blocked,P6
+    P7.01a["Workspace Setup"]
+    class P7.01a open,P7
+    P7.01b{{"Extract Primitives"}}
+    class P7.01b blocked,P7
+    P7.01c{{"Extract Layers"}}
+    class P7.01c blocked,P7
+    P7.01d{{"Meta-Crate Setup"}}
+    class P7.01d blocked,P7
+    P7.01e{{"Cookbook Fixes"}}
+    class P7.01e blocked,P7
+    P7.01f{{"CI Updates"}}
+    class P7.01f blocked,P7
+    P7.02a{{"Extract Control Crate"}}
+    class P7.02a blocked,P7
+    P7.02b{{"Extract Observer Crate"}}
+    class P7.02b blocked,P7
+    P7.02c{{"Move Sentinel Crate"}}
+    class P7.02c blocked,P7
+    P7.02d{{"Re-export Cleanup"}}
+    class P7.02d blocked,P7
+    P7.03a{{"Adapter Guide"}}
+    class P7.03a blocked,P7
+    P7.03b{{"Adapter Template"}}
+    class P7.03b blocked,P7
+    P7.04a{{"CoalesceLayer Logic"}}
+    class P7.04a blocked,P7
+    P7.04b{{"Shared Future Implementation"}}
+    class P7.04b blocked,P7
+    P7.04c{{"Coalescing Tests"}}
+    class P7.04c blocked,P7
+    P8.01a["Wire Format Spec"]
+    class P8.01a open,P8
+    P8.01b{{"Envelope Serde"}}
+    class P8.01b blocked,P8
+    P8.01c{{"Command Serde"}}
+    class P8.01c blocked,P8
+    P8.02a{{"Rest Server Init"}}
+    class P8.02a blocked,P8
+    P8.02b{{"Rest Auth Middleware"}}
+    class P8.02b blocked,P8
+    P8.02c{{"Rest Handlers"}}
+    class P8.02c blocked,P8
+    P8.02d{{"Rest Error Map"}}
+    class P8.02d blocked,P8
+    P8.02e{{"Rest Example"}}
+    class P8.02e blocked,P8
+    P8.03a{{"gRPC Protos"}}
+    class P8.03a blocked,P8
+    P8.03b{{"Tonic Server"}}
+    class P8.03b blocked,P8
+    P8.03c{{"gRPC Auth"}}
+    class P8.03c blocked,P8
+    P8.03d{{"gRPC Client"}}
+    class P8.03d blocked,P8
+    P8.03e{{"gRPC Integ"}}
+    class P8.03e blocked,P8
+    P8.04a{{"GraphQL Research"}}
+    class P8.04a blocked,P8
+    P8.04b{{"MCP Research"}}
+    class P8.04b blocked,P8
+    P8.05a{{"DeadlineContext & Layer"}}
+    class P8.05a blocked,P8
+    P8.05b{{"Header Extraction (Ingress)"}}
+    class P8.05b blocked,P8
+    P8.05c{{"Header Injection (Egress)"}}
+    class P8.05c blocked,P8
+    P9.01a["Canary Sentinel Script"]
+    class P9.01a open,P9
+    P9.01b{{"Canary Recipe"}}
+    class P9.01b blocked,P9
+    P9.01c{{"Blue/Green Script"}}
+    class P9.01c blocked,P9
+    P9.01d{{"Blue/Green Recipe"}}
+    class P9.01d blocked,P9
+    P9.01e{{"Deployment Tests"}}
+    class P9.01e blocked,P9
+    P9.02a{{"Failover Script"}}
+    class P9.02a blocked,P9
+    P9.02b{{"Failback Script"}}
+    class P9.02b blocked,P9
+    P9.02c{{"Multi-Region Recipe"}}
+    class P9.02c blocked,P9
+    P9.02d{{"Region Latency Tests"}}
+    class P9.02d blocked,P9
+    P9.02e{{"Chaos Failover Test"}}
+    class P9.02e blocked,P9
+    P9.03a{{"Auto-Scale Script"}}
+    class P9.03a blocked,P9
+    P9.03b{{"Safety Valve Script"}}
+    class P9.03b blocked,P9
+    P9.03c{{"Scaling Recipe"}}
+    class P9.03c blocked,P9
+    P9.03d{{"Overload Tests"}}
+    class P9.03d blocked,P9
+    P9.03e{{"Valve Trigger Test"}}
+    class P9.03e blocked,P9
+    P9.04a{{"Script Library"}}
+    class P9.04a blocked,P9
+    P9.04b{{"Cookbook Polish"}}
+    class P9.04b blocked,P9
+    P9.04c{{"Full Suite Integration"}}
+    class P9.04c blocked,P9
+    P9.04d{{"Pattern Docs"}}
+    class P9.04d blocked,P9
+    P2.01 --> P2.02
+    P2.01 --> P2.03
+    P2.01 --> P2.04
+    P2.01 --> P2.05
+    P2.01 --> P2.06
+    P2.07 --> P2.08
+    P2.08 --> P2.09
+    P2.03 --> P2.10
+    P2.04 --> P2.10
+    P2.05 --> P2.10
+    P2.05 --> P2.12
+    P2.06 --> P2.10
+    P2.09 --> P2.10
+    P2.09 --> P2.11
+    P2.09 --> P2.12
+    P2.09 --> P2.13
+    P2.09 --> P2.14a
+    P2.09 --> P2.16a
+    P2.09 --> P2.17
+    P2.09 --> P2.18
+    P2.09 --> P2.19
+    P2.14a --> P2.14b
+    P2.14b --> P2.15
+    P2.14b --> P2.19
+    P2.16a --> P2.16b
+    P2.16b --> P2.18
+    P2.17 --> P2.18
+    P2.10 --> P2.19
+    P2.11 --> P2.19
+    P2.12 --> P2.19
+    P2.13 --> P2.19
+    P2.121 --> P2.12
+    P2.121 --> P2.11
+    P2.15 --> P2.19
+    P2.18 --> P2.19
+    P2.19 --> P2.20
+    P3.01a --> P3.01b
+    P3.01b --> P3.02a
+    P3.02a --> P3.02b
+    P3.02b --> P3.03a
+    P3.02b --> P3.06
+    P3.03a --> P3.03b
+    P3.03b --> P3.04a
+    P3.03b --> P3.05a
+    P3.04a --> P3.04b
+    P3.05a --> P3.05b
+    P4.01a --> P4.01b
+    P4.01b --> P4.02a
+    P4.02a --> P4.03a
+    P4.03a --> P4.03b
+    P4.03b --> P4.04a
+    P4.04a --> P4.04b
+    P5.01a --> P5.01b
+    P5.01b --> P5.01c
+    P5.01c --> P5.02a
+    P5.02a --> P5.02b
+    P5.02b --> P5.02c
+    P5.02c --> P5.02d
+    P5.02d --> P5.03a
+    P5.03a --> P5.03b
+    P5.03b --> P5.03c
+    P5.03c --> P5.04a
+    P5.04a --> P5.04b
+    P5.04b --> P5.04c
+    P5.01a --> P2.19
+    P5.01a --> P3.02b
+    P5.02b --> P3.06
+    P6.01a --> P6.01b
+    P6.01b --> P6.01c
+    P6.01c --> P6.01d
+    P6.01d --> P6.01e
+    P6.01e --> P6.02a
+    P6.02a --> P6.02b
+    P6.02b --> P6.02c
+    P6.02c --> P6.02d
+    P6.02d --> P6.03a
+    P6.03a --> P6.03b
+    P6.03b --> P6.03c
+    P6.03c --> P6.03d
+    P6.03d --> P6.04a
+    P6.04a --> P6.04b
+    P6.01a --> P2.09
+    P6.03b --> P2.19
+    P6.02c --> P3.02b
+    P6.03c --> P5.04a
+    P7.01a --> P7.01b
+    P7.01b --> P7.01c
+    P7.01c --> P7.01d
+    P7.01d --> P7.01e
+    P7.01e --> P7.01f
+    P7.01f --> P7.02a
+    P7.02a --> P7.02b
+    P7.02b --> P7.02c
+    P7.02c --> P7.02d
+    P7.02d --> P7.03a
+    P7.03a --> P7.03b
+    P7.01a --> P1.09
+    P7.02a --> P2.19
+    P7.02b --> P3.02b
+    P8.01a --> P8.01b
+    P8.01b --> P8.01c
+    P8.01c --> P8.02a
+    P8.02a --> P8.02b
+    P8.02b --> P8.02c
+    P8.02c --> P8.02d
+    P8.02d --> P8.02e
+    P8.02e --> P8.03a
+    P8.03a --> P8.03b
+    P8.03b --> P8.03c
+    P8.03c --> P8.03d
+    P8.03d --> P8.03e
+    P8.03e --> P8.04a
+    P8.04a --> P8.04b
+    P8.01a --> P2.14b
+    P8.01a --> P7.02a
+    P9.01a --> P9.01b
+    P9.01b --> P9.01c
+    P9.01c --> P9.01d
+    P9.01d --> P9.01e
+    P9.01e --> P9.02a
+    P9.02a --> P9.02b
+    P9.02b --> P9.02c
+    P9.02c --> P9.02d
+    P9.02d --> P9.02e
+    P9.02e --> P9.03a
+    P9.03a --> P9.03b
+    P9.03b --> P9.03c
+    P9.03c --> P9.03d
+    P9.03d --> P9.03e
+    P9.03e --> P9.04a
+    P9.04a --> P9.04b
+    P9.04b --> P9.04c
+    P9.04c --> P9.04d
+    P9.01a --> P6.03d
+    P9.01a --> P4.01b
+    P9.01a --> P5.03c
+    P10.01a --> P10.01b
+    P10.01b --> P10.01c
+    P10.01c --> P10.01d
+    P10.01d --> P10.02a
+    P10.02a --> P10.02b
+    P10.02b --> P10.02c
+    P10.02c --> P10.02d
+    P10.02d --> P10.03a
+    P10.03a --> P10.03b
+    P10.03b --> P10.03c
+    P10.03c --> P10.03d
+    P10.03d --> P10.03e
+    P10.03e --> P10.04a
+    P10.04a --> P10.04b
+    P10.04b --> P10.04c
+    P10.04c --> P10.04d
+    P10.01a --> P1.09
+    P10.01a --> P7.01f
+    P3.03a --> P3.07a
+    P3.07a --> P3.07b
+    P3.07b --> P3.07c
+    P7.01c --> P7.04a
+    P7.04a --> P7.04b
+    P7.04b --> P7.04c
+    P8.01a --> P8.05a
+    P8.05a --> P8.05b
+    P8.05b --> P8.05c

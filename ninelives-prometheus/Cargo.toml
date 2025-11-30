@@ -1,18 +1,20 @@
 [package]
 name = "ninelives-prometheus"
-version = "0.2.0"
-edition = "2021"
-authors = ["James Ross <james@flyingrobots.dev>"]
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
 description = "In-process Prometheus metrics sink for ninelives"
-license = "Apache-2.0"
-publish = false
-repository = "https://github.com/flyingrobots/ninelives"
+license.workspace = true
+publish = true
+repository.workspace = true
+readme = "README.md"
 
 [dependencies]
-ninelives = { version = "0.2.0", path = ".." }
-tower-service = "0.3"
-tracing = "0.1"
-prometheus = { version = "0.14", optional = true }
+ninelives = { workspace = true }
+tracing.workspace = true
+prometheus = { version = "0.14" }
+tower-service = { workspace = true }
+tokio = { workspace = true, features = ["rt", "macros"] }
 
 [features]
-client = ["prometheus"]
+default = []
