@@ -135,12 +135,16 @@ where
         Self { router, transport, to_command }
     }
 
-    /// Decode, route, and encode a response for a raw transport payload (no validation).
-    pub async fn handle(&self, raw: &[u8]) -> Result<Vec<u8>, String> {
+    fn decode_envelope(&self, raw: &[u8]) -> Result<TransportEnvelope, String> {
         if raw.len() > Self::MAX_REQUEST_SIZE {
             return Err("request exceeds maximum size".into());
         }
-        let env = self.transport.decode(raw).map_err(|e| T::map_error(&e))?;
+        self.transport.decode(raw).map_err(|e| T::map_error(&e))
+    }
+
+    /// Decode, route, and encode a response for a raw transport payload (no validation).
+    pub async fn handle(&self, raw: &[u8]) -> Result<Vec<u8>, String> {
+        let env = self.decode_envelope(raw)?;
         let (cmd_env, ctx) = (self.to_command)(env)?;
         let res = self.router.execute(cmd_env).await.map_err(|e| e.to_string())?;
         self.transport.encode(&ctx, &res).map_err(|e| T::map_error(&e))
@@ -198,10 +202,7 @@ where
 {
     /// Decode, validate, route, validate, and encode.
     pub async fn handle(&self, raw: &[u8]) -> Result<Vec<u8>, String> {
-        if raw.len() > TransportRouter::<C, T, Conv>::MAX_REQUEST_SIZE {
-            return Err("request exceeds maximum size".into());
-        }
-        let env = self.inner.transport.decode(raw).map_err(|e| T::map_error(&e))?;
+        let env = self.inner.decode_envelope(raw)?;
         validate_envelope(&env)?;
 
         let (cmd_env, ctx) = (self.inner.to_command)(env)?;
