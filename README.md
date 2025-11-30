@@ -209,11 +209,11 @@ Errors return a structured `CommandFailure` object.
 **⚠️ Persistence Warning:**
 The `ConfigRegistry` is in-memory only. Configuration changes are volatile and will be lost on restart. To persist changes, you must implement the "Snapshot & Restore" pattern using the `GetState` command (export) and `apply_snapshot` API (import). See [docs/ADR-012-config-persistence.md](docs/ADR-012-config-persistence.md).
 
-For full details, see [docs/CONTROL_PLANE_SCHEMA.md](docs/CONTROL_PLANE_SCHEMA.md) and [docs/control-plane.md](docs/control-plane.md).
+For full details, see [docs/control-plane.md](docs/control-plane.md).
 
 ### 🎯 What to read next
 
-* Payload contracts and schemas: `docs/CONTROL_PLANE_SCHEMA.md`
+*   Payload contracts and schemas: `docs/CONTROL_PLANE_SCHEMA.md`
 * Operations (health, validation defaults, snapshot/restore): `docs/OPERATIONS.md`
 * Persistence stance and snapshot hook: `docs/ADR-012-config-persistence.md`
 

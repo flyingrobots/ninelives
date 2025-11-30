@@ -3,8 +3,7 @@
 /.cargo/
 /node_modules/
 
-# Ignore only the workspace-root Cargo.lock; per-crate Cargo.lock files in subdirectories are not ignored.
-/Cargo.lock
+# Keep Cargo.lock under version control for reproducible builds.
 
 # macOS noise
 .DS_Store
