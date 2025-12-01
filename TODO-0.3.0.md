@@ -32,6 +32,6 @@
 - [x] Duplicate breaker ID warning and handle swap.
 - [x] AuthMode::All merged-context behavior.
 - [x] Config/Breaker registry lock error propagation.
-- [ ] GetState error handling for Ack/Error cases.
+- [x] GetState error handling for Ack/Error cases.
 - [x] Etcd feature off: sinks/tests compile; feature on with protoc passes.
 - [x] Retry max_attempts == 0 path (already present).
