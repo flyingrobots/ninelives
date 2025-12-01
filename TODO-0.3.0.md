@@ -4,8 +4,8 @@
 - [x] Circuit breaker registry: warn on duplicate IDs, keep last registration, add unit test; document “last registration wins” in README + docs/OPERATIONS.
 - [x] AuthMode::All: finalize and document merge semantics (principal + merged attributes), add tests; ensure AuthorizationService.poll_ready forwards inner readiness.
 - [x] Config/Breaker registries: replace lock `expect` panics with graceful error returns; propagate via CommandError/CommandFailure; add tests.
-- [ ] Schema validation docs: add docs/SCHEMA_VALIDATION.md, update README/OPERATIONS to describe `NINELIVES_SCHEMA_VALIDATION` env toggle (default on).
-- [ ] Retry: handle `max_attempts == 0` with clear error (already coded) and ensure test passes in CI.
+- [x] Schema validation docs: add docs/SCHEMA_VALIDATION.md, update README/OPERATIONS to describe `NINELIVES_SCHEMA_VALIDATION` env toggle (default on).
+- [x] Retry: handle `max_attempts == 0` with clear error (already coded) and ensure test passes in CI.
 
 ## P1 – High DX/value
 - [ ] Control bootstrap helper: add `control::bootstrap_defaults()` wiring router + ChannelTransport with sane defaults; document in README quick start.
