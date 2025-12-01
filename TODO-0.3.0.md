@@ -26,12 +26,12 @@
 - [x] SECURITY.md: already added logging/telemetry hygiene—cross-link from README.
 
 ## CI
-- [ ] Integration tests workflow: ensure protoc install step aligns with `etcd-client` feature; matrix toggles feature off when protoc absent.
+- [x] Integration tests workflow: ensure protoc install step aligns with `etcd-client` feature; matrix toggles feature off when protoc absent.
 
 ## Tests to add/adjust
-- [ ] Duplicate breaker ID warning and handle swap.
-- [ ] AuthMode::All merged-context behavior.
-- [ ] Config/Breaker registry lock error propagation.
+- [x] Duplicate breaker ID warning and handle swap.
+- [x] AuthMode::All merged-context behavior.
+- [x] Config/Breaker registry lock error propagation.
 - [ ] GetState error handling for Ack/Error cases.
-- [ ] Etcd feature off: sinks/tests compile; feature on with protoc passes.
-- [ ] Retry max_attempts == 0 path (already present).
+- [x] Etcd feature off: sinks/tests compile; feature on with protoc passes.
+- [x] Retry max_attempts == 0 path (already present).
