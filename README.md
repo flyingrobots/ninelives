@@ -70,6 +70,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
   "message":"missing key" }
 ```
 
+**Bootstrap shortcut (dev defaults; replace PassthroughAuth for production):**
+
+```rust
+use std::sync::Arc;
+use ninelives::control::{bootstrap_defaults, BuiltInHandler};
+use ninelives::control::BuiltInCommand;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let handler = Arc::new(BuiltInHandler::default());
+    let (_router, transport) = bootstrap_defaults(handler);
+
+    // Send a health check via the in-process ChannelTransport
+    let cmd = ninelives::control::CommandEnvelope {
+        cmd: BuiltInCommand::Health,
+        auth: None,
+        meta: ninelives::control::CommandMeta { id: "health-1".into(), correlation_id: None, timestamp_millis: None },
+    };
+    let res = transport.send(cmd).await?;
+    println!("Health response: {:?}", res);
+    Ok(0)
+}
+```
+
 For more on payloads and validation see `docs/CONTROL_PLANE_SCHEMA.md`. Schema validation is **on by default** and can be disabled at runtime with `NINELIVES_SCHEMA_VALIDATION=0|false`; see `docs/SCHEMA_VALIDATION.md` for details.
 
 **Circuit Breaker Registry semantics:** IDs must be unique. If the same ID is registered twice, the last registration replaces the prior handle and a warning is logged. Prefer distinct IDs per breaker to avoid accidental replacement.
