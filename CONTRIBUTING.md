@@ -120,7 +120,7 @@ For deeper criteria and examples, follow this checklist and keep it current; if 
 
 **Cargo Dependencies**: Follow standard semantic versioning compatibility.
 
-**Pinning**: Exact version pinning (e.g., `1.2.3`) should only be used when strictly necessary for reproducibility or to work around specific bugs. If you pin a dependency, add a comment explaining why.
+**Pinning**: Exact version pinning (e.g., `1.2.3`) should only be used when strictly necessary for reproducibility or to work around specific bugs. If you pin a dependency, add a comment explaining why. Security-sensitive packages may be temporarily pinned while evaluating/rolling out fixes; document the reason and remove the pin once a patched compatible release is available.
 
 **Policy & Approvals**: Default to caret ranges for npm dev tools (e.g., `markdownlint-cli2`) to pick up patch/minor fixes automatically; security-sensitive packages may be temporarily pinned while a fix is evaluated. Dependency bumps should run CI; security-driven updates can be merged by any maintainer after green CI, routine bumps require standard review. Example: “Use `^0.19.1` for markdownlint-cli2 to track upstream fixes; pin only if a regression is observed.”
 
