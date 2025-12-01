@@ -14,6 +14,7 @@ ninelives = { workspace = true, features = ["telemetry-json"] }
 tracing.workspace = true
 tower-service = { workspace = true }
 serde_json.workspace = true
+# NOTE: pinned to alpha for compatibility with current async API; revisit when 8.19+ stabilizes.
 elasticsearch = { version = "8.19.0-alpha.1", default-features = false, features = ["rustls-tls"] }
 tokio = { workspace = true, features = ["rt", "macros"] }
 
