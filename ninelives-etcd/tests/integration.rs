@@ -21,7 +21,7 @@ async fn writes_events_to_etcd() {
     }
     impl Drop for Cleanup {
         fn drop(&mut self) {
-            let client = self.client.clone();
+            let mut client = self.client.clone();
             let prefix = self.prefix.clone();
             let handle = tokio::runtime::Handle::current();
             let _ = handle.block_on(async move {

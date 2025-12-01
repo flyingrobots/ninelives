@@ -815,7 +815,7 @@ fn cmd_it_etcd() -> Result<()> {
         .with_context(|| format!("waiting for etcd at {}", host_port))?;
 
     let status = Command::new("cargo")
-        .args(["test", "-p", "ninelives-etcd"])
+        .args(["test", "-p", "ninelives-etcd", "--features", "etcd-client"])
         .env(env_var, &url)
         .status()
         .context("running cargo test -p ninelives-etcd")?;

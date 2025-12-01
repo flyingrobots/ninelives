@@ -34,7 +34,6 @@
 //! });
 //! ```
 
-#[cfg(feature = "control")]
 #[cfg(feature = "telemetry-json")]
 use serde_json::json;
 use std::fmt;

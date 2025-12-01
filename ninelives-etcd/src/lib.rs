@@ -1,3 +1,5 @@
+#![cfg(feature = "etcd-client")]
+
 //! etcd telemetry sink for `ninelives` (companion crate).
 //! Bring your own `etcd_client::Client`; events are stored as JSON under a prefix.
 
@@ -81,4 +83,3 @@ impl tower_service::Service<PolicyEvent> for EtcdSink {
 impl TelemetrySink for EtcdSink {
     type SinkError = Infallible;
 }
-#![cfg(feature = "etcd-client")]

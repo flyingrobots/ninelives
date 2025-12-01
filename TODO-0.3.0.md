@@ -10,8 +10,8 @@
 ## P1 – High DX/value
 - [x] Control bootstrap helper: add `control::bootstrap_defaults()` wiring router + ChannelTransport with sane defaults; document in README quick start.
 - [x] Telemetry JSON feature: clarify `telemetry-json` feature in README; ensure sinks build with/without it (no-ops or compile-time message).
-- [ ] GetState JSON assembly: refactor to helper using `json!`; improve ConfigRegistry error messages (include requested key + available keys).
-- [ ] Etcd sink: gate crate behind `etcd-client` feature; ensure CI enables it only when protoc installed.
+- [x] GetState JSON assembly: refactor to helper using `json!`; improve ConfigRegistry error messages (include requested key + available keys).
+- [x] Etcd sink: gate crate behind `etcd-client` feature; ensure CI enables it only when protoc installed.
 
 ## P2 – Quality & hygiene
 - [ ] Auth aggregation SoC: split authenticate/authorize/aggregate helpers for clarity; tests.
