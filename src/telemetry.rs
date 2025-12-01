@@ -379,6 +379,18 @@ mod json_tests {
         assert_eq!(v["kind"], "request_failure");
         assert_eq!(v["duration_ms"], 99);
     }
+
+    #[test]
+    fn telemetry_json_contains_no_auth_fields() {
+        let v = event_to_json(&PolicyEvent::Request(RequestOutcome::Success {
+            duration: Duration::from_millis(1),
+        }));
+        let s = serde_json::to_string(&v).unwrap();
+        assert!(
+            !s.contains("auth"),
+            "telemetry JSON should not carry auth payloads; got {s}"
+        );
+    }
 }
 
 impl fmt::Display for RetryEvent {

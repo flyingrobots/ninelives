@@ -16,8 +16,8 @@
 ## P2 – Quality & hygiene
 - [x] Auth aggregation SoC: split authenticate/authorize/aggregate helpers for clarity; tests.
 - [x] Retry loop micro-optimization: preallocate failure buffer, simplify helpers.
-- [ ] Elastic sink dependency: add note justifying alpha pin or move to stable 8.x.
-- [ ] Logging/telemetry hygiene: document redaction rules; ensure sinks strip/hash sensitive payloads; add a basic redaction test.
+- [x] Elastic sink dependency: add note justifying alpha pin or move to stable 8.x.
+- [x] Logging/telemetry hygiene: document redaction rules; ensure sinks strip/hash sensitive payloads; add a basic redaction test.
 
 ## Docs & ops
 - [ ] Update README: schema toggle, telemetry-json flag, bootstrap helper snippet.

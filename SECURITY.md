@@ -32,3 +32,4 @@ The core library provides transport abstractions but does not enforce encryption
 - Use structured logging with redaction/masking or hashing for sensitive fields before they leave the process.
 - Audit telemetry/metrics sinks (and CI artifacts) to ensure they never export auth tokens or confidential configuration; apply automated redaction/secret-scanning (e.g., git-secrets, truffleHog, GitHub secret scanning) to catch leaks.
 - Apply redaction filters in custom sinks and dashboards; align practices with `docs/ADR-002-auth.md`.
+- The built-in telemetry JSON conversion (`telemetry::event_to_json`) deliberately omits auth payloads; ensure custom sinks preserve this property or hash/redact any caller metadata before export.
