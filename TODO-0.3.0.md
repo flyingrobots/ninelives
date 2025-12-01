@@ -22,7 +22,7 @@
 ## Docs & ops
 - [ ] Update README: schema toggle, telemetry-json flag, bootstrap helper snippet.
 - [x] Add ARCHITECTURE.md (layers, control plane, transports) and note feature flags.
-- [ ] CONTRIBUTING/DEPENDENCY_VERSIONING: keep npm caret policy note; mention security pin exceptions.
+- [x] CONTRIBUTING/DEPENDENCY_VERSIONING: keep npm caret policy note; mention security pin exceptions.
 - [ ] SECURITY.md: already added logging/telemetry hygiene—cross-link from README.
 
 ## CI

@@ -35,6 +35,8 @@ tokio = { version = "1", features = ["full"] }
 cargo test --all-features --all-targets
 ```
 
+**Security note:** Review `SECURITY.md` for authentication, transport, and logging/telemetry hygiene guidance (e.g., avoid logging raw tokens/certs; use `NINELIVES_SCHEMA_VALIDATION` for payload checks).
+
 1) Minimal policy usage:
 
 ```rust
