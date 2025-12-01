@@ -110,8 +110,9 @@ where
         T: Send,
         Fut: Future<Output = Result<T, ResilienceError<E>>> + Send,
         Op: FnMut() -> Fut + Send,
+        E: Clone,
     {
-        let mut failures: VecDeque<E> = VecDeque::new();
+        let mut failures: VecDeque<E> = VecDeque::with_capacity(MAX_RETRY_FAILURES);
         let max_attempts = *self.max_attempts.get();
         let backoff = self.backoff.get();
         let jitter = self.jitter.get();
@@ -129,14 +130,14 @@ where
                     }
 
                     failures.push_back(e);
-                    while failures.len() > MAX_RETRY_FAILURES {
+                    if failures.len() > MAX_RETRY_FAILURES {
                         failures.pop_front();
                     }
 
                     if attempt + 1 >= max_attempts {
                         return Err(ResilienceError::retry_exhausted(
                             max_attempts,
-                            failures.into_iter().collect(),
+                            failures.iter().cloned().collect(),
                         ));
                     }
 
