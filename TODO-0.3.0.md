@@ -20,10 +20,10 @@
 - [x] Logging/telemetry hygiene: document redaction rules; ensure sinks strip/hash sensitive payloads; add a basic redaction test.
 
 ## Docs & ops
-- [ ] Update README: schema toggle, telemetry-json flag, bootstrap helper snippet.
+- [x] Update README: schema toggle, telemetry-json flag, bootstrap helper snippet.
 - [x] Add ARCHITECTURE.md (layers, control plane, transports) and note feature flags.
 - [x] CONTRIBUTING/DEPENDENCY_VERSIONING: keep npm caret policy note; mention security pin exceptions.
-- [ ] SECURITY.md: already added logging/telemetry hygiene—cross-link from README.
+- [x] SECURITY.md: already added logging/telemetry hygiene—cross-link from README.
 
 ## CI
 - [ ] Integration tests workflow: ensure protoc install step aligns with `etcd-client` feature; matrix toggles feature off when protoc absent.
