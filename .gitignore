@@ -37,3 +37,7 @@ Thumbs.db
 .obsidian/
 # Claude conversations/artifacts (developer local)
 .claude/
+
+# ignore. files
+ignore.*
+
