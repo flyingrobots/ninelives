@@ -40,7 +40,7 @@ This roadmap focuses on graduating the Control Plane from "experimental" to "pro
   - **Task:** Split into `telemetry/events.rs`, `telemetry/sinks.rs`, `telemetry/context.rs`.
   - **Estimate:** 2h
 
-- [ ] **Feat: Dependency Injection for Testing**
+- [x] **Feat: Dependency Injection for Testing**
   - **Context:** Hard to test policies deterministically.
   - **Task:** Introduce `MockClock` and `RecordingSink` traits/structs accessible to users.
   - **Estimate:** 3h

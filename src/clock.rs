@@ -1,6 +1,7 @@
 //! Clock abstractions used by circuit breakers and other time-based policies.
 
 use std::time::Instant;
+use std::sync::{Arc, atomic::{AtomicU64, Ordering}};
 
 /// Thread-safe time source abstraction.
 ///
@@ -46,10 +47,46 @@ impl Clock for MonotonicClock {
     }
 }
 
+/// A controllable clock for testing.
+///
+/// Allows manually advancing time to test timeout and circuit breaker logic deterministically.
+#[derive(Debug, Clone)]
+pub struct MockClock {
+    now: Arc<AtomicU64>,
+}
+
+impl MockClock {
+    /// Create a new mock clock starting at 0.
+    pub fn new() -> Self {
+        Self { now: Arc::new(AtomicU64::new(0)) }
+    }
+
+    /// Advance the clock by the specified milliseconds.
+    pub fn advance_millis(&self, ms: u64) {
+        self.now.fetch_add(ms, Ordering::SeqCst);
+    }
+
+    /// Set the clock to a specific absolute time (millis).
+    pub fn set_millis(&self, ms: u64) {
+        self.now.store(ms, Ordering::SeqCst);
+    }
+}
+
+impl Default for MockClock {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Clock for MockClock {
+    fn now_millis(&self) -> u64 {
+        self.now.load(Ordering::SeqCst)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
     use std::thread;
     use std::time::Duration;
 
@@ -108,5 +145,15 @@ mod tests {
         for h in handles {
             h.join().unwrap();
         }
+    }
+
+    #[test]
+    fn mock_clock_advances() {
+        let clock = MockClock::new();
+        assert_eq!(clock.now_millis(), 0);
+        clock.advance_millis(100);
+        assert_eq!(clock.now_millis(), 100);
+        clock.set_millis(500);
+        assert_eq!(clock.now_millis(), 500);
     }
 }
