@@ -77,7 +77,13 @@ pub type DefaultCircuitBreakerRegistry = InMemoryCircuitBreakerRegistry;
 
 impl CircuitBreakerRegistry for InMemoryCircuitBreakerRegistry {
     fn register(&self, id: String, handle: CircuitBreakerHandle) {
-        let mut map = self.inner.write().expect("circuit breaker registry poisoned");
+        let mut map = match self.inner.write() {
+            Ok(guard) => guard,
+            Err(_) => {
+                warn!(target: "ninelives::circuit_breaker_registry", id = %id, "register failed: lock poisoned");
+                return;
+            }
+        };
         if map.contains_key(&id) {
             warn!(target: "ninelives::circuit_breaker_registry", id = %id, "circuit breaker id replaced; last registration wins");
         }
@@ -85,19 +91,20 @@ impl CircuitBreakerRegistry for InMemoryCircuitBreakerRegistry {
     }
 
     fn get(&self, id: &str) -> Option<CircuitBreakerHandle> {
-        let guard = self.inner.read().expect("circuit breaker registry poisoned");
+        let guard = self.inner.read().ok()?;
         guard.get(id).cloned()
     }
 
     fn reset(&self, id: &str) -> Result<(), CircuitBreakerRegistryError> {
-        let guard = self.inner.read().expect("circuit breaker registry poisoned");
-        match guard.get(id) {
-            Some(handle) => {
+        let guard = self.inner.read().map_err(|_| {
+            CircuitBreakerRegistryError::NotFound { id: format!("{id} (lock poisoned)") }
+        })?;
+        guard
+            .get(id)
+            .map(|handle| {
                 handle.reset();
-                Ok(())
-            }
-            None => Err(CircuitBreakerRegistryError::NotFound { id: id.to_string() }),
-        }
+            })
+            .ok_or(CircuitBreakerRegistryError::NotFound { id: id.to_string() })
     }
 
     fn register_new(&self, id: String) {
@@ -107,11 +114,14 @@ impl CircuitBreakerRegistry for InMemoryCircuitBreakerRegistry {
     }
 
     fn snapshot(&self) -> Vec<(String, CircuitState)> {
-        let map = self.inner.read().expect("circuit breaker registry poisoned");
-        let mut entries: Vec<(String, CircuitState)> =
-            map.iter().map(|(k, v)| (k.clone(), v.state())).collect();
-        entries.sort_by(|a, b| a.0.cmp(&b.0));
-        entries
+        if let Ok(map) = self.inner.read() {
+            let mut entries: Vec<(String, CircuitState)> =
+                map.iter().map(|(k, v)| (k.clone(), v.state())).collect();
+            entries.sort_by(|a, b| a.0.cmp(&b.0));
+            entries
+        } else {
+            Vec::new()
+        }
     }
 }
 

@@ -3,7 +3,7 @@
 ## P0 – Must fix before release
 - [x] Circuit breaker registry: warn on duplicate IDs, keep last registration, add unit test; document “last registration wins” in README + docs/OPERATIONS.
 - [x] AuthMode::All: finalize and document merge semantics (principal + merged attributes), add tests; ensure AuthorizationService.poll_ready forwards inner readiness.
-- [ ] Config/Breaker registries: replace lock `expect` panics with graceful error returns; propagate via CommandError/CommandFailure; add tests.
+- [x] Config/Breaker registries: replace lock `expect` panics with graceful error returns; propagate via CommandError/CommandFailure; add tests.
 - [ ] Schema validation docs: add docs/SCHEMA_VALIDATION.md, update README/OPERATIONS to describe `NINELIVES_SCHEMA_VALIDATION` env toggle (default on).
 - [ ] Retry: handle `max_attempts == 0` with clear error (already coded) and ensure test passes in CI.
 

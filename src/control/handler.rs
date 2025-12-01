@@ -178,7 +178,9 @@ impl InMemoryConfigRegistry {
         P: Fn(&str) -> Result<T, String> + Send + Sync + 'static,
         R: Fn(&T) -> String + Send + Sync + 'static,
     {
-        self.entries.write().expect("config registry lock poisoned").insert(
+        let mut guard =
+            self.entries.write().map_err(|_| "config registry lock poisoned".to_string()).unwrap();
+        guard.insert(
             path.into(),
             Box::new(GenericConfig { handle, parse: Arc::new(parse), render: Arc::new(render) }),
         );
@@ -186,29 +188,30 @@ impl InMemoryConfigRegistry {
 
     /// Write a value to a registered config key.
     pub fn write(&self, path: &str, raw: &str) -> Result<(), String> {
-        let guard = self.entries.read().expect("config registry lock poisoned");
+        let guard = self.entries.read().map_err(|_| "config registry lock poisoned".to_string())?;
         let entry = guard.get(path).ok_or_else(|| format!("unknown config path: {path}"))?;
         entry.write(raw)
     }
 
     /// Read a value from a registered config key.
     pub fn read(&self, path: &str) -> Result<String, String> {
-        let guard = self.entries.read().expect("config registry lock poisoned");
+        let guard = self.entries.read().map_err(|_| "config registry lock poisoned".to_string())?;
         let entry = guard.get(path).ok_or_else(|| format!("unknown config path: {path}"))?;
         entry.read()
     }
 
     /// List registered config keys (sorted).
-    pub fn keys(&self) -> Vec<String> {
-        let mut keys: Vec<String> =
-            self.entries.read().expect("config registry lock poisoned").keys().cloned().collect();
+    pub fn keys(&self) -> Result<Vec<String>, String> {
+        let guard = self.entries.read().map_err(|_| "config registry lock poisoned".to_string())?;
+        let mut keys: Vec<String> = guard.keys().cloned().collect();
         keys.sort();
-        keys
+        Ok(keys)
     }
 
     /// Check whether a config key is registered.
-    pub fn contains(&self, path: &str) -> bool {
-        self.entries.read().expect("config registry lock poisoned").contains_key(path)
+    pub fn contains(&self, path: &str) -> Result<bool, String> {
+        let guard = self.entries.read().map_err(|_| "config registry lock poisoned".to_string())?;
+        Ok(guard.contains_key(path))
     }
 }
 
@@ -220,10 +223,10 @@ impl ConfigRegistry for InMemoryConfigRegistry {
         InMemoryConfigRegistry::read(self, path)
     }
     fn keys(&self) -> Vec<String> {
-        InMemoryConfigRegistry::keys(self)
+        InMemoryConfigRegistry::keys(self).unwrap_or_default()
     }
     fn contains(&self, path: &str) -> bool {
-        InMemoryConfigRegistry::contains(self, path)
+        InMemoryConfigRegistry::contains(self, path).unwrap_or(false)
     }
 
     fn apply_snapshot(
@@ -241,6 +244,36 @@ impl ConfigRegistry for InMemoryConfigRegistry {
         } else {
             Err(errors)
         }
+    }
+}
+
+#[cfg(test)]
+mod config_tests {
+    use super::*;
+    use crate::adaptive::Adaptive;
+
+    #[test]
+    fn registry_poison_errors_are_propagated() {
+        let reg = InMemoryConfigRegistry::new();
+        reg.register(
+            "k",
+            Adaptive::new(1u32),
+            |s| s.parse().map_err(|_| "parse".into()),
+            |v| v.to_string(),
+        );
+
+        // Poison the lock deliberately.
+        let entries_ptr = &reg.entries;
+        let _ = std::panic::catch_unwind(|| {
+            let _guard = entries_ptr.write().unwrap();
+            panic!("poison");
+        });
+
+        let err = reg.read("k").expect_err("should error on poison");
+        assert!(
+            err.contains("lock poisoned"),
+            "error should mention lock poisoning, got {err}"
+        );
     }
 }
 
