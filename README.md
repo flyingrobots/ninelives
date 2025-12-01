@@ -70,7 +70,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
   "message":"missing key" }
 ```
 
-For more on payloads and validation see `docs/CONTROL_PLANE_SCHEMA.md` (schema-validation is on by default).
+For more on payloads and validation see `docs/CONTROL_PLANE_SCHEMA.md`. Schema validation is **on by default** and can be disabled at runtime with `NINELIVES_SCHEMA_VALIDATION=0|false`; see `docs/SCHEMA_VALIDATION.md` for details.
 
 **Circuit Breaker Registry semantics:** IDs must be unique. If the same ID is registered twice, the last registration replaces the prior handle and a warning is logged. Prefer distinct IDs per breaker to avoid accidental replacement.
 

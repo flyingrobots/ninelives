@@ -7,7 +7,7 @@
 
 ## Schema Validation
 
-- JSON schema validation is **enabled by default** and controlled at runtime via the `NINELIVES_SCHEMA_VALIDATION` environment variable (set `NINELIVES_SCHEMA_VALIDATION=0` or `false` to disable).
+- JSON schema validation is **enabled by default** and controlled at runtime via the `NINELIVES_SCHEMA_VALIDATION` environment variable (set `NINELIVES_SCHEMA_VALIDATION=0` or `false` to disable). See `docs/SCHEMA_VALIDATION.md` for full behavior.
 - There is no `schema-validation` Cargo feature in `Cargo.toml`; to exclude validation code at compile time you must omit the `control` feature entirely.
 
 ## Telemetry Wiring
