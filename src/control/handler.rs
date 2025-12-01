@@ -401,9 +401,9 @@ impl BreakerService {
     }
 
     fn registry(&self) -> Result<&Arc<dyn CircuitBreakerRegistry>, CommandError> {
-        self.registry
-            .as_ref()
-            .ok_or(CommandError::Handler("circuit breaker registry not set".into()))
+        self.registry.as_ref().ok_or(CommandError::BreakerRegistryMissing {
+            hint: "Inject via ControlBuilder::with_circuit_breaker_registry()",
+        })
     }
 
     fn reset(&self, id: &str) -> Result<CommandResult, CommandError> {
@@ -422,6 +422,35 @@ impl BreakerService {
         let reg = self.registry()?;
         Ok(reg.snapshot())
     }
+}
+
+fn build_state_snapshot(state: &ControlState) -> Result<CommandResult, CommandError> {
+    let breakers = match state.breakers.snapshot() {
+        Ok(b) => b,
+        Err(e) => return Err(e),
+    };
+    let breaker_map: serde_json::Map<String, serde_json::Value> = breakers
+        .into_iter()
+        .map(|(id, s)| (id, serde_json::Value::String(s.to_string())))
+        .collect();
+
+    let mut config_obj = serde_json::Map::new();
+    if let Some(reg) = state.config.registry() {
+        for key in reg.keys() {
+            if let Ok(val) = reg.read(&key) {
+                config_obj.insert(key, serde_json::Value::String(val));
+            }
+        }
+    }
+
+    let root = serde_json::json!({
+        "breakers": serde_json::Value::Object(breaker_map),
+        "config": serde_json::Value::Object(config_obj),
+    });
+
+    serde_json::to_string(&root)
+        .map(CommandResult::Value)
+        .map_err(|e| CommandError::Handler(format!("failed to serialize state: {e}")))
 }
 
 /// Aggregated state/services for built-in commands.
@@ -523,32 +552,7 @@ impl BuiltInHandler {
         match cmd {
             BuiltInCommand::ResetCircuitBreaker { id } => Some(self.state.breakers.reset(id)),
             BuiltInCommand::GetState => {
-                let breakers = match self.state.breakers.snapshot() {
-                    Ok(b) => b,
-                    Err(e) => return Some(Err(e)),
-                };
-                let breaker_map: serde_json::Map<String, serde_json::Value> = breakers
-                    .into_iter()
-                    .map(|(id, state)| (id, serde_json::Value::String(state.to_string())))
-                    .collect();
-
-                let mut config_map = serde_json::Map::new();
-                if let Some(reg) = self.state.config.registry() {
-                    for key in reg.keys() {
-                        if let Ok(val) = reg.read(&key) {
-                            config_map.insert(key, serde_json::Value::String(val));
-                        }
-                    }
-                }
-
-                let mut root = serde_json::Map::new();
-                root.insert("breakers".into(), serde_json::Value::Object(breaker_map));
-                root.insert("config".into(), serde_json::Value::Object(config_map));
-
-                let res = serde_json::to_string(&root)
-                    .map(CommandResult::Value)
-                    .map_err(|e| CommandError::Handler(format!("failed to serialize state: {e}")));
-                Some(res)
+                Some(build_state_snapshot(&self.state))
             }
             BuiltInCommand::Health => Some(Ok(CommandResult::Value(
                 serde_json::json!({
