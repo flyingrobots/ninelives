@@ -20,6 +20,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let adaptive_attempts = retry.adaptive_max_attempts();
     let initial_attempts = *adaptive_attempts.get();
     println!("Initial retry.max_attempts = {}", initial_attempts);
+    assert_eq!(
+        initial_attempts, 3,
+        "Default retry.max_attempts should start at 3 before runtime updates"
+    );
 
     // Register adaptive knob with the config registry
     let mut cfg = DefaultConfigRegistry::new();

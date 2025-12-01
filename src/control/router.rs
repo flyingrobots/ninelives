@@ -126,6 +126,17 @@ pub struct CommandRouter<C> {
     audit: Option<Arc<dyn AuditSink>>,
 }
 
+impl<C> Clone for CommandRouter<C> {
+    fn clone(&self) -> Self {
+        Self {
+            auth: self.auth.clone(),
+            handler: self.handler.clone(),
+            history: self.history.clone(),
+            audit: self.audit.clone(),
+        }
+    }
+}
+
 impl<C> CommandRouter<C>
 where
     C: Send + Sync + Clone + CommandLabel + 'static,

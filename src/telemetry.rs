@@ -35,6 +35,7 @@
 //! ```
 
 #[cfg(feature = "control")]
+#[cfg(feature = "telemetry-json")]
 use serde_json::json;
 use std::fmt;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -224,14 +225,14 @@ impl fmt::Display for PolicyEvent {
     }
 }
 
-#[cfg(feature = "control")]
+#[cfg_attr(not(feature = "telemetry-json"), allow(dead_code))]
 #[inline]
 fn clamp_u64(val: u128) -> u64 {
     val.min(u128::from(u64::MAX)) as u64
 }
 
 /// Convert a PolicyEvent into a JSON value for sinks.
-#[cfg(feature = "control")]
+#[cfg(feature = "telemetry-json")]
 pub fn event_to_json(event: &PolicyEvent) -> serde_json::Value {
     match event {
         PolicyEvent::Retry(r) => match r {
@@ -284,7 +285,7 @@ pub fn event_to_json(event: &PolicyEvent) -> serde_json::Value {
     }
 }
 
-#[cfg(all(test, feature = "control"))]
+#[cfg(all(test, feature = "telemetry-json"))]
 mod json_tests {
     use super::*;
 

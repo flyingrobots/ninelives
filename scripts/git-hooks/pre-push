@@ -80,7 +80,7 @@ fi
 if [ ! -s docs/ROADMAP/DAG.csv ]; then
   echo "[pre-push] docs/ROADMAP/DAG.csv missing or empty after sync" >&2
   exit 1
-}
+fi
 
 ROADMAP_HASH_AFTER=$(git hash-object docs/ROADMAP/DAG.csv 2>/dev/null || echo "none")
 

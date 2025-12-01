@@ -116,6 +116,10 @@ where
         let backoff = self.backoff.get();
         let jitter = self.jitter.get();
 
+        if max_attempts == 0 {
+            return Err(ResilienceError::retry_exhausted(0, Vec::new()));
+        }
+
         for attempt in 0..max_attempts {
             match operation().await {
                 Ok(value) => return Ok(value),
@@ -387,6 +391,33 @@ mod tests {
                 assert!(failures.len() <= crate::error::MAX_RETRY_FAILURES);
             }
             _ => panic!("expected retry exhausted"),
+        }
+    }
+
+    #[tokio::test]
+    async fn zero_max_attempts_returns_exhausted() {
+        let policy = RetryPolicy::builder()
+            .max_attempts(1)
+            .backoff(Backoff::constant(Duration::from_millis(1)))
+            .with_sleeper(InstantSleeper)
+            .build()
+            .expect("builder");
+
+        // simulate dynamic config driving attempts to zero at runtime
+        policy.adaptive_max_attempts().set(0);
+
+        let result = policy
+            .execute(|| async {
+                Err::<(), _>(ResilienceError::Inner(TestError("fail".to_string())))
+            })
+            .await;
+
+        match result.unwrap_err() {
+            ResilienceError::RetryExhausted { attempts, failures } => {
+                assert_eq!(attempts, 0);
+                assert!(failures.is_empty());
+            }
+            other => panic!("expected RetryExhausted on zero attempts, got {:?}", other),
         }
     }
 

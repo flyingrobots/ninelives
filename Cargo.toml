@@ -79,7 +79,8 @@ serde_json.workspace = true
 loom = "0.7"
 
 [features]
-control = ["serde", "serde_json", "jsonschema", "base64"]
+control = ["serde", "serde_json", "jsonschema", "base64", "telemetry-json"]
+telemetry-json = ["serde_json"]
 adaptive-rwlock = []
 loom = []
 bench-telemetry = []

@@ -10,7 +10,7 @@ repository.workspace = true
 readme = "README.md"
 
 [dependencies]
-ninelives = { workspace = true }
+ninelives = { workspace = true, features = ["telemetry-json"] }
 serde_json.workspace = true
 tracing.workspace = true
 rdkafka = { version = "0.38", features = ["tokio"] }

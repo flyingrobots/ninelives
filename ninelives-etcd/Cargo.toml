@@ -10,14 +10,15 @@ repository.workspace = true
 readme = "README.md"
 
 [dependencies]
-ninelives = { workspace = true }
+ninelives = { workspace = true, features = ["telemetry-json"] }
 tracing.workspace = true
 serde_json.workspace = true
 tokio = { workspace = true, features = ["rt", "macros"] }
 tower-service = { workspace = true }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
-etcd-client = { version = "0.11", features = ["tls"] }
+etcd-client = { version = "0.11", features = ["tls"], optional = true }
 uuid.workspace = true
 
 [features]
 default = []
+etcd-client = ["dep:etcd-client"]

@@ -12,6 +12,7 @@ use ninelives::control::{
 // then export it back out.
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Expected JSON format, e.g.: {"retry.max_attempts":"3","timeout.ms":"1000"}
     let snapshot_path = Path::new("state.json");
 
     // 1) Build registry and register keys with parsing/formatting.
@@ -23,7 +24,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if snapshot_path.exists() {
         let data = fs::read_to_string(snapshot_path)?;
         let map: HashMap<String, String> = serde_json::from_str(&data)?;
+        // In a real service you'd surface structured per-key errors; for brevity we collapse here.
         registry.apply_snapshot(map).map_err(|errs| errs.join(" | "))?;
+        println!("Loaded snapshot from {}", snapshot_path.display());
     }
 
     // 3) Wire the handler with the hydrated registry.
@@ -38,6 +41,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         meta: CommandMeta { id: "1".into(), correlation_id: None, timestamp_millis: None },
     };
     handler.handle(env, Default::default()).await?;
+    println!("Updated retry.max_attempts to 5");
 
     // 5) Export snapshot via GetState and persist.
     let state_env = CommandEnvelope {
@@ -46,8 +50,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         meta: CommandMeta { id: "2".into(), correlation_id: None, timestamp_millis: None },
     };
     let state = handler.handle(state_env, Default::default()).await?;
-    if let CommandResult::Value(s) = state {
-        fs::write(snapshot_path, s)?;
+    match state {
+        CommandResult::Value(s) => {
+            fs::write(snapshot_path, s)?;
+            println!("Persisted snapshot to {}", snapshot_path.display());
+        }
+        CommandResult::Ack => {
+            return Err("GetState returned Ack without payload".into());
+        }
+        CommandResult::Error(fail) => {
+            return Err(format!("GetState failed: {}", fail).into());
+        }
+        other => {
+            return Err(format!("GetState returned unexpected result: {:?}", other).into());
+        }
     }
 
     Ok(())

@@ -72,6 +72,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 For more on payloads and validation see `docs/CONTROL_PLANE_SCHEMA.md` (schema-validation is on by default).
 
+**Circuit Breaker Registry semantics:** IDs must be unique. If the same ID is registered twice, the last registration replaces the prior handle and a warning is logged. Prefer distinct IDs per breaker to avoid accidental replacement.
+
 ---
 
 ## ⚗️ The Algebra of Resilience
@@ -182,7 +184,7 @@ Nine Lives is designed to integrate with your infrastructure:
 | :------------------------------------ | :-----------: | :-----------------: | :--------: | :---------: | :------------: |
 | **1. Uniform `Service` Abstraction**  |       ✅       |          ❌          |     ❌      |      ✅      |       ✅        |
 | **2. Fractal/Recursive Architecture** |       ✅       |          ❌          |     ❌      |      ❌      |       ✅        |
-| **3. Algebraic Composition**          |       ✅       |          ❌          |     ❌      |      ❌      |       ❌        |
+| **3. Algebraic Composition**          |      Yes       |         No          |     No      |      No      |       No        |
 | **4. Composable Telemetry Sinks**     |       ✅       |          ❌          |     ❌      |      ❌      |       ❌        |
 | **5. Live Policy Updates**            |       ✅       |          ✅          |     ✅      |   Partial   |       ❌        |
 | **6. Pluggable Control Plane**        |       ✅       |          ❌          |     ❌      |      ❌      |       ❌        |

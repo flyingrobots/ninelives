@@ -40,6 +40,7 @@ pub use router::{
     AuditSink, CommandHistory, CommandRouter, InMemoryHistory, MemoryAuditSink, TracingAuditSink,
 };
 
-// Document why these are intentionally omitted from public re-exports
-// transport and transport_channel are modules and generally accessed via their full path
-// (e.g., `crate::control::transport::Transport`) to prevent namespace pollution.
+// Note: transport and transport_channel are not re-exported from this module to avoid namespace
+// pollution (`crate::control::transport::Transport`, etc.). However, the crate root intentionally
+// re-exports specific transport types behind the `control` feature for convenience:
+// `Transport`, `TransportEnvelope`, `TransportRouter`, and `ChannelTransport`.

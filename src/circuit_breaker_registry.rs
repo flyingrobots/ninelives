@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
 use crate::circuit_breaker::{CircuitBreakerState, CircuitState};
+use tracing::warn;
 
 /// Handle to reset/query a circuit breaker instance.
 #[derive(Clone, Debug)]
@@ -77,6 +78,9 @@ pub type DefaultCircuitBreakerRegistry = InMemoryCircuitBreakerRegistry;
 impl CircuitBreakerRegistry for InMemoryCircuitBreakerRegistry {
     fn register(&self, id: String, handle: CircuitBreakerHandle) {
         let mut map = self.inner.write().expect("circuit breaker registry poisoned");
+        if map.contains_key(&id) {
+            warn!(target: "ninelives::circuit_breaker_registry", id = %id, "circuit breaker id replaced; last registration wins");
+        }
         map.insert(id, handle);
     }
 
@@ -108,5 +112,64 @@ impl CircuitBreakerRegistry for InMemoryCircuitBreakerRegistry {
             map.iter().map(|(k, v)| (k.clone(), v.state())).collect();
         entries.sort_by(|a, b| a.0.cmp(&b.0));
         entries
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex;
+    use tracing_subscriber::fmt::writer::BoxMakeWriter;
+    use tracing_subscriber::fmt::MakeWriter;
+
+    #[derive(Clone)]
+    struct SharedWriter(Arc<Mutex<Vec<u8>>>);
+
+    impl<'a> MakeWriter<'a> for SharedWriter {
+        type Writer = SharedGuard;
+        fn make_writer(&'a self) -> Self::Writer {
+            SharedGuard(self.0.clone())
+        }
+    }
+
+    struct SharedGuard(Arc<Mutex<Vec<u8>>>);
+    impl std::io::Write for SharedGuard {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            let mut guard = self.0.lock().unwrap();
+            guard.extend_from_slice(buf);
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn register_warns_and_replaces_duplicates() {
+        let buffer = Arc::new(Mutex::new(Vec::new()));
+        let writer = SharedWriter(buffer.clone());
+        let subscriber = tracing_subscriber::fmt()
+            .with_writer(BoxMakeWriter::new(writer))
+            .with_target(true)
+            .without_time()
+            .finish();
+        let _guard = tracing::subscriber::set_default(subscriber);
+
+        let registry = InMemoryCircuitBreakerRegistry::default();
+        // first registration
+        let h1 = CircuitBreakerHandle { state: Arc::new(CircuitBreakerState::new()) };
+        registry.register("svc".into(), h1.clone());
+        // second registration with same id
+        let h2 = CircuitBreakerHandle { state: Arc::new(CircuitBreakerState::new()) };
+        registry.register("svc".into(), h2.clone());
+
+        let resolved = registry.get("svc").expect("handle present");
+        assert!(Arc::ptr_eq(&resolved.state, &h2.state), "last registration should win");
+
+        let logs = String::from_utf8(buffer.lock().unwrap().clone()).unwrap();
+        assert!(
+            logs.contains("circuit breaker id replaced"),
+            "warning should be emitted on duplicate registration"
+        );
     }
 }

@@ -29,6 +29,7 @@ pub struct DetachedSig {
 
 /// Auth payload sent alongside a command. Transports set this; providers verify it.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[non_exhaustive]
 pub enum AuthPayload {
     /// JSON Web Token authentication.
     Jwt {
@@ -93,6 +94,7 @@ pub struct AuthContext {
 
 /// Errors produced during authentication or authorization.
 #[derive(thiserror::Error, Debug)]
+#[non_exhaustive]
 pub enum AuthError {
     /// Credentials missing or invalid.
     #[error("unauthenticated: {0}")]
@@ -107,6 +109,7 @@ pub enum AuthError {
 
 /// Errors returned by command handling.
 #[derive(thiserror::Error, Debug)]
+#[non_exhaustive]
 pub enum CommandError {
     /// Authentication or authorization failed.
     #[error("auth: {0}")]
@@ -120,6 +123,12 @@ pub enum CommandError {
         /// Guidance on how to wire the registry into the control builder.
         hint: &'static str,
     },
+    /// Missing circuit breaker registry when requested by a command.
+    #[error("circuit breaker registry missing: {hint}")]
+    BreakerRegistryMissing {
+        /// Guidance on how to supply the registry.
+        hint: &'static str,
+    },
     /// Audit recording failed.
     #[error("audit: {0}")]
     Audit(String),
@@ -127,6 +136,7 @@ pub enum CommandError {
 
 /// Structured command failure payload.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[non_exhaustive]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum CommandFailure {
     /// Caller provided invalid arguments.
@@ -164,6 +174,7 @@ impl std::fmt::Display for CommandFailure {
 
 /// Command result type.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[non_exhaustive]
 pub enum CommandResult {
     /// Command acknowledged (success).
     Ack,

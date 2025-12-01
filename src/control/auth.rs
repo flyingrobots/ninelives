@@ -44,7 +44,8 @@ pub struct AuthRegistry {
 pub enum AuthMode {
     /// First provider that authenticates wins.
     First,
-    /// All providers must succeed.
+    /// All providers must succeed; principal is taken from the first successful provider and
+    /// attributes from subsequent providers are merged (later attributes overwrite earlier keys).
     All,
 }
 
@@ -83,13 +84,20 @@ impl AuthRegistry {
                 Err(last_err.unwrap_or(AuthError::Unauthenticated("no providers".into())))
             }
             AuthMode::All => {
-                let mut last_ctx = None;
+                let mut combined: Option<AuthContext> = None;
                 for p in &self.providers {
                     let ctx = p.authenticate(&env.meta, env.auth.as_ref())?;
                     p.authorize(&ctx, env.cmd.label(), &env.meta)?;
-                    last_ctx = Some(ctx);
+                    combined = Some(match combined {
+                        None => ctx,
+                        Some(mut agg) => {
+                            // Prefer principal from the first successful provider; merge attributes.
+                            agg.attributes.extend(ctx.attributes.into_iter());
+                            agg
+                        }
+                    });
                 }
-                last_ctx.ok_or(AuthError::Unauthenticated("no providers".into()))
+                combined.ok_or(AuthError::Unauthenticated("no providers".into()))
             }
         }
     }
@@ -140,9 +148,7 @@ where
         &mut self,
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Result<(), CommandError>> {
-        // This service clones the inner per-call, so it is always ready.
-        let _ = cx;
-        std::task::Poll::Ready(Ok(()))
+        self.inner.poll_ready(cx)
     }
 
     fn call(&mut self, req: CommandEnvelope<C>) -> Self::Future {
@@ -193,5 +199,109 @@ impl AuthProvider for PassthroughAuth {
         _meta: &CommandMeta,
     ) -> Result<(), AuthError> {
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+    use tower_layer::Layer;
+    use tower_service::Service;
+
+    #[derive(Clone)]
+    struct AllowAuth {
+        name: &'static str,
+        principal: &'static str,
+        attrs: HashMap<String, String>,
+    }
+
+    impl AuthProvider for AllowAuth {
+        fn name(&self) -> &'static str {
+            self.name
+        }
+        fn authenticate(
+            &self,
+            _meta: &CommandMeta,
+            _auth: Option<&AuthPayload>,
+        ) -> Result<AuthContext, AuthError> {
+            Ok(AuthContext {
+                principal: self.principal.to_string(),
+                provider: self.name,
+                attributes: self.attrs.clone(),
+            })
+        }
+        fn authorize(
+            &self,
+            _ctx: &AuthContext,
+            _label: &str,
+            _meta: &CommandMeta,
+        ) -> Result<(), AuthError> {
+            Ok(())
+        }
+    }
+
+    #[derive(Clone)]
+    struct DummyCmd;
+    impl CommandLabel for DummyCmd {
+        fn label(&self) -> &str {
+            "dummy"
+        }
+    }
+
+    #[test]
+    fn auth_mode_all_merges_attributes_and_keeps_first_principal() {
+        let mut reg = AuthRegistry::new(AuthMode::All);
+        let mut a1_attrs = HashMap::new();
+        a1_attrs.insert("role".into(), "admin".into());
+        let mut a2_attrs = HashMap::new();
+        a2_attrs.insert("scope".into(), "write".into());
+        a2_attrs.insert("role".into(), "user".into()); // should overwrite same key
+
+        reg.register(Arc::new(AllowAuth { name: "p1", principal: "alice", attrs: a1_attrs }));
+        reg.register(Arc::new(AllowAuth { name: "p2", principal: "bob", attrs: a2_attrs }));
+
+        let env = CommandEnvelope {
+            cmd: DummyCmd,
+            auth: None,
+            meta: CommandMeta { id: "1".into(), correlation_id: None, timestamp_millis: None },
+        };
+
+        let ctx = reg.authenticate(&env).expect("auth ok");
+        assert_eq!(ctx.principal, "alice", "first principal should win");
+        assert_eq!(ctx.provider, "p1");
+        assert_eq!(ctx.attributes.get("role").unwrap(), "user"); // overwritten by later provider
+        assert_eq!(ctx.attributes.get("scope").unwrap(), "write");
+    }
+
+    #[test]
+    fn authorization_service_forwards_poll_ready_errors() {
+        #[derive(Clone)]
+        struct FailReady;
+        impl Service<CommandEnvelope<DummyCmd>> for FailReady {
+            type Response = CommandResult;
+            type Error = CommandError;
+            type Future = futures::future::Ready<Result<Self::Response, Self::Error>>;
+            fn poll_ready(
+                &mut self,
+                _cx: &mut std::task::Context<'_>,
+            ) -> std::task::Poll<Result<(), Self::Error>> {
+                std::task::Poll::Ready(Err(CommandError::Handler("not ready".into())))
+            }
+            fn call(&mut self, _req: CommandEnvelope<DummyCmd>) -> Self::Future {
+                futures::future::ready(Ok(CommandResult::Ack))
+            }
+        }
+
+        let layer = AuthorizationLayer::new(AuthRegistry::new(AuthMode::First));
+        let mut svc = layer.layer(FailReady);
+        let mut cx = std::task::Context::from_waker(futures::task::noop_waker_ref());
+        let res = svc.poll_ready(&mut cx);
+        match res {
+            std::task::Poll::Ready(Err(CommandError::Handler(msg))) => {
+                assert_eq!(msg, "not ready");
+            }
+            other => panic!("expected handler error, got {:?}", other),
+        }
     }
 }

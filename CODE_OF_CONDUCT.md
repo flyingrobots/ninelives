@@ -28,7 +28,7 @@ Examples of unacceptable behavior include:
 
 * The use of sexualized language or imagery, and sexual attention or
   advances of any kind
-* Trolling, insulting or derogatory comments, and personal or political attacks
+* Trolling, hostile, inflammatory, or derogatory comments and personal or political attacks
 * Public or private harassment
 * Publishing others' private information, such as a physical or email
   address, without their explicit permission
@@ -44,17 +44,20 @@ or harmful.
 
 ## Scope
 
-This Code of Conduct applies within all community spaces, and also applies when
-an individual is officially representing the community in public spaces.
-Examples of representing our community include using an official e-mail address,
-posting via an official social media account, or acting as an appointed
-representative at an online or offline event.
+This Code of Conduct applies within all community spaces (GitHub issues/PRs, Discussions,
+Discord, Slack, mailing lists, and in-person/virtual events) and also applies when
+an individual is officially representing the community in public spaces. Examples of
+representing our community include using an official e-mail address, posting via an official
+social media account, or acting as an appointed representative at an online or offline event.
 
 ## Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
-reported to the community leaders responsible for enforcement at <james@flyingrobots.dev>.
-All complaints will be reviewed and investigated promptly and fairly.
+reported to the community leaders responsible for enforcement at <james@flyingrobots.dev>
+(primary, actively monitored) or the backup rotation at <conduct@flyingrobots.dev>.
+All complaints will be reviewed and investigated promptly and fairly following the
+process defined in [docs/ENFORCEMENT.md](docs/ENFORCEMENT.md), which includes timelines
+and escalation steps.
 
 All community leaders are obligated to respect the privacy and security of the
 reporter of any incident.

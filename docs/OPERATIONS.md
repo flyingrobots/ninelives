@@ -7,8 +7,8 @@
 
 ## Schema Validation
 
-- JSON schema validation is **enabled by default** (`schema-validation` feature). Validation runs on both incoming envelopes and outgoing `CommandResult`s; malformed payloads are rejected before routing.
-- To opt out (not recommended), build with `--no-default-features --features arc-swap`.
+- JSON schema validation is **enabled by default** and controlled at runtime via the `NINELIVES_SCHEMA_VALIDATION` environment variable (set `NINELIVES_SCHEMA_VALIDATION=0` or `false` to disable).
+- There is no `schema-validation` Cargo feature in `Cargo.toml`; to exclude validation code at compile time you must omit the `control` feature entirely.
 
 ## Telemetry Wiring
 
@@ -20,3 +20,4 @@
 - Config and breaker registries are in-memory by default. Implement `ConfigRegistry` / `CircuitBreakerRegistry` with your persistence backend (e.g., database or KV store) and inject via `ControlBuilder::with_config_registry` / `with_circuit_breaker_registry`.
 - Snapshot breaker state periodically (e.g., using `snapshot()` on the registry) and store in durable storage; restore on startup before wiring the control plane.
 - Use `ConfigRegistry::apply_snapshot` to hydrate configs on startup from your own source (file, Redis, etc.). Pair with `GetState`/`ListConfig` to export before shutdown.
+- Circuit breaker IDs should be unique. If a duplicate ID is registered, the last registration wins and a warning is emitted to logs—use distinct IDs to avoid accidental replacement.

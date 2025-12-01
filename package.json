@@ -1,7 +1,7 @@
 {
   "name": "ninelives",
   "version": "0.0.0",
-  "private": "true",
+  "private": true,
   "description": "Tooling for markdown linting in the ninelives workspace.",
   "scripts": {
     "lint:md": "markdownlint-cli2 \"**/*.md\"",

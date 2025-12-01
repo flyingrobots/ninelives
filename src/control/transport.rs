@@ -1,10 +1,14 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use std::env;
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::OnceLock;
+use std::task::{Context, Poll};
 
 use jsonschema::JSONSchema;
 use serde_json::json;
+use tower_service::Service;
 
 use super::{AuthPayload, CommandContext, CommandEnvelope, CommandLabel};
 
@@ -199,6 +203,21 @@ where
     }
 }
 
+impl<C, T, Conv> Clone for TransportRouter<C, T, Conv>
+where
+    C: CommandLabel + Clone + Send + Sync + 'static,
+    T: Transport + Clone,
+    Conv: Fn(TransportEnvelope) -> Result<(CommandEnvelope<C>, CommandContext), String> + Send + Sync + Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            router: self.router.clone(),
+            transport: self.transport.clone(),
+            to_command: self.to_command.clone(),
+        }
+    }
+}
+
 /// Layer that performs schema validation before/after routing.
 /// A [`tower::Layer`] that performs JSON schema validation on [`TransportEnvelope`]s
 /// before routing and on [`super::CommandResult`]s after command execution.
@@ -206,7 +225,8 @@ where
 /// This layer ensures that incoming commands conform to expected schemas and that
 /// outgoing results are also valid, enhancing the robustness of the control plane.
 ///
-/// Validation is enabled by the `schema-validation` feature flag.
+/// Validation is enabled by default and controlled at runtime via the
+/// `NINELIVES_SCHEMA_VALIDATION` environment variable (set to `0`/`false` to disable).
 pub struct SchemaValidationLayer;
 
 impl SchemaValidationLayer {
@@ -237,6 +257,7 @@ impl<S> tower_layer::Layer<S> for SchemaValidationLayer {
 /// calling the appropriate validation logic for incoming requests and outgoing responses.
 /// When wrapping a [`TransportRouter`], it will validate the [`TransportEnvelope`]
 /// before routing and the [`super::CommandResult`] after the inner router's execution.
+#[derive(Clone)]
 pub struct SchemaValidated<S> {
     inner: S,
 }
@@ -247,17 +268,32 @@ where
     T: Transport,
     Conv:
         Fn(TransportEnvelope) -> Result<(CommandEnvelope<C>, CommandContext), String> + Send + Sync,
+    {
+        /// Decode, validate, route, validate, and encode.
+        pub async fn handle(&self, raw: &[u8]) -> Result<Vec<u8>, String> {
+            // Delegate the full transport flow (size checks, optional schema validation, routing, and encoding)
+            // to the inner router to avoid duplicating logic or diverging behaviors.
+            // Any additional schema-specific hooks should wrap the inner call rather than reimplementing it.
+            self.inner.handle(raw).await
+        }
+    }
+
+impl<C, T, Conv> Service<Vec<u8>> for SchemaValidated<TransportRouter<C, T, Conv>>
+where
+    C: CommandLabel + Clone + Send + Sync + 'static,
+    T: Transport + Clone + 'static,
+    Conv: Fn(TransportEnvelope) -> Result<(CommandEnvelope<C>, CommandContext), String> + Send + Sync + Clone + 'static,
 {
-    /// Decode, validate, route, validate, and encode.
-    pub async fn handle(&self, raw: &[u8]) -> Result<Vec<u8>, String> {
-        let env = self.inner.decode_envelope(raw)?;
-        validate_envelope(&env)?;
+    type Response = Vec<u8>;
+    type Error = String;
+    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
-        let (cmd_env, ctx) = (self.inner.to_command)(env)?;
-        let res = self.inner.router.execute(cmd_env).await.map_err(|e| e.to_string())?;
+    fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
 
-        validate_result(&res)?;
-
-        self.inner.transport.encode(&ctx, &res).map_err(|e| T::map_error(&e))
+    fn call(&mut self, req: Vec<u8>) -> Self::Future {
+        let svc = self.clone();
+        Box::pin(async move { svc.handle(&req).await })
     }
 }

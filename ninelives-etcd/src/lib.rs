@@ -81,3 +81,4 @@ impl tower_service::Service<PolicyEvent> for EtcdSink {
 impl TelemetrySink for EtcdSink {
     type SinkError = Infallible;
 }
+#![cfg(feature = "etcd-client")]

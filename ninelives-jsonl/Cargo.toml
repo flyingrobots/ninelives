@@ -10,7 +10,7 @@ repository.workspace = true
 readme = "README.md"
 
 [dependencies]
-ninelives = { workspace = true }
+ninelives = { workspace = true, features = ["telemetry-json"] }
 tracing.workspace = true
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["fs", "macros"] }

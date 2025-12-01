@@ -122,6 +122,8 @@ For deeper criteria and examples, follow this checklist and keep it current; if 
 
 **Pinning**: Exact version pinning (e.g., `1.2.3`) should only be used when strictly necessary for reproducibility or to work around specific bugs. If you pin a dependency, add a comment explaining why.
 
+**Policy & Approvals**: Default to caret ranges for npm dev tools (e.g., `markdownlint-cli2`) to pick up patch/minor fixes automatically; security-sensitive packages may be temporarily pinned while a fix is evaluated. Dependency bumps should run CI; security-driven updates can be merged by any maintainer after green CI, routine bumps require standard review. Example: “Use `^0.19.1` for markdownlint-cli2 to track upstream fixes; pin only if a regression is observed.”
+
 ## 🚢 Releases
 
 **Automation**: Releases are automated via release-plz and trigger only when both release and release-ready labels are present on the release PR.

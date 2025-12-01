@@ -25,7 +25,7 @@ if [ ! -x "./scripts/setup-hooks.sh" ]; then
 fi
 
 echo "[bootstrap] installing rustfmt and clippy components"
-rustup component add rustfmt clippy >/dev/null
+rustup component add rustfmt clippy
 
 if [ -f "package.json" ]; then
   echo "[bootstrap] installing JS dev dependencies via npm ci"
