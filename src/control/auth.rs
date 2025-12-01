@@ -67,39 +67,82 @@ impl AuthRegistry {
     {
         match self.mode {
             AuthMode::First => {
-                let mut last_err = None;
-                for p in &self.providers {
-                    match p.authenticate(&env.meta, env.auth.as_ref()) {
-                        Ok(ctx) => {
-                            // If a provider authenticates but denies authorization, stop immediately
-                            // to prevent later providers from overriding an explicit deny.
-                            match p.authorize(&ctx, env.cmd.label(), &env.meta) {
-                                Ok(()) => return Ok(ctx),
-                                Err(e) => return Err(e),
-                            }
-                        }
-                        Err(e) => last_err = Some(e),
-                    }
-                }
-                Err(last_err.unwrap_or(AuthError::Unauthenticated("no providers".into())))
+                self.authenticate_first(env)
             }
             AuthMode::All => {
-                let mut combined: Option<AuthContext> = None;
-                for p in &self.providers {
-                    let ctx = p.authenticate(&env.meta, env.auth.as_ref())?;
-                    p.authorize(&ctx, env.cmd.label(), &env.meta)?;
-                    combined = Some(match combined {
-                        None => ctx,
-                        Some(mut agg) => {
-                            // Prefer principal from the first successful provider; merge attributes.
-                            agg.attributes.extend(ctx.attributes.into_iter());
-                            agg
-                        }
-                    });
-                }
-                combined.ok_or(AuthError::Unauthenticated("no providers".into()))
+                self.authenticate_all(env)
             }
         }
+    }
+
+    fn authenticate_first<C>(&self, env: &CommandEnvelope<C>) -> Result<AuthContext, AuthError>
+    where
+        C: CommandLabel + Clone,
+    {
+        let mut last_err = None;
+        for p in &self.providers {
+            match p.authenticate(&env.meta, env.auth.as_ref()) {
+                Ok(ctx) => {
+                    // If a provider authenticates but denies authorization, stop immediately
+                    // to prevent later providers from overriding an explicit deny.
+                    match p.authorize(&ctx, env.cmd.label(), &env.meta) {
+                        Ok(()) => return Ok(ctx),
+                        Err(e) => return Err(e),
+                    }
+                }
+                Err(e) => last_err = Some(e),
+            }
+        }
+        Err(last_err.unwrap_or(AuthError::Unauthenticated("no providers".into())))
+    }
+
+    fn authenticate_all<C>(&self, env: &CommandEnvelope<C>) -> Result<AuthContext, AuthError>
+    where
+        C: CommandLabel + Clone,
+    {
+        let authed = self.authenticate_many(env)?;
+        self.authorize_all(env, &authed)?;
+        self.merge_contexts(authed)
+    }
+
+    fn authenticate_many<C>(
+        &self,
+        env: &CommandEnvelope<C>,
+    ) -> Result<Vec<AuthContext>, AuthError>
+    where
+        C: CommandLabel + Clone,
+    {
+        let mut results = Vec::new();
+        for p in &self.providers {
+            let ctx = p.authenticate(&env.meta, env.auth.as_ref())?;
+            results.push(ctx);
+        }
+        Ok(results)
+    }
+
+    fn authorize_all<C>(
+        &self,
+        env: &CommandEnvelope<C>,
+        contexts: &[AuthContext],
+    ) -> Result<(), AuthError>
+    where
+        C: CommandLabel + Clone,
+    {
+        for (p, ctx) in self.providers.iter().zip(contexts.iter()) {
+            p.authorize(ctx, env.cmd.label(), &env.meta)?;
+        }
+        Ok(())
+    }
+
+    fn merge_contexts(&self, contexts: Vec<AuthContext>) -> Result<AuthContext, AuthError> {
+        let mut iter = contexts.into_iter();
+        let mut base = iter
+            .next()
+            .ok_or_else(|| AuthError::Unauthenticated("no providers".into()))?;
+        for ctx in iter {
+            base.attributes.extend(ctx.attributes.into_iter());
+        }
+        Ok(base)
     }
 }
 
