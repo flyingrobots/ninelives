@@ -35,7 +35,7 @@ This roadmap focuses on graduating the Control Plane from "experimental" to "pro
   - **Estimate:** 3h
   - **Goal:** "Lego-block-ibility" for distributed state.
 
-- [ ] **Refactor: Telemetry Module**
+- [x] **Refactor: Telemetry Module**
   - **Context:** `src/telemetry.rs` is a monolithic file.
   - **Task:** Split into `telemetry/events.rs`, `telemetry/sinks.rs`, `telemetry/context.rs`.
   - **Estimate:** 2h
