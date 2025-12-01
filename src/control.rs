@@ -66,9 +66,11 @@ where
     let mut auth = AuthRegistry::new(AuthMode::First);
     auth.register(Arc::new(PassthroughAuth));
 
-    let cfg = DefaultConfigRegistry::new();
+    let _cfg = DefaultConfigRegistry::new();
     let history: Arc<dyn CommandHistory> = Arc::new(InMemoryHistory::default());
-    let audit = Arc::new(MemoryAuditSink::new());
+use crate::control::router::DEFAULT_HISTORY_CAPACITY;
+// ... (other uses)
+    let audit = Arc::new(MemoryAuditSink::new(DEFAULT_HISTORY_CAPACITY));
 
     let router = Arc::new(CommandRouter::new(auth, handler, history).with_audit(audit));
     (router.clone(), ChannelTransport::new(router))

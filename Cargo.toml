@@ -69,14 +69,20 @@ serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 jsonschema = { workspace = true, optional = true }
 base64 = { version = "0.22", optional = true }
+pin-project = "1" # For zero-allocation futures
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["full", "test-util"] }
+tokio = { workspace = true, features = ["full", "test-util", "rt-multi-thread"] }
 tracing-subscriber.workspace = true
 futures.workspace = true
 hdrhistogram.workspace = true
 serde_json.workspace = true
 loom = "0.7"
+criterion = { version = "0.5", features = ["async", "async_tokio"] } # For benchmarks
+
+[[bench]]
+name = "circuit_breaker"
+harness = false
 
 [features]
 control = ["serde", "serde_json", "jsonschema", "base64", "telemetry-json"]

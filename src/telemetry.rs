@@ -846,9 +846,7 @@ where
     type SinkError = Infallible;
 }
 
-// ============================================================================
-// Telemetry Sink Composition
-// ============================================================================
+
 
 /// Error type for composed telemetry sinks.
 #[derive(Debug)]

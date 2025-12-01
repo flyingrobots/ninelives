@@ -4,8 +4,9 @@ mod common;
 
 use ninelives::control::{
     AuthContext, AuthError, AuthMode, AuthPayload, AuthProvider, AuthRegistry, BuiltInCommand,
-    CommandEnvelope, CommandMeta, CommandResult, MemoryAuditSink, PassthroughAuth,
+    CommandEnvelope, CommandMeta, CommandResult, PassthroughAuth,
 };
+use ninelives::control::router::{DEFAULT_HISTORY_CAPACITY, MemoryAuditSink};
 use ninelives::AuthorizationLayer;
 use std::sync::Arc;
 use tower::{Layer, Service, ServiceExt};
@@ -84,6 +85,7 @@ async fn authorization_layer_denies_and_blocks() {
     assert!(matches!(res, Err(ninelives::control::CommandError::Auth(_))));
 }
 
+// ...
 fn make_router(
     auth: Arc<dyn AuthProvider>,
     audit: Arc<MemoryAuditSink>,
@@ -98,7 +100,7 @@ fn make_router(
 
 #[tokio::test]
 async fn command_router_audits_denial() {
-    let audit = Arc::new(MemoryAuditSink::new());
+    let audit = Arc::new(MemoryAuditSink::new(DEFAULT_HISTORY_CAPACITY));
     let router = make_router(Arc::new(DenyAuth), audit.clone());
 
     let res = router.execute(env(BuiltInCommand::List)).await;
@@ -116,7 +118,7 @@ async fn command_router_audits_denial() {
 
 #[tokio::test]
 async fn command_router_audits_success() {
-    let audit = Arc::new(MemoryAuditSink::new());
+    let audit = Arc::new(MemoryAuditSink::new(DEFAULT_HISTORY_CAPACITY));
     let router = make_router(Arc::new(PassthroughAuth), audit.clone());
 
     let res = router.execute(env(BuiltInCommand::List)).await.unwrap();

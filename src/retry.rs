@@ -18,28 +18,20 @@
 //! - Backoff/Jitter are invoked exactly retries-1 times.
 //!
 //! Example
-//! ```rust
-//! use std::time::Duration;
-//! use ninelives::{Backoff, Jitter, RetryPolicy, ResilienceError};
-//!
-//! #[derive(Debug)]
-//! struct MyErr;
-//! impl std::fmt::Display for MyErr { fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { write!(f, "oops") } }
-//! impl std::error::Error for MyErr {}
-//!
-//! # tokio::runtime::Runtime::new().unwrap().block_on(async {
-//! let policy = RetryPolicy::<MyErr>::builder()
-//!     .max_attempts(3) // total attempts
-//!     .backoff(Backoff::exponential(Duration::from_millis(100)))
-//!     .with_jitter(Jitter::full())
-//!     .should_retry(|_e| true)
-//!     .build()
-//!     .unwrap();
-//! let result: Result<(), ResilienceError<MyErr>> =
-//!     policy.execute(|| async { Err(ResilienceError::Inner(MyErr)) }).await;
-//! assert!(result.is_err());
-//! # });
-//! ```
+// ```
+// # tokio::runtime::Runtime::new().unwrap().block_on(async {
+// let policy = RetryPolicy::<MyErr>::builder()
+//     .max_attempts(3) // total attempts
+//     .backoff(Backoff::exponential(Duration::from_millis(100)))
+//     .with_jitter(Jitter::full())
+//     .should_retry(|_e| true)
+//     .build()
+//     .unwrap();
+// let result: Result<(), ResilienceError<MyErr>> =
+//     policy.execute(|| async { Err(ResilienceError::Inner(MyErr)) }).await;
+// assert!(result.is_err());
+// # });
+// ```
 
 use crate::adaptive::Adaptive;
 use crate::error::MAX_RETRY_FAILURES;

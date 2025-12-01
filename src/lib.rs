@@ -120,7 +120,7 @@ pub mod adaptive;
 mod algebra;
 mod backoff;
 mod bulkhead;
-mod circuit_breaker;
+pub mod circuit_breaker;
 pub mod circuit_breaker_registry;
 mod clock;
 #[cfg(feature = "control")]
@@ -132,6 +132,9 @@ mod sleeper;
 // stack module removed in favor of tower-native algebra
 pub mod telemetry;
 mod timeout;
+
+pub mod presets;
+pub mod rate_limit;
 
 // Re-exports
 pub use algebra::{

@@ -89,15 +89,18 @@ impl CommandHistory for InMemoryHistory {
 }
 
 /// In-memory audit sink (tests/diagnostics).
-#[derive(Default)]
 pub struct MemoryAuditSink {
-    records: Arc<Mutex<Vec<AuditRecord>>>,
+    records: Arc<Mutex<std::collections::VecDeque<AuditRecord>>>,
+    capacity: usize,
 }
 
 impl MemoryAuditSink {
-    /// Create a new in-memory audit sink.
-    pub fn new() -> Self {
-        Self::default()
+    /// Create a new in-memory audit sink with a specific capacity.
+    pub fn new(capacity: usize) -> Self {
+        Self {
+            records: Arc::new(Mutex::new(std::collections::VecDeque::new())),
+            capacity: capacity.max(1), // Ensure capacity is at least 1
+        }
     }
 
     /// Retrieve recorded audit records (testing/diagnostics only).
@@ -105,7 +108,22 @@ impl MemoryAuditSink {
     /// # Warning
     /// Clones the entire history; avoid in hot paths.
     pub async fn records(&self) -> Vec<AuditRecord> {
-        self.records.lock().await.clone()
+        self.records.lock().await.iter().cloned().collect()
+    }
+
+    /// Returns the current number of records in the sink.
+    pub async fn len(&self) -> usize {
+        self.records.lock().await.len()
+    }
+
+    /// Returns true if the sink contains no records.
+    pub async fn is_empty(&self) -> bool {
+        self.records.lock().await.is_empty()
+    }
+
+    /// Returns the configured capacity of the sink.
+    pub fn capacity(&self) -> usize {
+        self.capacity
     }
 }
 
@@ -113,7 +131,10 @@ impl MemoryAuditSink {
 impl AuditSink for MemoryAuditSink {
     async fn record(&self, record: AuditRecord) -> Result<(), CommandError> {
         let mut guard = self.records.lock().await;
-        guard.push(record);
+        if guard.len() >= self.capacity {
+            guard.pop_front();
+        }
+        guard.push_back(record);
         Ok(())
     }
 }

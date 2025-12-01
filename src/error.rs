@@ -5,7 +5,7 @@ use std::time::Duration;
 /// Cap the number of stored failures inside RetryExhausted to avoid unbounded growth.
 pub const MAX_RETRY_FAILURES: usize = 10;
 /// Unified error type for all resilience policies
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ResilienceError<E> {
     /// The operation exceeded the timeout duration
     Timeout {
@@ -39,8 +39,13 @@ pub enum ResilienceError<E> {
     },
     /// The underlying operation failed
     Inner(E),
-    /// Third-party policy specific error
-    Custom(Box<dyn std::error::Error + Send + Sync>),
+    /// The operation was rejected by a rate limiter.
+    RateLimited {
+        /// Time to wait before retrying.
+        wait: Duration,
+    },
+    /// Infrastructure failure (e.g., rate limiter backend down).
+    Infrastructure(String),
 }
 impl<E: fmt::Display> fmt::Display for ResilienceError<E> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -81,7 +86,8 @@ impl<E: fmt::Display> fmt::Display for ResilienceError<E> {
                 }
             }
             Self::Inner(e) => write!(f, "{}", e),
-            Self::Custom(e) => write!(f, "{e}"),
+            Self::RateLimited { wait } => write!(f, "rate limited, retry after {:?}", wait),
+            Self::Infrastructure(msg) => write!(f, "infrastructure error: {}", msg),
         }
     }
 }
@@ -92,7 +98,6 @@ impl<E: std::error::Error + 'static> std::error::Error for ResilienceError<E> {
             Self::RetryExhausted { failures, .. } => {
                 failures.last().map(|e| e as &dyn std::error::Error)
             }
-            Self::Custom(e) => Some(e.as_ref()),
             _ => None,
         }
     }
@@ -132,13 +137,6 @@ impl<E> ResilienceError<E> {
     pub fn into_inner(self) -> Option<E> {
         match self {
             Self::Inner(e) => Some(e),
-            _ => None,
-        }
-    }
-    /// Extract custom boxed error, if present.
-    pub fn into_custom(self) -> Option<Box<dyn std::error::Error + Send + Sync>> {
-        match self {
-            Self::Custom(e) => Some(e),
             _ => None,
         }
     }
@@ -263,19 +261,6 @@ mod tests {
         assert!(msg.contains("3"));
         assert!(msg.contains("no recorded failures"));
         assert!(!msg.ends_with(": "));
-    }
-    #[test]
-    fn custom_error_display_source_and_into_custom() {
-        let inner = io::Error::new(io::ErrorKind::Other, "boom");
-        let err: ResilienceError<io::Error> = ResilienceError::Custom(Box::new(inner));
-        assert!(err.to_string().contains("boom"));
-        let src = err.source().expect("custom should expose source");
-        assert!(src.to_string().contains("boom"));
-
-        let err2: ResilienceError<io::Error> =
-            ResilienceError::Custom(Box::new(io::Error::new(io::ErrorKind::Other, "boom2")));
-        let boxed = err2.into_custom().expect("custom should be extractable");
-        assert!(boxed.to_string().contains("boom2"));
     }
     #[test]
     fn is_timeout_check() {

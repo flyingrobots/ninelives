@@ -39,6 +39,7 @@ impl Transport for JsonTransport {
                 }
                 v
             }
+            _ => json!({"result":"unknown","id":ctx.id}), // Handle future variants
         };
         serde_json::to_vec(&out)
     }

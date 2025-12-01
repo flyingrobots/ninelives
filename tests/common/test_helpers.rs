@@ -1,3 +1,4 @@
+#[cfg(feature = "control")]
 use ninelives::control::{AuthPayload, BuiltInCommand, CommandEnvelope, CommandMeta};
 
 pub fn create_test_envelope(
