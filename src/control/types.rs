@@ -56,9 +56,9 @@ pub enum AuthPayload {
 
 /// Command envelope carrying the command, auth payload, and metadata.
 #[derive(Clone, Debug)]
-pub struct CommandEnvelope<C: Clone> {
+pub struct CommandEnvelope {
     /// The command payload.
-    pub cmd: C,
+    pub cmd: Box<dyn super::command::Command>,
     /// Authentication payload.
     pub auth: Option<AuthPayload>,
     /// Command metadata.
@@ -210,8 +210,3 @@ pub struct HistoryRecord {
     pub result: CommandResult,
 }
 
-/// Trait for getting a string label for a command type.
-pub trait CommandLabel {
-    /// Returns the label for the command.
-    fn label(&self) -> &str;
-}

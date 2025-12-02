@@ -1,8 +1,8 @@
 #![allow(missing_docs)]
 
 use ninelives::control::{
-    AuthMode, AuthPayload, AuthRegistry, BuiltInCommand, CommandEnvelope, CommandMeta,
-    CommandResult, PassthroughAuth,
+    AuthMode, AuthPayload, AuthRegistry, CommandEnvelope, CommandMeta,
+    CommandResult, PassthroughAuth, ListCommand,
 };
 use ninelives::AuthorizationLayer;
 use std::future::Ready;
@@ -12,7 +12,7 @@ use tower::{Layer, Service, ServiceExt};
 #[derive(Clone)]
 struct Echo;
 
-impl Service<CommandEnvelope<BuiltInCommand>> for Echo {
+impl Service<CommandEnvelope> for Echo {
     type Response = CommandResult;
     type Error = ninelives::control::CommandError;
     type Future = Ready<Result<CommandResult, Self::Error>>;
@@ -21,7 +21,7 @@ impl Service<CommandEnvelope<BuiltInCommand>> for Echo {
         Poll::Ready(Ok(()))
     }
 
-    fn call(&mut self, _req: CommandEnvelope<BuiltInCommand>) -> Self::Future {
+    fn call(&mut self, _req: CommandEnvelope) -> Self::Future {
         std::future::ready(Ok(CommandResult::Ack))
     }
 }
@@ -35,7 +35,7 @@ async fn authorization_layer_compiles_and_passes_through() {
     let svc = layer.layer(Echo);
 
     let env = CommandEnvelope {
-        cmd: BuiltInCommand::List,
+        cmd: Box::new(ListCommand),
         auth: Some(AuthPayload::Opaque(vec![])),
         meta: CommandMeta { id: "t".into(), correlation_id: None, timestamp_millis: None },
     };

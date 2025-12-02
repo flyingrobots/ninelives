@@ -10,7 +10,7 @@ use jsonschema::JSONSchema;
 use serde_json::json;
 use tower_service::Service;
 
-use super::{AuthPayload, CommandContext, CommandEnvelope, CommandLabel};
+use super::{AuthPayload, CommandContext, CommandEnvelope};
 
 fn default_args() -> serde_json::Value {
     serde_json::Value::Object(serde_json::Map::new())
@@ -126,30 +126,28 @@ pub trait Transport: Send + Sync {
 }
 
 /// Bridges raw transport frames to a CommandRouter using a decoder/encoder pair.
-pub struct TransportRouter<C, T, Conv>
+pub struct TransportRouter<T, Conv>
 where
-    C: CommandLabel + Clone + Send + Sync + 'static,
     T: Transport,
     Conv:
-        Fn(TransportEnvelope) -> Result<(CommandEnvelope<C>, CommandContext), String> + Send + Sync,
+        Fn(TransportEnvelope) -> Result<(CommandEnvelope, CommandContext), String> + Send + Sync,
 {
-    router: crate::control::CommandRouter<C>,
+    router: crate::control::CommandRouter,
     transport: T,
     to_command: Conv,
 }
 
-impl<C, T, Conv> TransportRouter<C, T, Conv>
+impl<T, Conv> TransportRouter<T, Conv>
 where
-    C: CommandLabel + Clone + Send + Sync + 'static,
     T: Transport,
     Conv:
-        Fn(TransportEnvelope) -> Result<(CommandEnvelope<C>, CommandContext), String> + Send + Sync,
+        Fn(TransportEnvelope) -> Result<(CommandEnvelope, CommandContext), String> + Send + Sync,
 {
     /// Upper bound (bytes) on accepted transport payload size (1 MiB).
     pub const MAX_REQUEST_SIZE: usize = 1024 * 1024; // 1 MiB
 
     /// Create a new TransportRouter.
-    pub fn new(router: crate::control::CommandRouter<C>, transport: T, to_command: Conv) -> Self {
+    pub fn new(router: crate::control::CommandRouter, transport: T, to_command: Conv) -> Self {
         Self { router, transport, to_command }
     }
 
@@ -203,11 +201,10 @@ where
     }
 }
 
-impl<C, T, Conv> Clone for TransportRouter<C, T, Conv>
+impl<T, Conv> Clone for TransportRouter<T, Conv>
 where
-    C: CommandLabel + Clone + Send + Sync + 'static,
     T: Transport + Clone,
-    Conv: Fn(TransportEnvelope) -> Result<(CommandEnvelope<C>, CommandContext), String> + Send + Sync + Clone,
+    Conv: Fn(TransportEnvelope) -> Result<(CommandEnvelope, CommandContext), String> + Send + Sync + Clone,
 {
     fn clone(&self) -> Self {
         Self {
@@ -262,12 +259,11 @@ pub struct SchemaValidated<S> {
     inner: S,
 }
 
-impl<C, T, Conv> SchemaValidated<TransportRouter<C, T, Conv>>
+impl<T, Conv> SchemaValidated<TransportRouter<T, Conv>>
 where
-    C: CommandLabel + Clone + Send + Sync + 'static,
     T: Transport,
     Conv:
-        Fn(TransportEnvelope) -> Result<(CommandEnvelope<C>, CommandContext), String> + Send + Sync,
+        Fn(TransportEnvelope) -> Result<(CommandEnvelope, CommandContext), String> + Send + Sync,
     {
         /// Decode, validate, route, validate, and encode.
         pub async fn handle(&self, raw: &[u8]) -> Result<Vec<u8>, String> {
@@ -278,11 +274,10 @@ where
         }
     }
 
-impl<C, T, Conv> Service<Vec<u8>> for SchemaValidated<TransportRouter<C, T, Conv>>
+impl<T, Conv> Service<Vec<u8>> for SchemaValidated<TransportRouter<T, Conv>>
 where
-    C: CommandLabel + Clone + Send + Sync + 'static,
     T: Transport + Clone + 'static,
-    Conv: Fn(TransportEnvelope) -> Result<(CommandEnvelope<C>, CommandContext), String> + Send + Sync + Clone + 'static,
+    Conv: Fn(TransportEnvelope) -> Result<(CommandEnvelope, CommandContext), String> + Send + Sync + Clone + 'static,
 {
     type Response = Vec<u8>;
     type Error = String;

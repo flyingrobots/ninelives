@@ -3,7 +3,7 @@
 mod common;
 
 use ninelives::control::{
-    AuthMode, AuthRegistry, BuiltInCommand, CommandEnvelope, CommandResult, InMemoryHistory,
+    AuthMode, AuthRegistry, CommandResult, InMemoryHistory, ListCommand,
     PassthroughAuth,
 };
 use ninelives::ChannelTransport;
@@ -11,10 +11,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use common::test_helpers;
-
-fn env(cmd: BuiltInCommand) -> CommandEnvelope<BuiltInCommand> {
-    test_helpers::create_test_envelope(cmd, Some("chan-1"), None, None, None)
-}
 
 #[tokio::test]
 async fn channel_transport_roundtrip() {
@@ -25,8 +21,9 @@ async fn channel_transport_roundtrip() {
     let router = Arc::new(ninelives::control::CommandRouter::new(auth, handler, history));
 
     let transport = ChannelTransport::new(router);
+    let env = test_helpers::create_test_envelope(Box::new(ListCommand), Some("chan-1"), None, None, None);
     let res =
-        tokio::time::timeout(Duration::from_secs(5), transport.send(env(BuiltInCommand::List)))
+        tokio::time::timeout(Duration::from_secs(5), transport.send(env))
             .await
             .expect("transport.send timed out")
             .unwrap();

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
 
-use super::{CommandEnvelope, CommandLabel, CommandResult};
+use super::{CommandEnvelope, CommandResult};
 use crate::control::CommandRouter;
 
 /// Errors that can occur during transport operations.
@@ -21,31 +21,28 @@ pub enum TransportError {
 }
 
 /// In-process channel-based transport for the control plane.
-type Tx<C> =
-    mpsc::Sender<(CommandEnvelope<C>, oneshot::Sender<Result<CommandResult, TransportError>>)>;
+type Tx =
+    mpsc::Sender<(CommandEnvelope, oneshot::Sender<Result<CommandResult, TransportError>>)>;
 
 /// A transport that sends commands over a Tokio MPSC channel.
 /// useful for in-process communication or testing.
 #[derive(Clone, Debug)]
-pub struct ChannelTransport<C: Clone> {
-    tx: Tx<C>,
+pub struct ChannelTransport {
+    tx: Tx,
     shutdown_tx: Arc<watch::Sender<bool>>,
     worker_handle: Arc<tokio::sync::Mutex<Option<JoinHandle<()>>>>,
 }
 
-impl<C> ChannelTransport<C>
-where
-    C: CommandLabel + Clone + Send + Sync + 'static,
-{
+impl ChannelTransport {
     /// Create a channel transport with default capacity (64).
-    pub fn new(router: Arc<CommandRouter<C>>) -> Self {
+    pub fn new(router: Arc<CommandRouter>) -> Self {
         Self::with_capacity(router, 64)
     }
 
     /// Create a channel transport with specified capacity.
-    pub fn with_capacity(router: Arc<CommandRouter<C>>, capacity: usize) -> Self {
+    pub fn with_capacity(router: Arc<CommandRouter>, capacity: usize) -> Self {
         let (tx, mut rx) = mpsc::channel::<(
-            CommandEnvelope<C>,
+            CommandEnvelope,
             oneshot::Sender<Result<CommandResult, TransportError>>,
         )>(capacity);
         let (shutdown_tx, mut shutdown_rx) = watch::channel(false);
@@ -112,7 +109,7 @@ where
     }
 
     /// Send a command and await the result over the channel.
-    pub async fn send(&self, env: CommandEnvelope<C>) -> Result<CommandResult, TransportError> {
+    pub async fn send(&self, env: CommandEnvelope) -> Result<CommandResult, TransportError> {
         let (resp_tx, resp_rx) = oneshot::channel();
         self.tx.send((env, resp_tx)).await.map_err(|_| TransportError::ChannelClosed)?;
         resp_rx.await.map_err(|_| TransportError::ResponseLost)?

@@ -7,7 +7,9 @@ use ninelives::control::{
     CommandResult, DefaultConfigRegistry, InMemoryHistory,
 };
 use ninelives::control::{
-    BuiltInCommand, BuiltInHandler, CommandHandler, CommandRouter, PassthroughAuth,
+    BuiltInHandler, CommandHandler, CommandRouter, PassthroughAuth,
+    WriteConfigCommand, ReadConfigCommand, ListConfigCommand, ResetCircuitBreakerCommand,
+    GetStateCommand,
 };
 use ninelives::{Backoff, Jitter, RetryPolicy};
 use ninelives::{CircuitBreakerConfig, CircuitBreakerLayer, CircuitState};
@@ -38,7 +40,7 @@ async fn config_commands_update_retry_adaptive() {
     let router = CommandRouter::new(auth, std::sync::Arc::new(handler), history);
 
     let env = CommandEnvelope {
-        cmd: BuiltInCommand::WriteConfig { path: "max_attempts".into(), value: "3".into() },
+        cmd: Box::new(WriteConfigCommand { path: "max_attempts".into(), value: "3".into() }),
         auth: Some(AuthPayload::Opaque(vec![])),
         meta: CommandMeta { id: "1".into(), correlation_id: None, timestamp_millis: None },
     };
@@ -51,7 +53,7 @@ async fn config_commands_update_retry_adaptive() {
 async fn read_config_without_registry_returns_error_variant() {
     let handler = BuiltInHandler::default();
     let env = CommandEnvelope {
-        cmd: BuiltInCommand::ReadConfig { path: "missing".into() },
+        cmd: Box::new(ReadConfigCommand { path: "missing".into() }),
         auth: None,
         meta: CommandMeta::default(),
     };
@@ -77,7 +79,7 @@ async fn list_config_returns_registered_keys() {
     let router = CommandRouter::new(auth, std::sync::Arc::new(handler), history);
 
     let env = CommandEnvelope {
-        cmd: BuiltInCommand::ListConfig,
+        cmd: Box::new(ListConfigCommand),
         auth: Some(AuthPayload::Opaque(vec![])),
         meta: CommandMeta { id: "lc".into(), correlation_id: None, timestamp_millis: None },
     };
@@ -113,7 +115,7 @@ async fn get_state_reports_open_breaker() {
     let router = CommandRouter::new(auth, Arc::new(handler), history);
 
     let env = CommandEnvelope {
-        cmd: BuiltInCommand::GetState,
+        cmd: Box::new(GetStateCommand),
         auth: Some(AuthPayload::Opaque(vec![])),
         meta: CommandMeta { id: "gs".into(), correlation_id: None, timestamp_millis: None },
     };
@@ -138,7 +140,7 @@ async fn reset_circuit_breaker_command() {
     let router = CommandRouter::new(auth, Arc::new(handler), history);
 
     let env = CommandEnvelope {
-        cmd: BuiltInCommand::ResetCircuitBreaker { id: "cb1".into() },
+        cmd: Box::new(ResetCircuitBreakerCommand { id: "cb1".into() }),
         auth: Some(AuthPayload::Opaque(vec![])),
         meta: CommandMeta { id: "2".into(), correlation_id: None, timestamp_millis: None },
     };
@@ -190,7 +192,7 @@ async fn reset_command_closes_open_breaker() {
     let router = CommandRouter::new(auth, Arc::new(handler), history);
 
     let env = CommandEnvelope {
-        cmd: BuiltInCommand::ResetCircuitBreaker { id: "cb_reset".into() },
+        cmd: Box::new(ResetCircuitBreakerCommand { id: "cb_reset".into() }),
         auth: Some(AuthPayload::Opaque(vec![])),
         meta: CommandMeta { id: "3".into(), correlation_id: None, timestamp_millis: None },
     };

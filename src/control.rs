@@ -10,6 +10,12 @@ use crate::ChannelTransport;
 
 /// Authentication providers and payload verification.
 pub mod auth;
+/// Built-in command type definitions.
+pub mod builtin_commands;
+/// Factory for parsing built-in commands.
+pub mod builtin_factory;
+/// Command trait and registry for extensibility.
+pub mod command;
 /// Core command handler traits and built-in command definitions.
 pub mod handler;
 /// Command router orchestration (auth -> handler -> audit/history).
@@ -24,7 +30,7 @@ pub mod types;
 // Re-exports from types
 pub use types::{
     AuditRecord, AuthContext, AuthError, AuthPayload, CommandContext, CommandEnvelope,
-    CommandError, CommandFailure, CommandId, CommandLabel, CommandMeta, CommandResult, DetachedSig,
+    CommandError, CommandFailure, CommandId, CommandMeta, CommandResult, DetachedSig,
     HistoryRecord,
 };
 
@@ -33,9 +39,21 @@ pub use auth::{
     AuthMode, AuthProvider, AuthRegistry, AuthorizationLayer, AuthorizationService, PassthroughAuth,
 };
 
+// Re-exports from command
+pub use command::{Command, CommandFactory, CommandRegistry as CommandTypeRegistry};
+
+// Re-exports from builtin_commands
+pub use builtin_commands::{
+    GetCommand, GetStateCommand, HealthCommand, ListCommand, ListConfigCommand,
+    ReadConfigCommand, ResetCircuitBreakerCommand, ResetCommand, SetCommand, WriteConfigCommand,
+};
+
+// Re-exports from builtin_factory
+pub use builtin_factory::BuiltInCommandFactory;
+
 // Re-exports from handler
 pub use handler::{
-    BuiltInCommand, BuiltInHandler, CommandHandler, CommandService, ConfigRegistry,
+    BuiltInHandler, CommandHandler, CommandService, ConfigRegistry,
     DefaultConfigRegistry, InMemoryConfigRegistry,
 };
 
@@ -57,19 +75,15 @@ pub use router::{
 /// - `InMemoryHistory`
 /// - `MemoryAuditSink`
 /// - `ChannelTransport` targeting the router
-pub fn bootstrap_defaults<C>(
-    handler: Arc<dyn handler::CommandHandler<C>>,
-) -> (Arc<CommandRouter<C>>, ChannelTransport<C>)
-where
-    C: CommandLabel + Clone + Send + Sync + 'static,
-{
+pub fn bootstrap_defaults(
+    handler: Arc<dyn handler::CommandHandler>,
+) -> (Arc<CommandRouter>, ChannelTransport) {
     let mut auth = AuthRegistry::new(AuthMode::First);
     auth.register(Arc::new(PassthroughAuth));
 
     let _cfg = DefaultConfigRegistry::new();
     let history: Arc<dyn CommandHistory> = Arc::new(InMemoryHistory::default());
-use crate::control::router::DEFAULT_HISTORY_CAPACITY;
-// ... (other uses)
+    use crate::control::router::DEFAULT_HISTORY_CAPACITY;
     let audit = Arc::new(MemoryAuditSink::new(DEFAULT_HISTORY_CAPACITY));
 
     let router = Arc::new(CommandRouter::new(auth, handler, history).with_audit(audit));

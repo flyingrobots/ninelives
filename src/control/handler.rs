@@ -9,11 +9,11 @@ use tower::Service;
 
 /// Command handler trait.
 #[async_trait]
-pub trait CommandHandler<C: Clone>: Send + Sync {
+pub trait CommandHandler: Send + Sync {
     /// Handle an authenticated command.
     async fn handle(
         &self,
-        cmd: CommandEnvelope<C>,
+        cmd: CommandEnvelope,
         ctx: AuthContext,
     ) -> Result<CommandResult, CommandError>;
 }
@@ -41,66 +41,7 @@ impl<T> CommandService for T where
 {
 }
 
-/// Built-in control-plane command for testing/demo.
-#[derive(Clone, Debug, PartialEq)]
-pub enum BuiltInCommand {
-    /// Set a value in the store.
-    Set {
-        /// Key to set.
-        key: String,
-        /// Value to set.
-        value: String,
-    },
-    /// Get a value from the store.
-    Get {
-        /// Key to get.
-        key: String,
-    },
-    /// List all keys in the store.
-    List,
-    /// Reset the store.
-    Reset,
-    /// Read a config value.
-    ReadConfig {
-        /// Config path.
-        path: String,
-    },
-    /// Write a config value.
-    WriteConfig {
-        /// Config path.
-        path: String,
-        /// New value.
-        value: String,
-    },
-    /// Reset a circuit breaker.
-    ResetCircuitBreaker {
-        /// Breaker ID.
-        id: String,
-    },
-    /// List all registered config keys.
-    ListConfig,
-    /// Get system state snapshot.
-    GetState,
-    /// Health check probe.
-    Health,
-}
-
-impl CommandLabel for BuiltInCommand {
-    fn label(&self) -> &str {
-        match self {
-            BuiltInCommand::Set { .. } => "set",
-            BuiltInCommand::Get { .. } => "get",
-            BuiltInCommand::List => "list",
-            BuiltInCommand::Reset => "reset",
-            BuiltInCommand::ReadConfig { .. } => "read_config",
-            BuiltInCommand::WriteConfig { .. } => "write_config",
-            BuiltInCommand::ResetCircuitBreaker { .. } => "reset_circuit_breaker",
-            BuiltInCommand::ListConfig => "list_config",
-            BuiltInCommand::GetState => "get_state",
-            BuiltInCommand::Health => "health",
-        }
-    }
-}
+// Built-in commands are now defined in builtin_commands.rs as discrete structs
 
 /// Registry of live config bindings (Adaptive values). Implementations are **volatile** by default;
 /// use `GetState` to export a snapshot and `apply_snapshot` to restore from your own persistence layer.
@@ -494,76 +435,6 @@ impl BuiltInHandler {
         Arc::make_mut(&mut self.state).config.set_registry(registry);
     }
 
-    async fn handle_config(
-        &self,
-        cmd: &BuiltInCommand,
-    ) -> Option<Result<CommandResult, CommandError>> {
-        match cmd {
-            BuiltInCommand::WriteConfig { path, value } => {
-                Some(self.state.config.write(path, value))
-            }
-            BuiltInCommand::ListConfig => Some(self.state.config.list().map(CommandResult::List)),
-            BuiltInCommand::ReadConfig { path } => Some(self.state.config.read(path)),
-            _ => None,
-        }
-    }
-
-    async fn handle_store(
-        &self,
-        cmd: &BuiltInCommand,
-    ) -> Option<Result<CommandResult, CommandError>> {
-        match cmd {
-            BuiltInCommand::Set { key, value } => {
-                Some(self.set_or_store(key.clone(), value.clone()).await)
-            }
-            BuiltInCommand::Get { key } => Some(Ok(self.get_from_store_or_config(key).await)),
-            BuiltInCommand::List => {
-                let store_keys: Vec<String> = self
-                    .state
-                    .store
-                    .keys()
-                    .await
-                    .into_iter()
-                    .map(|k| format!("store:{k}"))
-                    .collect();
-                let config_keys: Vec<String> = self
-                    .state
-                    .config
-                    .registry()
-                    .map(|reg| reg.keys().into_iter().map(|k| format!("config:{k}")))
-                    .map(|iter| iter.collect())
-                    .unwrap_or_default();
-                let mut keys: Vec<String> = store_keys.into_iter().chain(config_keys).collect();
-                keys.sort();
-                Some(Ok(CommandResult::List(keys)))
-            }
-            BuiltInCommand::Reset => {
-                self.state.store.clear().await;
-                Some(Ok(CommandResult::Reset))
-            }
-            _ => None,
-        }
-    }
-
-    async fn handle_breaker(
-        &self,
-        cmd: &BuiltInCommand,
-    ) -> Option<Result<CommandResult, CommandError>> {
-        match cmd {
-            BuiltInCommand::ResetCircuitBreaker { id } => Some(self.state.breakers.reset(id)),
-            BuiltInCommand::GetState => {
-                Some(build_state_snapshot(&self.state))
-            }
-            BuiltInCommand::Health => Some(Ok(CommandResult::Value(
-                serde_json::json!({
-                    "status": "ok",
-                    "version": env!("CARGO_PKG_VERSION")
-                })
-                .to_string(),
-            ))),
-            _ => None,
-        }
-    }
 
     async fn set_or_store(
         &self,
@@ -594,25 +465,88 @@ impl BuiltInHandler {
 }
 
 #[async_trait]
-impl CommandHandler<BuiltInCommand> for BuiltInHandler {
+impl CommandHandler for BuiltInHandler {
     async fn handle(
         &self,
-        cmd: CommandEnvelope<BuiltInCommand>,
+        cmd: CommandEnvelope,
         _ctx: AuthContext,
     ) -> Result<CommandResult, CommandError> {
-        match &cmd.cmd {
-            BuiltInCommand::WriteConfig { .. }
-            | BuiltInCommand::ListConfig
-            | BuiltInCommand::ReadConfig { .. } => self.handle_config(&cmd.cmd).await.unwrap(),
+        use super::builtin_commands::*;
 
-            BuiltInCommand::Set { .. }
-            | BuiltInCommand::Get { .. }
-            | BuiltInCommand::List
-            | BuiltInCommand::Reset => self.handle_store(&cmd.cmd).await.unwrap(),
+        let label = cmd.cmd.label();
 
-            BuiltInCommand::ResetCircuitBreaker { .. }
-            | BuiltInCommand::GetState
-            | BuiltInCommand::Health => self.handle_breaker(&cmd.cmd).await.unwrap(),
+        // Dispatch based on command type using downcasting
+        match label {
+            "write_config" => {
+                let write_cmd = cmd.cmd.as_any()
+                    .downcast_ref::<WriteConfigCommand>()
+                    .ok_or_else(|| CommandError::Handler("invalid write_config command".into()))?;
+                self.state.config.write(&write_cmd.path, &write_cmd.value)
+            }
+            "read_config" => {
+                let read_cmd = cmd.cmd.as_any()
+                    .downcast_ref::<ReadConfigCommand>()
+                    .ok_or_else(|| CommandError::Handler("invalid read_config command".into()))?;
+                self.state.config.read(&read_cmd.path)
+            }
+            "list_config" => {
+                self.state.config.list().map(CommandResult::List)
+            }
+            "set" => {
+                let set_cmd = cmd.cmd.as_any()
+                    .downcast_ref::<SetCommand>()
+                    .ok_or_else(|| CommandError::Handler("invalid set command".into()))?;
+                self.set_or_store(set_cmd.key.clone(), set_cmd.value.clone()).await
+            }
+            "get" => {
+                let get_cmd = cmd.cmd.as_any()
+                    .downcast_ref::<GetCommand>()
+                    .ok_or_else(|| CommandError::Handler("invalid get command".into()))?;
+                Ok(self.get_from_store_or_config(&get_cmd.key).await)
+            }
+            "list" => {
+                let store_keys: Vec<String> = self
+                    .state
+                    .store
+                    .keys()
+                    .await
+                    .into_iter()
+                    .map(|k| format!("store:{k}"))
+                    .collect();
+                let config_keys: Vec<String> = self
+                    .state
+                    .config
+                    .registry()
+                    .map(|reg| reg.keys().into_iter().map(|k| format!("config:{k}")))
+                    .map(|iter| iter.collect())
+                    .unwrap_or_default();
+                let mut keys: Vec<String> = store_keys.into_iter().chain(config_keys).collect();
+                keys.sort();
+                Ok(CommandResult::List(keys))
+            }
+            "reset" => {
+                self.state.store.clear().await;
+                Ok(CommandResult::Reset)
+            }
+            "reset_circuit_breaker" => {
+                let reset_cmd = cmd.cmd.as_any()
+                    .downcast_ref::<ResetCircuitBreakerCommand>()
+                    .ok_or_else(|| CommandError::Handler("invalid reset_circuit_breaker command".into()))?;
+                self.state.breakers.reset(&reset_cmd.id)
+            }
+            "get_state" => {
+                build_state_snapshot(&self.state)
+            }
+            "health" => {
+                Ok(CommandResult::Value(
+                    serde_json::json!({
+                        "status": "ok",
+                        "version": env!("CARGO_PKG_VERSION")
+                    })
+                    .to_string(),
+                ))
+            }
+            _ => Err(CommandError::Handler(format!("unknown command: {}", label))),
         }
     }
 }

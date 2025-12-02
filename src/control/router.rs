@@ -140,14 +140,14 @@ impl AuditSink for MemoryAuditSink {
 }
 
 /// Simple in-process router using an AuthRegistry and handler.
-pub struct CommandRouter<C> {
+pub struct CommandRouter {
     auth: AuthRegistry,
-    handler: Arc<dyn CommandHandler<C>>,
+    handler: Arc<dyn CommandHandler>,
     history: Arc<dyn CommandHistory>,
     audit: Option<Arc<dyn AuditSink>>,
 }
 
-impl<C> Clone for CommandRouter<C> {
+impl Clone for CommandRouter {
     fn clone(&self) -> Self {
         Self {
             auth: self.auth.clone(),
@@ -158,14 +158,11 @@ impl<C> Clone for CommandRouter<C> {
     }
 }
 
-impl<C> CommandRouter<C>
-where
-    C: Send + Sync + Clone + CommandLabel + 'static,
-{
+impl CommandRouter {
     /// Create a new command router.
     pub fn new(
         auth: AuthRegistry,
-        handler: Arc<dyn CommandHandler<C>>,
+        handler: Arc<dyn CommandHandler>,
         history: Arc<dyn CommandHistory>,
     ) -> Self {
         Self { auth, handler, history, audit: None }
@@ -178,7 +175,7 @@ where
     }
 
     /// Execute a command envelope through the router (auth -> handler -> history/audit).
-    pub async fn execute(&self, env: CommandEnvelope<C>) -> Result<CommandResult, CommandError> {
+    pub async fn execute(&self, env: CommandEnvelope) -> Result<CommandResult, CommandError> {
         // Extract a best-effort principal even if auth ultimately fails.
         let fallback_principal = extract_principal(&env);
         // Auth path: audit denials too.
@@ -220,7 +217,7 @@ where
 }
 
 /// Attempt to extract a caller identity string without failing hard.
-fn extract_principal<C: Clone>(env: &CommandEnvelope<C>) -> String {
+fn extract_principal(env: &CommandEnvelope) -> String {
     if let Some(auth) = &env.auth {
         match auth {
             AuthPayload::Mtls { peer_dn, .. } => return peer_dn.clone(),

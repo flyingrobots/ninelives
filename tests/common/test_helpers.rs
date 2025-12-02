@@ -1,14 +1,14 @@
 #[cfg(feature = "control")]
-use ninelives::control::{AuthPayload, BuiltInCommand, CommandEnvelope, CommandMeta};
+use ninelives::control::{AuthPayload, CommandEnvelope, CommandMeta};
 
 #[cfg(feature = "control")]
 pub fn create_test_envelope(
-    cmd: BuiltInCommand,
+    cmd: Box<dyn ninelives::control::command::Command>,
     id: Option<&str>,
     correlation_id: Option<&str>,
     auth: Option<AuthPayload>,
     timestamp: Option<u128>,
-) -> CommandEnvelope<BuiltInCommand> {
+) -> CommandEnvelope {
     CommandEnvelope {
         cmd,
         auth: auth.or_else(|| Some(AuthPayload::Opaque(vec![]))), // Default auth

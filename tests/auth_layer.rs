@@ -3,8 +3,8 @@
 mod common;
 
 use ninelives::control::{
-    AuthContext, AuthError, AuthMode, AuthPayload, AuthProvider, AuthRegistry, BuiltInCommand,
-    CommandEnvelope, CommandMeta, CommandResult, PassthroughAuth,
+    AuthContext, AuthError, AuthMode, AuthPayload, AuthProvider, AuthRegistry,
+    CommandEnvelope, CommandMeta, CommandResult, PassthroughAuth, ListCommand,
 };
 use ninelives::control::router::{DEFAULT_HISTORY_CAPACITY, MemoryAuditSink};
 use ninelives::AuthorizationLayer;
@@ -18,7 +18,7 @@ struct RecordingSvc {
     called: Arc<std::sync::atomic::AtomicBool>,
 }
 
-impl Service<CommandEnvelope<BuiltInCommand>> for RecordingSvc {
+impl Service<CommandEnvelope> for RecordingSvc {
     type Response = CommandResult;
     type Error = ninelives::control::CommandError;
     type Future = std::future::Ready<Result<Self::Response, Self::Error>>;
@@ -30,7 +30,7 @@ impl Service<CommandEnvelope<BuiltInCommand>> for RecordingSvc {
         std::task::Poll::Ready(Ok(()))
     }
 
-    fn call(&mut self, _req: CommandEnvelope<BuiltInCommand>) -> Self::Future {
+    fn call(&mut self, _req: CommandEnvelope) -> Self::Future {
         self.called.store(true, std::sync::atomic::Ordering::SeqCst);
         std::future::ready(Ok(CommandResult::Ack))
     }
@@ -51,10 +51,10 @@ impl AuthProvider for DenyAuth {
     }
 }
 
-fn env(cmd: BuiltInCommand) -> CommandEnvelope<BuiltInCommand> {
+fn env() -> CommandEnvelope {
     let now =
         std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis();
-    test_helpers::create_test_envelope(cmd, Some("cmd-1"), Some("corr-1"), None, Some(now))
+    test_helpers::create_test_envelope(Box::new(ListCommand), Some("cmd-1"), Some("corr-1"), None, Some(now))
 }
 
 #[tokio::test]
@@ -66,7 +66,7 @@ async fn authorization_layer_allows_and_forwards() {
     let called = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let svc = RecordingSvc { called: called.clone() };
     let svc = layer.layer(svc);
-    let res = svc.oneshot(env(BuiltInCommand::List)).await.unwrap();
+    let res = svc.oneshot(env()).await.unwrap();
     assert!(called.load(std::sync::atomic::Ordering::SeqCst));
     assert_eq!(res, CommandResult::Ack);
 }
@@ -80,7 +80,7 @@ async fn authorization_layer_denies_and_blocks() {
     let called = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let svc = RecordingSvc { called: called.clone() };
     let svc = layer.layer(svc);
-    let res = svc.oneshot(env(BuiltInCommand::List)).await;
+    let res = svc.oneshot(env()).await;
     assert!(!called.load(std::sync::atomic::Ordering::SeqCst));
     assert!(matches!(res, Err(ninelives::control::CommandError::Auth(_))));
 }
@@ -89,7 +89,7 @@ async fn authorization_layer_denies_and_blocks() {
 fn make_router(
     auth: Arc<dyn AuthProvider>,
     audit: Arc<MemoryAuditSink>,
-) -> ninelives::control::CommandRouter<BuiltInCommand> {
+) -> ninelives::control::CommandRouter {
     let mut reg = AuthRegistry::new(AuthMode::First);
     reg.register(auth);
     let history: Arc<dyn ninelives::control::CommandHistory> =
@@ -103,7 +103,7 @@ async fn command_router_audits_denial() {
     let audit = Arc::new(MemoryAuditSink::new(DEFAULT_HISTORY_CAPACITY));
     let router = make_router(Arc::new(DenyAuth), audit.clone());
 
-    let res = router.execute(env(BuiltInCommand::List)).await;
+    let res = router.execute(env()).await;
     assert!(matches!(res, Err(ninelives::control::CommandError::Auth(_))));
 
     let records = audit.records().await;
@@ -121,7 +121,7 @@ async fn command_router_audits_success() {
     let audit = Arc::new(MemoryAuditSink::new(DEFAULT_HISTORY_CAPACITY));
     let router = make_router(Arc::new(PassthroughAuth), audit.clone());
 
-    let res = router.execute(env(BuiltInCommand::List)).await.unwrap();
+    let res = router.execute(env()).await.unwrap();
     assert_eq!(res, CommandResult::List(vec![]));
 
     let records = audit.records().await;

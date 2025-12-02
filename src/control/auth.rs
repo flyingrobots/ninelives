@@ -61,10 +61,7 @@ impl AuthRegistry {
     }
 
     /// Authenticate a command envelope using registered providers.
-    pub fn authenticate<C>(&self, env: &CommandEnvelope<C>) -> Result<AuthContext, AuthError>
-    where
-        C: CommandLabel + Clone,
-    {
+    pub fn authenticate(&self, env: &CommandEnvelope) -> Result<AuthContext, AuthError> {
         match self.mode {
             AuthMode::First => {
                 self.authenticate_first(env)
@@ -75,10 +72,7 @@ impl AuthRegistry {
         }
     }
 
-    fn authenticate_first<C>(&self, env: &CommandEnvelope<C>) -> Result<AuthContext, AuthError>
-    where
-        C: CommandLabel + Clone,
-    {
+    fn authenticate_first(&self, env: &CommandEnvelope) -> Result<AuthContext, AuthError> {
         let mut last_err = None;
         for p in &self.providers {
             match p.authenticate(&env.meta, env.auth.as_ref()) {
@@ -96,22 +90,16 @@ impl AuthRegistry {
         Err(last_err.unwrap_or(AuthError::Unauthenticated("no providers".into())))
     }
 
-    fn authenticate_all<C>(&self, env: &CommandEnvelope<C>) -> Result<AuthContext, AuthError>
-    where
-        C: CommandLabel + Clone,
-    {
+    fn authenticate_all(&self, env: &CommandEnvelope) -> Result<AuthContext, AuthError> {
         let authed = self.authenticate_many(env)?;
         self.authorize_all(env, &authed)?;
         self.merge_contexts(authed)
     }
 
-    fn authenticate_many<C>(
+    fn authenticate_many(
         &self,
-        env: &CommandEnvelope<C>,
-    ) -> Result<Vec<AuthContext>, AuthError>
-    where
-        C: CommandLabel + Clone,
-    {
+        env: &CommandEnvelope,
+    ) -> Result<Vec<AuthContext>, AuthError> {
         let mut results = Vec::new();
         for p in &self.providers {
             let ctx = p.authenticate(&env.meta, env.auth.as_ref())?;
@@ -120,14 +108,11 @@ impl AuthRegistry {
         Ok(results)
     }
 
-    fn authorize_all<C>(
+    fn authorize_all(
         &self,
-        env: &CommandEnvelope<C>,
+        env: &CommandEnvelope,
         contexts: &[AuthContext],
-    ) -> Result<(), AuthError>
-    where
-        C: CommandLabel + Clone,
-    {
+    ) -> Result<(), AuthError> {
         for (p, ctx) in self.providers.iter().zip(contexts.iter()) {
             p.authorize(ctx, env.cmd.label(), &env.meta)?;
         }
@@ -174,10 +159,9 @@ impl<S> tower_layer::Layer<S> for AuthorizationLayer {
     }
 }
 
-impl<S, C> Service<CommandEnvelope<C>> for AuthorizationService<S>
+impl<S> Service<CommandEnvelope> for AuthorizationService<S>
 where
-    C: CommandLabel + Clone + Send + Sync + 'static,
-    S: Service<CommandEnvelope<C>, Response = CommandResult, Error = CommandError>
+    S: Service<CommandEnvelope, Response = CommandResult, Error = CommandError>
         + Clone
         + Send
         + 'static,
@@ -194,18 +178,11 @@ where
         self.inner.poll_ready(cx)
     }
 
-    fn call(&mut self, req: CommandEnvelope<C>) -> Self::Future {
+    fn call(&mut self, req: CommandEnvelope) -> Self::Future {
         let registry = self.registry.clone();
         let inner = self.inner.clone();
         Box::pin(async move {
             registry.authenticate(&req).map_err(CommandError::Auth)?;
-            // inner is moved into the future; Service::call requires mutable access,
-            // but the binding itself doesn't need to be mut for the move.
-            // However, we must ensure we can call .call(&mut inner).
-            // Since inner is owned by the future, we need to make it mutable inside?
-            // Let's trust the compiler and remove `mut`.
-            // If it fails to compile because `inner` is immutable, we'll need to shadow it:
-            // let mut inner = inner;
             let mut inner = inner;
             inner.call(req).await
         })
@@ -284,11 +261,20 @@ mod tests {
         }
     }
 
-    #[derive(Clone)]
+    use super::super::command::Command;
+    use std::any::Any;
+
+    #[derive(Clone, Debug)]
     struct DummyCmd;
-    impl CommandLabel for DummyCmd {
+    impl Command for DummyCmd {
         fn label(&self) -> &str {
             "dummy"
+        }
+        fn clone_box(&self) -> Box<dyn Command> {
+            Box::new(self.clone())
+        }
+        fn as_any(&self) -> &dyn Any {
+            self
         }
     }
 
@@ -305,7 +291,7 @@ mod tests {
         reg.register(Arc::new(AllowAuth { name: "p2", principal: "bob", attrs: a2_attrs }));
 
         let env = CommandEnvelope {
-            cmd: DummyCmd,
+            cmd: Box::new(DummyCmd),
             auth: None,
             meta: CommandMeta { id: "1".into(), correlation_id: None, timestamp_millis: None },
         };
@@ -321,7 +307,7 @@ mod tests {
     fn authorization_service_forwards_poll_ready_errors() {
         #[derive(Clone)]
         struct FailReady;
-        impl Service<CommandEnvelope<DummyCmd>> for FailReady {
+        impl Service<CommandEnvelope> for FailReady {
             type Response = CommandResult;
             type Error = CommandError;
             type Future = futures::future::Ready<Result<Self::Response, Self::Error>>;
@@ -331,7 +317,7 @@ mod tests {
             ) -> std::task::Poll<Result<(), Self::Error>> {
                 std::task::Poll::Ready(Err(CommandError::Handler("not ready".into())))
             }
-            fn call(&mut self, _req: CommandEnvelope<DummyCmd>) -> Self::Future {
+            fn call(&mut self, _req: CommandEnvelope) -> Self::Future {
                 futures::future::ready(Ok(CommandResult::Ack))
             }
         }
