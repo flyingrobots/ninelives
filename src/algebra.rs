@@ -311,7 +311,7 @@ where
     S1: tower_service::Service<Request> + Clone + Send + 'static,
     S1::Future: Send + 'static,
     S1::Response: Send + 'static,
-    S1::Error: Send + 'static,
+    S1::Error: Send + 'static + std::fmt::Debug,
     S2: tower_service::Service<Request, Response = S1::Response, Error = S1::Error>
         + Clone
         + Send
@@ -363,7 +363,7 @@ where
 /// `Policy(A) & Policy(B)` produces `Policy<ForkJoinLayer<A, B>>`.
 ///
 /// Both services are called concurrently, and the first successful result is returned.
-/// If both fail, an error is returned (currently the left error, but this may change).
+/// If both fail, a `ForkJoinError` containing both errors is returned for diagnostics.
 ///
 /// This implements the "happy eyeballs" pattern commonly used for IPv4/IPv6 racing,
 /// cache racing, or trying multiple backends simultaneously.
@@ -445,13 +445,47 @@ pub struct ForkJoinService<S1, S2> {
     right: S2,
 }
 
+#[derive(Debug)]
+pub struct ForkJoinError<E> {
+    pub left: Option<E>,
+    pub right: Option<E>,
+}
+
+impl<E> std::fmt::Display for ForkJoinError<E>
+where
+    E: std::fmt::Display,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match (&self.left, &self.right) {
+            (Some(l), Some(r)) => {
+                write!(f, "ForkJoin failed on both sides. Left: {}; Right: {}", l, r)
+            }
+            (Some(l), None) => write!(f, "ForkJoin failed on left side: {}", l),
+            (None, Some(r)) => write!(f, "ForkJoin failed on right side: {}", r),
+            (None, None) => write!(f, "ForkJoin failed with no recorded errors"),
+        }
+    }
+}
+
+impl<E> std::error::Error for ForkJoinError<E>
+where
+    E: std::error::Error + 'static,
+{
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.left
+            .as_ref()
+            .map(|e| e as &dyn std::error::Error)
+            .or_else(|| self.right.as_ref().map(|e| e as &dyn std::error::Error))
+    }
+}
+
 impl<S1, S2, Request> tower_service::Service<Request> for ForkJoinService<S1, S2>
 where
     Request: Clone + Send + 'static,
     S1: tower_service::Service<Request> + Clone + Send + 'static,
     S1::Future: Send + 'static,
     S1::Response: Send + 'static,
-    S1::Error: Send + 'static,
+    S1::Error: Send + 'static + std::fmt::Debug,
     S2: tower_service::Service<Request, Response = S1::Response, Error = S1::Error>
         + Clone
         + Send
@@ -461,21 +495,29 @@ where
     S2::Error: Send + 'static,
 {
     type Response = S1::Response;
-    type Error = S1::Error;
+    type Error = ForkJoinError<S1::Error>;
     type Future = futures::future::BoxFuture<'static, Result<Self::Response, Self::Error>>;
 
     fn poll_ready(
         &mut self,
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Result<(), Self::Error>> {
-        let left_ready = self.left.poll_ready(cx);
-        let right_ready = self.right.poll_ready(cx);
-        match (left_ready, right_ready) {
+        let left = self.left.poll_ready(cx);
+        let right = self.right.poll_ready(cx);
+
+        match (left, right) {
             (std::task::Poll::Ready(Ok(_)), std::task::Poll::Ready(Ok(_))) => {
                 std::task::Poll::Ready(Ok(()))
             }
-            (std::task::Poll::Ready(Err(e)), _) => std::task::Poll::Ready(Err(e)),
-            (_, std::task::Poll::Ready(Err(e))) => std::task::Poll::Ready(Err(e)),
+            (std::task::Poll::Ready(Err(l)), std::task::Poll::Ready(Err(r))) => {
+                std::task::Poll::Ready(Err(ForkJoinError { left: Some(l), right: Some(r) }))
+            }
+            (std::task::Poll::Ready(Err(l)), _) => {
+                std::task::Poll::Ready(Err(ForkJoinError { left: Some(l), right: None }))
+            }
+            (_, std::task::Poll::Ready(Err(r))) => {
+                std::task::Poll::Ready(Err(ForkJoinError { left: None, right: Some(r) }))
+            }
             _ => std::task::Poll::Pending,
         }
     }
@@ -502,14 +544,29 @@ where
                     // Left failed, try right
                     match right_fut.await {
                         Ok(resp) => Ok(resp),
-                        Err(_) => Err(left_err), // Both failed, return left error
+                        Err(right_err) => {
+                            // Surface both failures for diagnostics while returning deterministic left error.
+                            tracing::warn!(
+                                left_error = ?left_err,
+                                right_error = ?right_err,
+                                "ForkJoinService: both paths failed; returning combined error"
+                            );
+                            Err(ForkJoinError { left: Some(left_err), right: Some(right_err) })
+                        } // Both failed, return combined error
                     }
                 }
-                Either::Right((Err(_right_err), left_fut)) => {
+                Either::Right((Err(right_err), left_fut)) => {
                     // Right failed, try left
                     match left_fut.await {
                         Ok(resp) => Ok(resp),
-                        Err(left_err) => Err(left_err), // Both failed, return deterministic left error
+                        Err(left_err) => {
+                            tracing::warn!(
+                                left_error = ?left_err,
+                                right_error = ?right_err,
+                                "ForkJoinService: both paths failed; returning combined error"
+                            );
+                            Err(ForkJoinError { left: Some(left_err), right: Some(right_err) })
+                        } // Both failed, return combined error
                     }
                 }
             }
@@ -520,10 +577,15 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::TimeoutLayer;
     use futures::task::noop_waker;
+    use std::pin::Pin;
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::Arc;
     use std::task::{Context, Poll};
+    use std::time::Duration;
+    use tokio::{sync::oneshot, time};
+    use tower::ServiceExt;
     use tower_service::Service;
 
     #[derive(Clone, Debug)]
@@ -551,8 +613,8 @@ mod tests {
     where
         Request: Clone + Send + 'static,
     {
-        type Response = ();
-        type Error = &'static str;
+        type Response = Request;
+        type Error = std::io::Error;
         type Future = futures::future::Ready<Result<Self::Response, Self::Error>>;
 
         fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
@@ -565,9 +627,54 @@ mod tests {
             }
         }
 
-        fn call(&mut self, _req: Request) -> Self::Future {
+        fn call(&mut self, req: Request) -> Self::Future {
             self.calls.fetch_add(1, Ordering::SeqCst);
-            futures::future::ready(Ok(()))
+            futures::future::ready(Ok(req))
+        }
+    }
+
+    #[derive(Clone, Debug)]
+    struct ReadyService;
+    impl ReadyService {
+        fn new() -> Self {
+            Self
+        }
+    }
+    impl<T: Clone + Send + 'static> tower_service::Service<T> for ReadyService {
+        type Response = T;
+        type Error = std::io::Error;
+        type Future = futures::future::Ready<Result<Self::Response, Self::Error>>;
+        fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+            Poll::Ready(Ok(()))
+        }
+        fn call(&mut self, req: T) -> Self::Future {
+            futures::future::ready(Ok(req))
+        }
+    }
+
+    #[derive(Clone, Debug)]
+    struct SlowService {
+        delay: Duration,
+    }
+    impl SlowService {
+        fn new(delay: Duration) -> Self {
+            Self { delay }
+        }
+    }
+    impl tower_service::Service<&'static str> for SlowService {
+        type Response = &'static str;
+        type Error = std::io::Error;
+        type Future =
+            Pin<Box<dyn futures::Future<Output = Result<Self::Response, Self::Error>> + Send>>;
+        fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+            Poll::Ready(Ok(()))
+        }
+        fn call(&mut self, req: &'static str) -> Self::Future {
+            let delay = self.delay;
+            Box::pin(async move {
+                tokio::time::sleep(delay).await;
+                Ok(req)
+            })
         }
     }
 
@@ -612,8 +719,8 @@ mod tests {
         assert_eq!(err, "primary failed");
     }
 
-    #[tokio::test]
-    async fn fork_join_returns_left_error_if_both_fail() {
+    #[tokio::test(start_paused = true)]
+    async fn fork_join_returns_both_errors_on_dual_failure() {
         #[derive(Clone, Debug)]
         struct LeftErr;
         #[derive(Clone, Debug)]
@@ -644,8 +751,10 @@ mod tests {
         }
 
         let mut svc = ForkJoinService { left: LeftErr, right: RightErr };
+        tokio::time::advance(Duration::from_millis(1)).await;
         let err = svc.call(()).await.unwrap_err();
-        assert_eq!(err, "left");
+        assert_eq!(err.left, Some("left"));
+        assert_eq!(err.right, Some("right"));
     }
 
     #[test]
@@ -663,5 +772,169 @@ mod tests {
 
         right.set_ready(true);
         assert!(matches!(Service::<()>::poll_ready(&mut svc, &mut cx), Poll::Ready(Ok(()))));
+    }
+
+    #[tokio::test]
+    async fn fallback_short_circuits_on_success() {
+        let mut svc =
+            FallbackService { primary: ReadyService::new(), secondary: GateService::new() };
+        let res = svc.call("ok").await.unwrap();
+        assert_eq!(res, "ok");
+    }
+
+    #[tokio::test]
+    async fn race_returns_first_success() {
+        time::pause();
+        let slow = SlowService::new(Duration::from_millis(50));
+        let fast = ReadyService::new();
+        let mut svc = ForkJoinService { left: slow, right: fast };
+        time::advance(Duration::from_millis(1)).await;
+        let res = svc.call("req").await.unwrap();
+        assert_eq!(res, "req");
+    }
+
+    #[tokio::test]
+    async fn wrap_preserves_ordering() {
+        let layer = CombinedLayer {
+            outer: TimeoutLayer::new(Duration::from_millis(20)).unwrap(),
+            inner: TimeoutLayer::new(Duration::from_secs(1)).unwrap(),
+        };
+        let mut svc = layer.layer(ReadyService::new());
+        let res = Service::call(&mut svc, "wrapped").await.unwrap();
+        assert_eq!(res, "wrapped");
+    }
+
+    #[tokio::test]
+    async fn fallback_layer_accepts_cloneable_service() {
+        // Test that fallback layers work with simple services
+        #[derive(Clone)]
+        struct TestSvc;
+        impl tower_service::Service<()> for TestSvc {
+            type Response = ();
+            type Error = std::io::Error;
+            type Future = futures::future::Ready<Result<(), std::io::Error>>;
+            fn poll_ready(
+                &mut self,
+                _cx: &mut std::task::Context<'_>,
+            ) -> std::task::Poll<Result<(), Self::Error>> {
+                std::task::Poll::Ready(Ok(()))
+            }
+            fn call(&mut self, _req: ()) -> Self::Future {
+                futures::future::ready(Ok(()))
+            }
+        }
+
+        let left = Policy(tower::util::MapRequestLayer::new(|_: ()| ()));
+        let right = Policy(tower::util::MapRequestLayer::new(|_: ()| ()));
+        let layer = left | right;
+        let mut svc = layer.layer(TestSvc);
+        assert!(matches!(
+            Service::poll_ready(&mut svc, &mut Context::from_waker(&noop_waker())),
+            Poll::Ready(Ok(()))
+        ));
+        svc.call(()).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn fork_join_layer_accepts_cloneable_service() {
+        // Test that fork-join layers work with simple services
+        #[derive(Clone)]
+        struct TestSvc;
+        impl tower_service::Service<&'static str> for TestSvc {
+            type Response = &'static str;
+            type Error = std::io::Error;
+            type Future = futures::future::Ready<Result<&'static str, std::io::Error>>;
+            fn poll_ready(
+                &mut self,
+                _cx: &mut std::task::Context<'_>,
+            ) -> std::task::Poll<Result<(), Self::Error>> {
+                std::task::Poll::Ready(Ok(()))
+            }
+            fn call(&mut self, req: &'static str) -> Self::Future {
+                futures::future::ready(Ok(req))
+            }
+        }
+
+        let fast = Policy(tower::util::MapRequestLayer::new(|req: &'static str| req));
+        let slow = Policy(tower::util::MapRequestLayer::new(|req: &'static str| req));
+        let layer = fast & slow;
+        let mut svc = layer.layer(TestSvc);
+        let resp = svc.ready().await.unwrap().call("ok").await.unwrap();
+        assert_eq!(resp, "ok");
+    }
+
+    #[tokio::test]
+    async fn fork_join_drops_loser_future_when_winner_finishes() {
+        time::pause();
+
+        #[derive(Clone)]
+        struct DropAwareService {
+            delay: Duration,
+            drop_tx: Arc<std::sync::Mutex<Option<oneshot::Sender<()>>>>,
+        }
+
+        impl DropAwareService {
+            fn new(delay: Duration, drop_tx: oneshot::Sender<()>) -> Self {
+                Self { delay, drop_tx: Arc::new(std::sync::Mutex::new(Some(drop_tx))) }
+            }
+        }
+
+        struct DropFuture {
+            sleep: Pin<Box<time::Sleep>>,
+            resp: &'static str,
+            drop_tx: Arc<std::sync::Mutex<Option<oneshot::Sender<()>>>>,
+        }
+
+        impl Drop for DropFuture {
+            fn drop(&mut self) {
+                if let Ok(mut guard) = self.drop_tx.lock() {
+                    if let Some(tx) = guard.take() {
+                        let _ = tx.send(());
+                    }
+                }
+            }
+        }
+
+        impl futures::Future for DropFuture {
+            type Output = Result<&'static str, std::io::Error>;
+            fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+                let this = self.get_mut();
+                let sleep = Pin::new(&mut this.sleep);
+                match sleep.poll(cx) {
+                    Poll::Ready(_) => Poll::Ready(Ok(this.resp)),
+                    Poll::Pending => Poll::Pending,
+                }
+            }
+        }
+
+        impl tower_service::Service<&'static str> for DropAwareService {
+            type Response = &'static str;
+            type Error = std::io::Error;
+            type Future = DropFuture;
+
+            fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+                Poll::Ready(Ok(()))
+            }
+
+            fn call(&mut self, req: &'static str) -> Self::Future {
+                DropFuture {
+                    sleep: Box::pin(time::sleep(self.delay)),
+                    resp: req,
+                    drop_tx: self.drop_tx.clone(),
+                }
+            }
+        }
+
+        let (drop_tx, drop_rx) = oneshot::channel();
+
+        let fast = ReadyService::new();
+        let slow = DropAwareService::new(Duration::from_secs(5), drop_tx);
+        let mut svc = ForkJoinService { left: slow, right: fast };
+
+        time::advance(Duration::from_millis(1)).await;
+        let res = svc.call("ok").await.unwrap();
+        assert_eq!(res, "ok");
+
+        drop_rx.await.expect("loser future should be dropped immediately when winner completes");
     }
 }

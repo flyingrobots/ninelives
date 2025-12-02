@@ -1,40 +1,48 @@
-//! etcd telemetry sink for `ninelives` (companion crate).
-//! Default build is no-op; enable `client` to write events to etcd keys.
+#![cfg(feature = "etcd-client")]
 
-use ninelives::telemetry::{PolicyEvent, TelemetrySink};
+//! etcd telemetry sink for `ninelives` (companion crate).
+//! Bring your own `etcd_client::Client`; events are stored as JSON under a prefix.
+
+use ninelives::telemetry::{event_to_json, PolicyEvent, TelemetrySink};
 use std::convert::Infallible;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct EtcdSink {
     prefix: String,
-    #[cfg(feature = "client")]
     client: etcd_client::Client,
 }
 
-impl EtcdSink {
-    /// `endpoint` like "http://127.0.0.1:2379"; events stored under `prefix/<nanos>`
-    pub async fn new<S: Into<String>>(
-        endpoint: S,
-        prefix: S,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
-        let prefix = prefix.into();
-        #[cfg(feature = "client")]
-        {
-            let client = etcd_client::Client::connect([endpoint.into()], None).await?;
-            return Ok(Self { prefix, client });
-        }
-        #[cfg(not(feature = "client"))]
-        {
-            let _ = endpoint;
-            Ok(Self { prefix, ..Self::noop() })
-        }
+impl std::fmt::Debug for EtcdSink {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("EtcdSink")
+            .field("prefix", &self.prefix)
+            .field("client", &"<etcd_client::Client>")
+            .finish()
     }
+}
 
-    #[cfg(not(feature = "client"))]
-    fn noop() -> Self {
-        Self { prefix: String::new() }
+impl EtcdSink {
+    /// Create a sink using an existing etcd client; keys will be `prefix/<nanos>`.
+    ///
+    /// # Errors
+    /// Returns `Err` if the prefix is empty, contains control characters, or is otherwise invalid.
+    pub fn new(prefix: impl Into<String>, client: etcd_client::Client) -> Result<Self, String> {
+        let mut p: String = prefix.into();
+
+        // Normalize: trim whitespace and strip trailing slashes
+        p = p.trim().trim_end_matches('/').to_string();
+
+        // Validate
+        if p.is_empty() {
+            return Err("prefix cannot be empty".to_string());
+        }
+        if p.chars().any(|c| c.is_control()) {
+            return Err("prefix cannot contain control characters".to_string());
+        }
+
+        Ok(Self { prefix: p, client })
     }
 }
 
@@ -48,21 +56,27 @@ impl tower_service::Service<PolicyEvent> for EtcdSink {
     }
 
     fn call(&mut self, event: PolicyEvent) -> Self::Future {
-        #[cfg(feature = "client")]
-        let fut = {
-            let mut client = self.client.clone();
-            let key = format!("{}/{}", self.prefix, chrono::Utc::now().timestamp_nanos());
-            let val = format!("{:?}", event);
-            Box::pin(async move {
-                let _ = client.put(key, val, None).await;
-                Ok(())
-            })
-        };
-
-        #[cfg(not(feature = "client"))]
-        let fut = Box::pin(async move { Ok(()) });
-
-        fut
+        let mut client = self.client.clone();
+        let ts = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(i64::MAX); // chrono overflows near year 2262; clamp to max
+        let key = format!("{}/{}-{}", self.prefix, ts, uuid::Uuid::new_v4());
+        let value = event_to_json(&event);
+        Box::pin(async move {
+            match client.put(key.clone(), value.to_string(), None).await {
+                Ok(_) => {
+                    // Success: could increment a success metric here
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        target: "ninelives::etcd",
+                        key=%key,
+                        error=%e,
+                        "failed to write telemetry event to etcd"
+                    );
+                    // Failure: could increment a failure metric here
+                }
+            }
+            Ok(())
+        })
     }
 }
 

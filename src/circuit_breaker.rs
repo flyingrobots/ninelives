@@ -1,10 +1,16 @@
 //! Circuit breaker implemented as a tower Layer/Service.
 
-use crate::{clock::Clock, clock::MonotonicClock, ResilienceError};
-use futures::future::BoxFuture;
+use crate::circuit_breaker_registry::{CircuitBreakerHandle, CircuitBreakerRegistry};
+use crate::{adaptive::Adaptive, clock::Clock, clock::MonotonicClock, ResilienceError};
+use crate::telemetry::{CircuitBreakerEvent, NullSink, PolicyEvent, RequestOutcome};
+use pin_project::pin_project;
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::atomic::{AtomicU64, AtomicU8, AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::task::{Context, Poll};
 use std::time::Duration;
+use std::time::Instant as StdInstant;
 use tower_layer::Layer;
 use tower_service::Service;
 
@@ -14,6 +20,7 @@ const STATE_HALF_OPEN: u8 = 2;
 
 /// Circuit breaker state machine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum CircuitState {
     /// Circuit is closed - requests flow normally
     Closed,
@@ -37,17 +44,97 @@ impl CircuitState {
             STATE_CLOSED => CircuitState::Closed,
             STATE_OPEN => CircuitState::Open,
             STATE_HALF_OPEN => CircuitState::HalfOpen,
-            _ => CircuitState::Closed,
+            other => {
+                debug_assert!(false, "invalid circuit state byte: {}", other);
+                CircuitState::Closed
+            }
         }
+    }
+}
+
+impl std::fmt::Display for CircuitState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            CircuitState::Closed => "Closed",
+            CircuitState::Open => "Open",
+            CircuitState::HalfOpen => "HalfOpen",
+        };
+        f.write_str(s)
     }
 }
 
 /// Validated configuration for the circuit breaker.
 #[derive(Debug, Clone)]
 pub struct CircuitBreakerConfig {
+    id: Option<String>,
+    failure_threshold: Adaptive<usize>,
+    recovery_timeout: Adaptive<Duration>,
+    half_open_max_calls: Adaptive<usize>,
+}
+
+/// Builder for [`CircuitBreakerConfig`].
+#[derive(Debug, Clone)]
+pub struct CircuitBreakerConfigBuilder {
     failure_threshold: usize,
     recovery_timeout: Duration,
     half_open_max_calls: usize,
+    id: Option<String>,
+}
+
+impl Default for CircuitBreakerConfigBuilder {
+    fn default() -> Self {
+        Self {
+            failure_threshold: 5,
+            recovery_timeout: Duration::from_secs(10),
+            half_open_max_calls: 1,
+            id: None,
+        }
+    }
+}
+
+impl CircuitBreakerConfigBuilder {
+    pub fn failure_threshold(mut self, threshold: usize) -> Self {
+        self.failure_threshold = threshold;
+        self
+    }
+
+    pub fn recovery_timeout(mut self, timeout: Duration) -> Self {
+        self.recovery_timeout = timeout;
+        self
+    }
+
+    pub fn half_open_limit(mut self, limit: usize) -> Self {
+        self.half_open_max_calls = limit;
+        self
+    }
+
+    pub fn id(mut self, id: impl Into<String>) -> Self {
+        self.id = Some(id.into());
+        self
+    }
+
+    pub fn build(self) -> Result<CircuitBreakerConfig, CircuitBreakerError> {
+        if self.failure_threshold == 0 {
+            return Err(CircuitBreakerError::InvalidFailureThreshold {
+                provided: self.failure_threshold,
+            });
+        }
+        if self.recovery_timeout.is_zero() {
+            return Err(CircuitBreakerError::InvalidRecoveryTimeout(self.recovery_timeout));
+        }
+        if self.half_open_max_calls == 0 {
+            return Err(CircuitBreakerError::InvalidHalfOpenLimit {
+                provided: self.half_open_max_calls,
+            });
+        }
+        let cfg = CircuitBreakerConfig {
+            id: self.id,
+            failure_threshold: Adaptive::new(self.failure_threshold),
+            recovery_timeout: Adaptive::new(self.recovery_timeout),
+            half_open_max_calls: Adaptive::new(self.half_open_max_calls),
+        };
+        Ok(cfg)
+    }
 }
 
 /// Errors produced when validating breaker configuration.
@@ -86,38 +173,54 @@ impl std::fmt::Display for CircuitBreakerError {
 impl std::error::Error for CircuitBreakerError {}
 
 impl CircuitBreakerConfig {
-    /// Create a new circuit breaker configuration with validation.
-    ///
-    /// # Errors
-    ///
-    /// Returns error if any parameter is zero or invalid.
+    /// Deprecated: use `builder()` for defaults and clarity.
+    #[deprecated(since = "0.3.0", note = "use CircuitBreakerConfig::builder() instead")]
     pub fn new(
         failure_threshold: usize,
         recovery_timeout: Duration,
         half_open_max_calls: usize,
     ) -> Result<Self, CircuitBreakerError> {
-        let cfg = Self { failure_threshold, recovery_timeout, half_open_max_calls };
-        cfg.validate()?;
-        Ok(cfg)
+        CircuitBreakerConfigBuilder::default()
+            .failure_threshold(failure_threshold)
+            .recovery_timeout(recovery_timeout)
+            .half_open_limit(half_open_max_calls)
+            .build()
+    }
+
+    /// Start building a circuit breaker configuration with sensible defaults.
+    pub fn builder() -> CircuitBreakerConfigBuilder {
+        CircuitBreakerConfigBuilder::default()
     }
 
     /// Create a disabled circuit breaker (never opens).
     pub fn disabled() -> Self {
         Self {
-            failure_threshold: usize::MAX,
-            recovery_timeout: Duration::MAX,
-            half_open_max_calls: usize::MAX,
+            id: None,
+            failure_threshold: Adaptive::new(usize::MAX),
+            recovery_timeout: Adaptive::new(Duration::MAX),
+            half_open_max_calls: Adaptive::new(usize::MAX),
         }
     }
 
+    /// Attach an identifier used by the control-plane registry for remote reset/introspection.
+    pub fn with_id(mut self, id: impl Into<String>) -> Self {
+        self.id = Some(id.into());
+        self
+    }
+
+    /// Returns the identifier of this circuit breaker, if set.
+    pub fn id(&self) -> Option<&str> {
+        self.id.as_deref()
+    }
+
     fn validate(&self) -> Result<(), CircuitBreakerError> {
-        if self.failure_threshold == 0 {
+        if *self.failure_threshold.get() == 0 {
             return Err(CircuitBreakerError::InvalidFailureThreshold { provided: 0 });
         }
-        if self.recovery_timeout.is_zero() {
-            return Err(CircuitBreakerError::InvalidRecoveryTimeout(self.recovery_timeout));
+        if self.recovery_timeout.get().is_zero() {
+            return Err(CircuitBreakerError::InvalidRecoveryTimeout(*self.recovery_timeout.get()));
         }
-        if self.half_open_max_calls == 0 {
+        if *self.half_open_max_calls.get() == 0 {
             return Err(CircuitBreakerError::InvalidHalfOpenLimit { provided: 0 });
         }
         Ok(())
@@ -125,7 +228,7 @@ impl CircuitBreakerConfig {
 }
 
 #[derive(Debug)]
-struct CircuitBreakerState {
+pub(crate) struct CircuitBreakerState {
     state: AtomicU8,
     failure_count: AtomicUsize,
     opened_at_millis: AtomicU64,
@@ -133,7 +236,7 @@ struct CircuitBreakerState {
 }
 
 impl CircuitBreakerState {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             state: AtomicU8::new(CircuitState::Closed.to_u8()),
             failure_count: AtomicUsize::new(0),
@@ -141,12 +244,107 @@ impl CircuitBreakerState {
             half_open_calls: AtomicUsize::new(0),
         }
     }
-}
 
-use crate::telemetry::{
-    emit_best_effort, CircuitBreakerEvent, NullSink, PolicyEvent, RequestOutcome,
-};
-use std::time::Instant as StdInstant;
+    /// Reset the circuit breaker to closed state and clear all counters.
+    ///
+    /// **Note:** Field resets are independent stores; snapshots are not atomic across fields.
+    /// Callers must not infer strong invariants from a single read (e.g., `Closed` does not
+    /// guarantee `failure_count == 0` or `opened_at_millis == 0`). This is a best-effort
+    /// administrative knob to allow traffic again and may briefly present mismatched state,
+    /// potentially triggering a premature re-trip. Serialize access externally if strict
+    /// consistency is required.
+    pub(crate) fn reset(&self) {
+        self.state.store(CircuitState::Closed.to_u8(), Ordering::SeqCst);
+        self.failure_count.store(0, Ordering::SeqCst);
+        self.opened_at_millis.store(0, Ordering::SeqCst);
+        self.half_open_calls.store(0, Ordering::SeqCst);
+    }
+
+    pub(crate) fn current_state(&self) -> CircuitState {
+        CircuitState::from_u8(self.state.load(Ordering::SeqCst))
+    }
+
+    /// Determine if a request may proceed, updating state for Open -> HalfOpen and HalfOpen counters.
+    /// On success returns Ok(()).
+    /// On rejection returns the CircuitBreakerEvent that describes why it was blocked (Open or HalfOpen limit).
+    fn try_acquire(
+        &self,
+        config: &CircuitBreakerConfig,
+        clock: &dyn Clock,
+    ) -> Result<(), CircuitBreakerEvent> {
+        let now = clock.now_millis();
+        let current = CircuitState::from_u8(self.state.load(Ordering::Acquire));
+        let recovery_timeout = *config.recovery_timeout.get();
+        let failure_threshold = (*config.failure_threshold.get()).max(1);
+        let half_open_max_calls = (*config.half_open_max_calls.get()).max(1);
+        let recovery_timeout_ms = recovery_timeout.as_millis().min(u128::from(u64::MAX)) as u64;
+
+        match current {
+            CircuitState::Open => {
+                let opened_at = self.opened_at_millis.load(Ordering::Acquire);
+                if now.saturating_sub(opened_at) < recovery_timeout_ms {
+                    return Err(CircuitBreakerEvent::Opened {
+                        failure_count: self.failure_count.load(Ordering::Acquire),
+                    });
+                }
+                // Transition Open -> HalfOpen
+                let prev = self.state.compare_exchange(
+                    CircuitState::Open.to_u8(),
+                    CircuitState::HalfOpen.to_u8(),
+                    Ordering::AcqRel,
+                    Ordering::Acquire,
+                );
+                if prev.is_ok() {
+                    // Reset counters for HalfOpen window
+                    self.half_open_calls.store(0, Ordering::Release);
+                }
+                Ok(())
+            }
+            CircuitState::HalfOpen => {
+                loop {
+                    let cur = self.half_open_calls.load(Ordering::Acquire);
+                    if cur >= half_open_max_calls {
+                        return Err(CircuitBreakerEvent::Opened {
+                            failure_count: self.failure_count.load(Ordering::Acquire),
+                        });
+                    }
+                    let desired = cur + 1;
+                    if self
+                        .half_open_calls
+                        .compare_exchange(cur, desired, Ordering::AcqRel, Ordering::Acquire)
+                        .is_ok()
+                    {
+                        return Ok(());
+                    }
+                    // retry if CAS failed
+                }
+            }
+            CircuitState::Closed => {
+                // ensure thresholds not zero and capture current threshold; if exceeded, open
+                let failures = self.failure_count.load(Ordering::Acquire);
+                if failures >= failure_threshold {
+                    // transition to open and stamp time via CAS to avoid races
+                    let res = self.state.compare_exchange(
+                        CircuitState::Closed.to_u8(),
+                        CircuitState::Open.to_u8(),
+                        Ordering::AcqRel,
+                        Ordering::Acquire,
+                    );
+                    if res.is_ok() {
+                        self.opened_at_millis.store(now, Ordering::Release);
+                        self.half_open_calls.store(0, Ordering::Release);
+                        Err(CircuitBreakerEvent::Opened { failure_count: failures })
+                    } else {
+                        // Lost the race; another thread opened it or state changed. Treat as no-op.
+                        Ok(())
+                    }
+                } else {
+                    Ok(())
+                }
+            }
+        }
+    }
+}
 
 /// Tower-native circuit breaker layer with optional telemetry.
 #[derive(Debug, Clone)]
@@ -154,6 +352,7 @@ pub struct CircuitBreakerLayer<Sink = NullSink> {
     config: CircuitBreakerConfig,
     clock: Arc<dyn Clock>,
     sink: Sink,
+    registry: Option<Arc<dyn CircuitBreakerRegistry>>,
 }
 
 impl CircuitBreakerLayer<NullSink> {
@@ -166,7 +365,12 @@ impl CircuitBreakerLayer<NullSink> {
     /// Returns error if the configuration is invalid.
     pub fn new(config: CircuitBreakerConfig) -> Result<Self, CircuitBreakerError> {
         config.validate()?;
-        Ok(Self { config, clock: Arc::new(MonotonicClock::default()), sink: NullSink })
+        Ok(Self {
+            config,
+            clock: Arc::new(MonotonicClock::default()),
+            sink: NullSink,
+            registry: None,
+        })
     }
 
     /// Create a circuit breaker layer with a custom clock implementation and no telemetry.
@@ -181,7 +385,15 @@ impl CircuitBreakerLayer<NullSink> {
         clock: C,
     ) -> Result<Self, CircuitBreakerError> {
         config.validate()?;
-        Ok(Self { config, clock: Arc::new(clock), sink: NullSink })
+        Ok(Self { config, clock: Arc::new(clock), sink: NullSink, registry: None })
+    }
+}
+
+impl<Sink> CircuitBreakerLayer<Sink> {
+    /// Attach a registry for external reset/inspection.
+    pub fn with_registry<R: CircuitBreakerRegistry + 'static>(mut self, registry: R) -> Self {
+        self.registry = Some(Arc::new(registry));
+        self
     }
 }
 
@@ -194,7 +406,157 @@ where
     where
         NewSink: Clone,
     {
-        CircuitBreakerLayer { config: self.config, clock: self.clock, sink }
+        CircuitBreakerLayer {
+            config: self.config,
+            clock: self.clock,
+            sink,
+            registry: self.registry.clone(),
+        }
+    }
+}
+
+/// Future returned by CircuitBreakerService.
+///
+/// This custom future avoids heap allocation by storing the inner future inline.
+#[pin_project]
+#[derive(Debug)]
+pub struct CircuitBreakerFuture<F, SError, Sink> {
+    #[pin]
+    inner: F,
+    state: Arc<CircuitBreakerState>,
+    config: CircuitBreakerConfig,
+    clock: Arc<dyn Clock>,
+    sink: Sink,
+    start_time: StdInstant,
+    _marker_error: std::marker::PhantomData<SError>,
+}
+
+impl<F, SError, Sink> CircuitBreakerFuture<F, SError, Sink> {
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        inner: F,
+        state: Arc<CircuitBreakerState>,
+        config: CircuitBreakerConfig,
+        clock: Arc<dyn Clock>,
+        sink: Sink,
+    ) -> Self {
+        Self {
+            inner,
+            state,
+            config,
+            clock,
+            sink,
+            start_time: StdInstant::now(),
+            _marker_error: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<F, T, SError, Sink> Future for CircuitBreakerFuture<F, SError, Sink>
+where
+    F: Future<Output = Result<T, SError>> + Send + 'static,
+    SError: std::error::Error + Send + Sync + 'static,
+    Sink: tower::Service<PolicyEvent, Response = ()> + Clone + Send + 'static,
+    Sink::Error: std::error::Error + Send + 'static,
+    Sink::Future: Send + 'static,
+{
+    type Output = Result<T, ResilienceError<SError>>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let this = self.project();
+
+        let failure_threshold = (*this.config.failure_threshold.get()).max(1);
+
+        // Check if circuit is open/half-open. try_acquire updates state.
+        if let Err(CircuitBreakerEvent::Opened { failure_count }) =
+            this.state.try_acquire(this.config, this.clock.as_ref())
+        {
+            let opened_at = this.state.opened_at_millis.load(Ordering::Acquire);
+            let now = this.clock.now_millis();
+            let open_duration = Duration::from_millis(now.saturating_sub(opened_at));
+            return Poll::Ready(Err(ResilienceError::CircuitOpen { failure_count, open_duration }));
+        }
+
+        // Poll the inner service
+        match this.inner.poll(cx) {
+            Poll::Ready(Ok(resp)) => {
+                let prev_state = CircuitState::from_u8(this.state.state.load(Ordering::Acquire));
+                // Only transition to Closed if we're still in HalfOpen or Closed
+                let transitioned = match prev_state {
+                    CircuitState::HalfOpen => this.state
+                        .state
+                        .compare_exchange(
+                            CircuitState::HalfOpen.to_u8(),
+                            CircuitState::Closed.to_u8(),
+                            Ordering::AcqRel,
+                            Ordering::Acquire,
+                        )
+                        .is_ok(),
+                    CircuitState::Closed => true,
+                    CircuitState::Open => false,
+                };
+
+                if transitioned {
+                    this.state.failure_count.store(0, Ordering::Release);
+                }
+
+                // Emit closed event if transitioning from non-closed state (HalfOpen -> Closed)
+                if transitioned && prev_state == CircuitState::HalfOpen {
+                    if let Poll::Ready(Ok(())) = this.sink.poll_ready(cx) {
+                        let _ = this.sink.call(PolicyEvent::CircuitBreaker(CircuitBreakerEvent::Closed));
+                    }
+                }
+
+                // Emit success outcome
+                let duration = this.start_time.elapsed();
+                if let Poll::Ready(Ok(())) = this.sink.poll_ready(cx) {
+                    let _ = this.sink.call(PolicyEvent::Request(RequestOutcome::Success { duration }));
+                }
+                Poll::Ready(Ok(resp))
+            }
+            Poll::Ready(Err(err)) => {
+                let failures = this.state.failure_count.fetch_add(1, Ordering::AcqRel) + 1;
+                match CircuitState::from_u8(this.state.state.load(Ordering::Acquire)) {
+                    CircuitState::Closed => {
+                        if failures >= failure_threshold {
+                            // Transition Closed -> Open
+                            let prev = this.state.state.compare_exchange(
+                                CircuitState::Closed.to_u8(),
+                                CircuitState::Open.to_u8(),
+                                Ordering::AcqRel,
+                                Ordering::Acquire,
+                            );
+                            if prev.is_ok() {
+                                this.state.half_open_calls.store(0, Ordering::Release);
+                                this.state
+                                    .opened_at_millis
+                                    .store(this.clock.now_millis(), Ordering::Release);
+                                if let Poll::Ready(Ok(())) = this.sink.poll_ready(cx) {
+                                    let _ = this.sink.call(PolicyEvent::CircuitBreaker(CircuitBreakerEvent::Opened {
+                                        failure_count: failures,
+                                    }));
+                                }
+                            }
+                        }
+                    }
+                    CircuitState::HalfOpen => {
+                        let res = this.state.state.compare_exchange(
+                            CircuitState::HalfOpen.to_u8(),
+                            CircuitState::Open.to_u8(),
+                            Ordering::AcqRel,
+                            Ordering::Acquire,
+                        );
+                        if res.is_ok() {
+                            this.state.half_open_calls.store(0, Ordering::Release);
+                            this.state.opened_at_millis.store(this.clock.now_millis(), Ordering::Release);
+                        }
+                    }
+                    CircuitState::Open => {}
+                }
+                Poll::Ready(Err(ResilienceError::Inner(err)))
+            }
+            Poll::Pending => Poll::Pending,
+        }
     }
 }
 
@@ -209,8 +571,21 @@ pub struct CircuitBreakerService<S, Sink = NullSink> {
 }
 
 impl<S, Sink> CircuitBreakerService<S, Sink> {
-    fn new(inner: S, config: CircuitBreakerConfig, clock: Arc<dyn Clock>, sink: Sink) -> Self {
-        Self { inner, state: Arc::new(CircuitBreakerState::new()), config, clock, sink }
+    fn new(
+        inner: S,
+        config: CircuitBreakerConfig,
+        clock: Arc<dyn Clock>,
+        sink: Sink,
+        registry: Option<Arc<dyn CircuitBreakerRegistry>>,
+    ) -> Self {
+        let state = Arc::new(CircuitBreakerState::new());
+
+        if let (Some(id), Some(reg)) = (config.id(), registry) {
+            let handle = CircuitBreakerHandle { state: state.clone() };
+            reg.register(id.to_string(), handle);
+        }
+
+        Self { inner, state, config, clock, sink }
     }
 }
 
@@ -227,7 +602,7 @@ where
 {
     type Response = S::Response;
     type Error = ResilienceError<S::Error>;
-    type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
+    type Future = CircuitBreakerFuture<S::Future, S::Error, Sink>;
 
     fn poll_ready(
         &mut self,
@@ -237,121 +612,14 @@ where
     }
 
     fn call(&mut self, req: Request) -> Self::Future {
-        let mut inner = self.inner.clone();
-        let state = self.state.clone();
-        let config = self.config.clone();
-        let clock = self.clock.clone();
-        let sink = self.sink.clone();
-
-        Box::pin(async move {
-            let start = StdInstant::now();
-            let now = clock.now_millis();
-            let current = CircuitState::from_u8(state.state.load(Ordering::Acquire));
-
-            match current {
-                CircuitState::Open => {
-                    let opened_at = state.opened_at_millis.load(Ordering::Acquire);
-                    if now.saturating_sub(opened_at) < config.recovery_timeout.as_millis() as u64 {
-                        return Err(ResilienceError::CircuitOpen {
-                            failure_count: state.failure_count.load(Ordering::Acquire),
-                            open_duration: Duration::from_millis(now.saturating_sub(opened_at)),
-                        });
-                    }
-                    // Transition Open -> HalfOpen
-                    let prev = state.state.compare_exchange(
-                        CircuitState::Open.to_u8(),
-                        CircuitState::HalfOpen.to_u8(),
-                        Ordering::AcqRel,
-                        Ordering::Acquire,
-                    );
-                    if prev.is_ok() {
-                        emit_best_effort(
-                            sink.clone(),
-                            PolicyEvent::CircuitBreaker(CircuitBreakerEvent::HalfOpen),
-                        )
-                        .await;
-                    }
-                    // Count the transitioning call as the first half-open probe
-                    state.half_open_calls.store(1, Ordering::Release);
-                }
-                CircuitState::HalfOpen => {
-                    let calls = state.half_open_calls.fetch_add(1, Ordering::AcqRel) + 1;
-                    if calls > config.half_open_max_calls {
-                        return Err(ResilienceError::CircuitOpen {
-                            failure_count: state.failure_count.load(Ordering::Acquire),
-                            open_duration: Duration::ZERO,
-                        });
-                    }
-                }
-                CircuitState::Closed => {}
-            }
-
-            match inner.call(req).await {
-                Ok(resp) => {
-                    let prev_state = CircuitState::from_u8(state.state.load(Ordering::Acquire));
-                    state.state.store(CircuitState::Closed.to_u8(), Ordering::Release);
-                    state.failure_count.store(0, Ordering::Release);
-
-                    // Emit closed event if transitioning from non-closed state
-                    if prev_state != CircuitState::Closed {
-                        emit_best_effort(
-                            sink.clone(),
-                            PolicyEvent::CircuitBreaker(CircuitBreakerEvent::Closed),
-                        )
-                        .await;
-                    }
-
-                    // Emit success outcome
-                    let duration = start.elapsed();
-                    emit_best_effort(
-                        sink.clone(),
-                        PolicyEvent::Request(RequestOutcome::Success { duration }),
-                    )
-                    .await;
-
-                    Ok(resp)
-                }
-                Err(err) => {
-                    let failures = state.failure_count.fetch_add(1, Ordering::AcqRel) + 1;
-                    match CircuitState::from_u8(state.state.load(Ordering::Acquire)) {
-                        CircuitState::Closed => {
-                            if failures >= config.failure_threshold {
-                                // Transition Closed -> Open
-                                let prev = state.state.compare_exchange(
-                                    CircuitState::Closed.to_u8(),
-                                    CircuitState::Open.to_u8(),
-                                    Ordering::AcqRel,
-                                    Ordering::Acquire,
-                                );
-                                if prev.is_ok() {
-                                    emit_best_effort(
-                                        sink.clone(),
-                                        PolicyEvent::CircuitBreaker(CircuitBreakerEvent::Opened {
-                                            failure_count: failures,
-                                        }),
-                                    )
-                                    .await;
-                                }
-                                state.half_open_calls.store(0, Ordering::Release);
-                                state.opened_at_millis.store(clock.now_millis(), Ordering::Release);
-                            }
-                        }
-                        CircuitState::HalfOpen => {
-                            let _ = state.state.compare_exchange(
-                                CircuitState::HalfOpen.to_u8(),
-                                CircuitState::Open.to_u8(),
-                                Ordering::AcqRel,
-                                Ordering::Acquire,
-                            );
-                            state.half_open_calls.store(0, Ordering::Release);
-                            state.opened_at_millis.store(clock.now_millis(), Ordering::Release);
-                        }
-                        CircuitState::Open => {}
-                    }
-                    Err(ResilienceError::Inner(err))
-                }
-            }
-        })
+        let inner_future = self.inner.call(req);
+        CircuitBreakerFuture::new(
+            inner_future,
+            self.state.clone(),
+            self.config.clone(),
+            self.clock.clone(),
+            self.sink.clone(),
+        )
     }
 }
 
@@ -366,6 +634,149 @@ where
             self.config.clone(),
             self.clock.clone(),
             self.sink.clone(),
+            self.registry.clone(),
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use tower::Service;
+    use futures::future::BoxFuture;
+
+    #[derive(Debug, Clone)]
+    struct TestClock(Arc<AtomicU64>);
+    impl TestClock {
+        fn new(start: u64) -> Self {
+            Self(Arc::new(AtomicU64::new(start)))
+        }
+        fn advance(&self, delta_ms: u64) {
+            self.0.fetch_add(delta_ms, Ordering::SeqCst);
+        }
+    }
+    impl Clock for TestClock {
+        fn now_millis(&self) -> u64 {
+            self.0.load(Ordering::SeqCst)
+        }
+    }
+
+    #[derive(Clone)]
+    struct FlappyService {
+        calls: Arc<AtomicUsize>,
+        fail_first: bool,
+        delay: Option<Duration>,
+    }
+    impl FlappyService {
+        fn new(fail_first: bool, delay: Option<Duration>) -> Self {
+            Self { calls: Arc::new(AtomicUsize::new(0)), fail_first, delay }
+        }
+    }
+    impl Service<String> for FlappyService {
+        type Response = String;
+        type Error = std::io::Error;
+        type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
+        fn poll_ready(
+            &mut self,
+            _cx: &mut std::task::Context<'_>,
+        ) -> std::task::Poll<Result<(), Self::Error>> {
+            std::task::Poll::Ready(Ok(()))
+        }
+        fn call(&mut self, req: String) -> Self::Future {
+            let count = self.calls.fetch_add(1, Ordering::SeqCst);
+            let fail_first = self.fail_first;
+            let delay = self.delay;
+            // Using Box::pin here for testing convenience, distinct from production code path
+            Box::pin(async move {
+                if fail_first && count == 0 {
+                    Err(std::io::Error::new(std::io::ErrorKind::Other, "boom"))
+                } else {
+                    if let Some(d) = delay {
+                        tokio::time::sleep(d).await;
+                    }
+                    Ok(req)
+                }
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn breaker_opens_and_half_opens_after_timeout() {
+        let clock = TestClock::new(0);
+        let cfg = CircuitBreakerConfig::builder()
+            .failure_threshold(1)
+            .recovery_timeout(Duration::from_millis(50))
+            .half_open_limit(2)
+            .build()
+            .unwrap();
+        let layer = CircuitBreakerLayer::with_clock(cfg, clock.clone()).unwrap();
+        let service = layer.layer(FlappyService::new(true, None));
+        let mut svc = service.clone();
+
+        // first call fails -> opens
+        let err = svc.call("req".to_string()).await.unwrap_err();
+        assert!(matches!(err, ResilienceError::Inner(_)));
+
+        // immediately rejected while still within recovery timeout
+        let err2 = service.clone().call("req".to_string()).await.unwrap_err();
+        assert!(matches!(err2, ResilienceError::CircuitOpen { .. }));
+
+        // advance clock to allow half-open
+        clock.advance(60);
+        let ok = service.clone().call("req".to_string()).await.unwrap();
+        assert_eq!(ok, "req");
+    }
+}
+
+#[cfg(all(test, feature = "loom"))]
+mod loom_tests {
+    use super::*;
+    use loom::sync::Arc;
+    use loom::thread;
+
+    #[derive(Debug)]
+    struct LoomClock(std::sync::atomic::AtomicU64);
+    impl LoomClock {
+        fn new(t: u64) -> Self {
+            Self(std::sync::atomic::AtomicU64::new(t))
+        }
+    }
+    impl Clock for LoomClock {
+        fn now_millis(&self) -> u64 {
+            self.0.load(Ordering::SeqCst)
+        }
+    }
+
+    #[test]
+    fn concurrent_open_sets_timestamp_once() {
+        loom::model(|| {
+            let state = Arc::new(CircuitBreakerState::new());
+            // Preload failure count to trigger open on first acquire.
+            state.failure_count.store(1, Ordering::SeqCst);
+            let cfg = CircuitBreakerConfig::builder()
+                .failure_threshold(1)
+                .recovery_timeout(Duration::from_millis(50))
+                .half_open_limit(1)
+                .build()
+                .unwrap();
+            let cfg = Arc::new(cfg);
+
+            let s1 = state.clone();
+            let cfg1 = cfg.clone();
+            let clock1 = LoomClock::new(10);
+            let t1 = thread::spawn(move || {
+                let _ = s1.try_acquire(&cfg1, &clock1);
+            });
+
+            let s2 = state.clone();
+            let cfg2 = cfg.clone();
+            let clock2 = LoomClock::new(10);
+            let _ = s2.try_acquire(&cfg2, &clock2);
+
+            t1.join().unwrap();
+            assert_eq!(state.current_state(), CircuitState::Open);
+            assert_ne!(state.opened_at_millis.load(Ordering::SeqCst), 0);
+        });
     }
 }

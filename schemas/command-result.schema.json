@@ -1,0 +1,64 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/flyingrobots/ninelives/schemas/command-result.schema.json",
+  "title": "Nine Lives CommandResult",
+  "oneOf": [
+    {
+      "type": "object",
+      "required": ["result"],
+      "properties": {
+        "result": { "const": "ack" }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": ["result"],
+      "properties": {
+        "result": { "const": "reset" }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": ["result", "value"],
+      "properties": {
+        "result": { "const": "value" },
+        "value": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": ["result", "items"],
+      "properties": {
+        "result": { "const": "list" },
+        "items": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": ["result", "message", "failure"],
+      "properties": {
+        "result": { "const": "error" },
+        "message": { "type": "string" },
+        "failure": {
+          "type": "object",
+          "required": ["kind"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": ["invalid_args", "not_found", "registry_missing", "internal"]
+            },
+            "msg": { "type": "string" },
+            "what": { "type": "string" },
+            "hint": { "type": "string" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "default": true,
+  "MD007": { "indent": 2 },
+  "MD013": false,
+  "MD024": false,
+  "MD025": false,
+  "MD033": false,
+  "MD036": false,
+  "MD040": { "allowed_languages": ["rust", "json", "jsonc", "yaml", "bash", "sh", "toml", "text", "md", "pseudocode"] },
+  "MD059": false,
+  "MD060": false
+}

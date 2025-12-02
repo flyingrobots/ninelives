@@ -1,21 +1,24 @@
 [package]
 name = "ninelives-etcd"
-version = "0.2.0"
-edition = "2021"
-authors = ["James Ross <james@flyingrobots.dev>"]
-description = "Optional etcd telemetry sink for ninelives"
-license = "Apache-2.0"
-publish = false
-repository = "https://github.com/flyingrobots/ninelives"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "etcd telemetry sink for ninelives (bring-your-own client)"
+license.workspace = true
+publish = true
+repository.workspace = true
+readme = "README.md"
 
 [dependencies]
-ninelives = { version = "0.2.0", path = ".." }
-tower-service = "0.3"
-tracing = "0.1"
-chrono = { version = "0.4", default-features = false, features = ["clock"], optional = true }
-
+ninelives = { workspace = true, features = ["telemetry-json"] }
+tracing.workspace = true
+serde_json.workspace = true
+tokio = { workspace = true, features = ["rt", "macros"] }
+tower-service = { workspace = true }
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 etcd-client = { version = "0.11", features = ["tls"], optional = true }
-tokio = { version = "1", features = ["rt", "macros"], optional = true }
+uuid.workspace = true
 
 [features]
-client = ["etcd-client", "tokio", "chrono"]
+default = []
+etcd-client = ["dep:etcd-client"]

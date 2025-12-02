@@ -1,42 +1,42 @@
 //! Prometheus metrics sink for `ninelives`.
-//! Collects counters in-process; expose via your HTTP endpoint using `prometheus::TextEncoder`.
-//! Default build is no-op; enable `client` to record metrics.
+//! Bring your own `prometheus::Registry`; counters are registered and incremented.
 
-use ninelives::telemetry::{PolicyEvent, TelemetrySink};
+use ninelives::prelude::{
+    BulkheadEvent, CircuitBreakerEvent, RequestOutcome, RetryEvent, TimeoutEvent,
+};
+use ninelives::telemetry::{
+    BulkheadEvent, CircuitBreakerEvent, PolicyEvent, RequestOutcome, RetryEvent, TelemetrySink,
+    TimeoutEvent,
+};
+use prometheus::{IntCounterVec, Registry};
 use std::convert::Infallible;
-use std::pin::Pin;
+use std::future::{ready, Ready};
+use std::sync::Arc;
 use std::task::{Context, Poll};
 
 #[derive(Clone, Debug)]
 pub struct PrometheusSink {
-    #[cfg(feature = "client")]
-    registry: prometheus::Registry,
-    #[cfg(feature = "client")]
-    counter: prometheus::IntCounterVec,
+    registry: Arc<Registry>,
+    counter: IntCounterVec,
 }
 
 impl PrometheusSink {
-    pub fn new() -> Self {
-        #[cfg(feature = "client")]
-        {
-            let registry = prometheus::Registry::new();
-            let counter = prometheus::IntCounterVec::new(
-                prometheus::Opts::new("ninelives_events_total", "Policy events"),
-                &["policy", "event"],
-            )
-            .expect("create counter");
-            registry.register(Box::new(counter.clone())).ok();
-            return Self { registry, counter };
-        }
-        #[cfg(not(feature = "client"))]
-        {
-            Self {}
-        }
+    /// Create a sink and register counters into the provided registry.
+    ///
+    /// # Errors
+    /// Returns an error if the metric cannot be registered (e.g. name conflict).
+    pub fn new<R: Into<Arc<Registry>>>(registry: R) -> Result<Self, prometheus::Error> {
+        let registry = registry.into();
+        let counter = IntCounterVec::new(
+            prometheus::Opts::new("ninelives_events_total", "Policy events"),
+            &["policy", "event"],
+        )?;
+        registry.register(Box::new(counter.clone()))?;
+        Ok(Self { registry, counter })
     }
 
     /// Expose the registry for HTTP scraping.
-    #[cfg(feature = "client")]
-    pub fn registry(&self) -> &prometheus::Registry {
+    pub fn registry(&self) -> &Registry {
         &self.registry
     }
 }
@@ -44,33 +44,53 @@ impl PrometheusSink {
 impl tower_service::Service<PolicyEvent> for PrometheusSink {
     type Response = ();
     type Error = Infallible;
-    type Future = Pin<Box<dyn std::future::Future<Output = Result<(), Self::Error>> + Send>>;
+    type Future = Ready<Result<(), Self::Error>>;
 
     fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         Poll::Ready(Ok(()))
     }
 
     fn call(&mut self, event: PolicyEvent) -> Self::Future {
-        #[cfg(feature = "client")]
-        {
-            let labels = match &event {
-                PolicyEvent::Retry(_) => ("retry", "event"),
-                PolicyEvent::CircuitBreaker(_) => ("circuit", "event"),
-                PolicyEvent::Bulkhead(_) => ("bulkhead", "event"),
-                PolicyEvent::Timeout(_) => ("timeout", "event"),
-                PolicyEvent::Request(_) => ("request", "event"),
-            };
-            let c = self.counter.clone();
-            let (p, e) = labels;
-            return Box::pin(async move {
-                c.with_label_values(&[p, e]).inc();
-                Ok(())
-            });
-        }
-        #[cfg(not(feature = "client"))]
-        {
-            return Box::pin(async move { Ok(()) });
-        }
+        let (policy_label, event_label) = match &event {
+            PolicyEvent::Retry(r) => (
+                "retry",
+                match r {
+                    RetryEvent::Attempt { .. } => "attempt",
+                    RetryEvent::Exhausted { .. } => "exhausted",
+                },
+            ),
+            PolicyEvent::CircuitBreaker(c) => (
+                "circuit_breaker",
+                match c {
+                    CircuitBreakerEvent::Opened { .. } => "opened",
+                    CircuitBreakerEvent::HalfOpen => "half_open",
+                    CircuitBreakerEvent::Closed => "closed",
+                },
+            ),
+            PolicyEvent::Bulkhead(b) => (
+                "bulkhead",
+                match b {
+                    BulkheadEvent::Acquired { .. } => "acquired",
+                    BulkheadEvent::Rejected { .. } => "rejected",
+                },
+            ),
+            PolicyEvent::Timeout(t) => (
+                "timeout",
+                match t {
+                    TimeoutEvent::Occurred { .. } => "occurred",
+                },
+            ),
+            PolicyEvent::Request(r) => (
+                "request",
+                match r {
+                    RequestOutcome::Success { .. } => "success",
+                    RequestOutcome::Failure { .. } => "failure",
+                },
+            ),
+        };
+        let c = self.counter.clone();
+        c.with_label_values(&[policy_label, event_label]).inc();
+        ready(Ok(()))
     }
 }
 

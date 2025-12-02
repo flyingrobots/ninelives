@@ -1,22 +1,29 @@
-//! NATS telemetry sink for `ninelives` (optional companion crate).
+//! NATS telemetry sink for `ninelives` (companion crate).
 //!
-//! Default build is a no-op sink to keep dependencies light. Enable the `client`
-//! feature to publish `PolicyEvent`s to a NATS subject.
+//! Bring your own async `async_nats::Client`; events are serialized to
+//! JSON and published to the configured subject.
 //!
-//! ```toml
-//! ninelives-nats = { version = "0.1", features = ["client"] }
-//! ```
+//! **Error Handling Note**: `NatsSink` is a best-effort telemetry sink. Publish
+//! failures (e.g., NATS connection lost, network issues) are currently
+//! **silently ignored** (`let _ = client.publish(...).await`). This prevents
+//! blocking application logic but means telemetry events may be lost without
+//! explicit handling. For production use-cases where publish guarantees are
+//! important, consider:
+//! - Wrapping `NatsSink` with a `ninelives::telemetry::NonBlockingSink` and monitoring its `dropped()` count.
+//! - Implementing custom error handling directly in `NatsSink` (e.g., logging publish errors).
+//! - Monitoring the `async_nats::Client` health externally.
 //!
 //! ```rust
 //! use ninelives_nats::NatsSink;
 //! # use ninelives::telemetry::PolicyEvent;
 //! # async fn demo() -> Result<(), Box<dyn std::error::Error>> {
-//! let sink = NatsSink::new("nats://127.0.0.1:4222", "policy.events")?;
+//! let client = async_nats::connect("nats://127.0.0.1:4222").await?;
+//! let sink = NatsSink::new(client, "policy.events");
 //! // wrap with NonBlockingSink if desired
 //! # Ok(()) }
 //! ```
 
-use ninelives::telemetry::{PolicyEvent, TelemetrySink};
+use ninelives::telemetry::{event_to_json, PolicyEvent, TelemetrySink};
 use std::convert::Infallible;
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -24,28 +31,13 @@ use std::task::{Context, Poll};
 #[derive(Clone, Debug)]
 pub struct NatsSink {
     subject: String,
-    #[cfg(feature = "client")]
-    client: nats::asynk::Connection,
+    client: async_nats::Client,
 }
 
 impl NatsSink {
-    pub fn new<S: Into<String>>(server: S, subject: S) -> Result<Self, Box<dyn std::error::Error>> {
-        let subject = subject.into();
-        #[cfg(feature = "client")]
-        {
-            let client = nats::asynk::connect(server.into())?;
-            return Ok(Self { subject, client });
-        }
-        #[cfg(not(feature = "client"))]
-        {
-            let _ = server; // unused
-            Ok(Self { subject, ..Self::noop() })
-        }
-    }
-
-    #[cfg(not(feature = "client"))]
-    fn noop() -> Self {
-        Self { subject: String::new() }
+    /// Create a sink using an existing NATS async connection.
+    pub fn new(client: async_nats::Client, subject: impl Into<String>) -> Self {
+        Self { subject: subject.into(), client }
     }
 }
 
@@ -59,21 +51,21 @@ impl tower_service::Service<PolicyEvent> for NatsSink {
     }
 
     fn call(&mut self, event: PolicyEvent) -> Self::Future {
-        #[cfg(feature = "client")]
-        let fut = {
-            let subject = self.subject.clone();
-            let mut client = self.client.clone();
-            let payload = format!("{:?}", event).into_bytes();
-            Box::pin(async move {
-                let _ = client.publish(subject, payload).await;
-                Ok(())
-            })
+        let subject = self.subject.clone();
+        let client = self.client.clone();
+        let payload = match serde_json::to_vec(&event_to_json(&event)) {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::error!("Failed to serialize NATS telemetry event: {e}");
+                b"{}".to_vec()
+            }
         };
-
-        #[cfg(not(feature = "client"))]
-        let fut = Box::pin(async move { Ok(()) });
-
-        fut
+        Box::pin(async move {
+            if let Err(e) = client.publish(subject, payload.into()).await {
+                tracing::error!("Failed to publish NATS telemetry event: {e}");
+            }
+            Ok(())
+        })
     }
 }
 

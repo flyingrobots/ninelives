@@ -1,0 +1,15 @@
+[package]
+name = "xtask"
+edition = "2021"
+rust-version = "1.70"
+version = "0.1.0"
+publish = false
+
+[dependencies]
+anyhow = "1"
+walkdir = "2"
+regex = "1"
+gray_matter = { version = "0.2", features = ["yaml"] }
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.9"
+csv = "1"

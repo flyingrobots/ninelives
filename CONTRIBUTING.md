@@ -5,17 +5,42 @@ Thanks for wanting to improve Nine Lives! This document provides guidelines for 
 ## 🚀 Quick Start
 
 1. Install the latest stable Rust (see <https://rustup.rs/>).
-2. Clone and Branch: git checkout -b feature/your-idea.
-3. Run Checks Locally:
+1. Clone and Branch: git checkout -b feature/your-idea.
+1. Bootstrap once to install toolchains, npm deps, and git hooks:
 
 ```bash
-cargo fmt -- --check
-cargo clippy --all-targets --all-features -- -D warnings 
+./scripts/bootstrap.sh
+```
+
+1. Run Checks Locally:
+
+```bash
 cargo test --all-features --all-targets
 cargo llvm-cov --workspace --all-features --lcov --output-path coverage/lcov.info
 ```
-To enable the repo's pre-push hook (runs the commands above plus `cargo doc --no-deps -D warnings`), set: `git config core.hooksPath .githooks`.
-4. Open a PR with a clear description and necessary tests.
+
+### Git Hooks (Recommended)
+
+We use `git` hooks to enforce code quality (formatting, linting, tests) before every commit and push. This prevents broken code from reaching the repository.
+
+**Option 1: Automatic Setup (Recommended)**
+Run the helper script (or the top-level `./scripts/bootstrap.sh`, which calls it) to safely configure your local git repository:
+
+```bash
+./scripts/setup-hooks.sh
+```
+
+**Option 2: Manual Setup**
+
+```bash
+git config core.hooksPath scripts/git-hooks
+```
+
+**Verification:**
+Check that `scripts/git-hooks` contains files like `pre-commit` and `pre-push`.
+If the setup script fails, ensure you are in the project root and have write permissions to `.git/config`.
+
+1. Open a PR with a clear description and necessary tests.
 
 ## 🧪 Testing Notes
 
@@ -89,6 +114,16 @@ Before adding a new crate, you must include the following summary in your PR des
 
 For deeper criteria and examples, follow this checklist and keep it current; if a dedicated `DEPENDENCY_POLICY.md` is added later, we will link to it here.
 
+### Dependency Versioning
+
+**NPM Dev Dependencies**: Use permissive ranges (e.g., `^1.2.3`) to allow non-breaking updates. This ensures we benefit from bug fixes and minor improvements without manual churn.
+
+**Cargo Dependencies**: Follow standard semantic versioning compatibility.
+
+**Pinning**: Exact version pinning (e.g., `1.2.3`) should only be used when strictly necessary for reproducibility or to work around specific bugs. If you pin a dependency, add a comment explaining why. Security-sensitive packages may be temporarily pinned while evaluating/rolling out fixes; document the reason and remove the pin once a patched compatible release is available.
+
+**Policy & Approvals**: Default to caret ranges for npm dev tools (e.g., `markdownlint-cli2`) to pick up patch/minor fixes automatically; security-sensitive packages may be temporarily pinned while a fix is evaluated. Dependency bumps should run CI; security-driven updates can be merged by any maintainer after green CI, routine bumps require standard review. Example: “Use `^0.19.1` for markdownlint-cli2 to track upstream fixes; pin only if a regression is observed.”
+
 ## 🚢 Releases
 
 **Automation**: Releases are automated via release-plz and trigger only when both release and release-ready labels are present on the release PR.
@@ -99,7 +134,7 @@ For deeper criteria and examples, follow this checklist and keep it current; if 
 
 **Incident Response**: If a Release workflow job fails, triage the logs, fix the root cause on main, and rerun the failed job. If a published crate is bad, yank it on crates.io and cut a follow-up patch release.
 
-### Common Release/CI Failure Modes:
+### Common Release/CI Failure Modes
 
 **Auth/Token Issues**: Refresh GitHub/`CARGO_REGISTRY_TOKEN`.
 
@@ -113,4 +148,4 @@ For deeper criteria and examples, follow this checklist and keep it current; if 
 
 ## ⚙️ Suggested Local Setup (Optional)
 
-**Recommended**: Enable Actions notifications in personal settings https://github.com/settings/notifications (System → Actions) to track CI status.
+**Recommended**: Enable Actions notifications in personal settings <https://github.com/settings/notifications> (System → Actions) to track CI status.

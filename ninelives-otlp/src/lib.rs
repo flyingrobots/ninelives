@@ -1,45 +1,45 @@
 //! OTLP telemetry sink for `ninelives`.
-//! Default build is no-op; enable `client` to export events as OTLP logs.
+//! Bring your own `opentelemetry_sdk::logs::LoggerProvider`; events are emitted as OTLP logs.
 
 use ninelives::telemetry::{PolicyEvent, TelemetrySink};
+use opentelemetry::logs::{AnyValue, LogRecord, Logger, LoggerProvider, Severity};
 use std::convert::Infallible;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-#[cfg(feature = "client")]
-use opentelemetry::logs::{AnyValue, LogEmitterProvider, Logger, Severity};
-#[cfg(feature = "client")]
-use opentelemetry::{global, KeyValue};
-#[cfg(feature = "client")]
-use opentelemetry_otlp::WithExportConfig;
-
+/// OTLP sink that emits PolicyEvents as structured logs.
+///
+/// Example usage (compile-checked only; requires an OTLP collector and opentelemetry dev deps).
+/// ```no_run
+/// use opentelemetry_sdk::logs::LoggerProvider;
+/// use ninelives_otlp::OtlpSink;
+///
+/// let provider = LoggerProvider::builder().build();
+/// let sink = OtlpSink::new(provider);
+/// ```
 #[derive(Clone, Debug)]
-pub struct OtlpSink {
-    #[cfg(feature = "client")]
-    logger: Logger,
+pub struct OtlpSink<P> {
+    provider: P,
+    logger: P::Logger,
 }
 
-impl OtlpSink {
-    pub fn new() -> Self {
-        #[cfg(feature = "client")]
-        {
-            // Build a simple OTLP logger pipeline
-            let provider = opentelemetry_otlp::new_pipeline()
-                .logging()
-                .with_export_config(opentelemetry_otlp::ExportConfig::default())
-                .install_simple()
-                .expect("install otlp logger");
-            let logger = provider.logger("ninelives-otlp");
-            return Self { logger };
-        }
-        #[cfg(not(feature = "client"))]
-        {
-            Self {}
-        }
+impl<P> OtlpSink<P>
+where
+    P: LoggerProvider + Clone + Send + Sync + 'static,
+    P::Logger: Clone,
+{
+    /// Create a sink from an existing OTLP logger provider
+    pub fn new(provider: P) -> Self {
+        let logger = provider.logger("ninelives");
+        Self { provider, logger }
     }
 }
 
-impl tower_service::Service<PolicyEvent> for OtlpSink {
+impl<P> tower_service::Service<PolicyEvent> for OtlpSink<P>
+where
+    P: LoggerProvider + Clone + Send + Sync + 'static,
+    P::Logger: Clone + Send + Sync + 'static,
+{
     type Response = ();
     type Error = Infallible;
     type Future = Pin<Box<dyn std::future::Future<Output = Result<(), Self::Error>> + Send>>;
@@ -49,88 +49,91 @@ impl tower_service::Service<PolicyEvent> for OtlpSink {
     }
 
     fn call(&mut self, event: PolicyEvent) -> Self::Future {
-        #[cfg(feature = "client")]
-        {
-            let logger = self.logger.clone();
-            return Box::pin(async move {
-                let (severity, attrs, body) = map_event(&event);
-                logger.emit(
-                    opentelemetry::logs::LogRecord::builder()
-                        .with_severity(severity)
-                        .with_body(AnyValue::from(body))
-                        .with_attributes(attrs)
-                        .build(),
-                );
-                Ok(())
-            });
-        }
-        #[cfg(not(feature = "client"))]
-        {
-            return Box::pin(async move { Ok(()) });
-        }
+        let logger = self.logger.clone();
+        Box::pin(async move {
+            let (severity, body, event_kind, numeric_attrs) = map_event(&event);
+            let mut record = logger.create_log_record();
+            record.set_severity_number(severity);
+            record.set_body(AnyValue::from(body));
+            record.add_attribute("component", "ninelives");
+            record.add_attribute("event_kind", event_kind);
+            record.add_attributes(numeric_attrs);
+            logger.emit(record);
+            Ok(())
+        })
     }
 }
 
-impl TelemetrySink for OtlpSink {
+impl<P> TelemetrySink for OtlpSink<P>
+where
+    P: LoggerProvider + Clone + Send + Sync + 'static,
+    P::Logger: Send,
+{
     type SinkError = Infallible;
 }
 
-#[cfg(feature = "client")]
-fn map_event(event: &PolicyEvent) -> (Severity, Vec<KeyValue>, String) {
+fn map_event(event: &PolicyEvent) -> (Severity, String, &'static str, Vec<(&'static str, i64)>) {
     use ninelives::telemetry::{
         BulkheadEvent, CircuitBreakerEvent, RequestOutcome, RetryEvent, TimeoutEvent,
     };
 
-    let mut attrs =
-        vec![KeyValue::new("component", "ninelives"), KeyValue::new("event_kind", kind(event))];
+    let event_kind = kind(event);
 
     match event {
         PolicyEvent::Retry(RetryEvent::Attempt { attempt, delay }) => {
-            attrs.push(KeyValue::new("attempt", (*attempt as i64).into()));
-            attrs.push(KeyValue::new("delay_ms", delay.as_millis() as i64));
-            (Severity::Info, attrs, "retry_attempt".to_string())
+            let delay_ms = delay.as_millis().try_into().unwrap_or(i64::MAX);
+            let attrs = vec![
+                ("attempt", (*attempt).try_into().unwrap_or(i64::MAX)),
+                ("delay_ms", delay_ms),
+            ];
+            (Severity::Info, "retry_attempt".to_string(), event_kind, attrs)
         }
         PolicyEvent::Retry(RetryEvent::Exhausted { total_attempts, total_duration }) => {
-            attrs.push(KeyValue::new("total_attempts", (*total_attempts as i64).into()));
-            attrs.push(KeyValue::new("total_duration_ms", total_duration.as_millis() as i64));
-            (Severity::Warn, attrs, "retry_exhausted".to_string())
+            let attrs = vec![
+                ("total_attempts", (*total_attempts).try_into().unwrap_or(i64::MAX)),
+                ("total_duration_ms", total_duration.as_millis().try_into().unwrap_or(i64::MAX)),
+            ];
+            (Severity::Warn, "retry_exhausted".to_string(), event_kind, attrs)
         }
         PolicyEvent::CircuitBreaker(CircuitBreakerEvent::Opened { failure_count }) => {
-            attrs.push(KeyValue::new("failure_count", (*failure_count as i64).into()));
-            (Severity::Warn, attrs, "circuit_opened".to_string())
+            let attrs = vec![("failure_count", (*failure_count).try_into().unwrap_or(i64::MAX))];
+            (Severity::Warn, "circuit_opened".to_string(), event_kind, attrs)
         }
         PolicyEvent::CircuitBreaker(CircuitBreakerEvent::HalfOpen) => {
-            (Severity::Info, attrs, "circuit_half_open".to_string())
+            (Severity::Info, "circuit_half_open".to_string(), event_kind, vec![])
         }
         PolicyEvent::CircuitBreaker(CircuitBreakerEvent::Closed) => {
-            (Severity::Info, attrs, "circuit_closed".to_string())
+            (Severity::Info, "circuit_closed".to_string(), event_kind, vec![])
         }
         PolicyEvent::Bulkhead(BulkheadEvent::Acquired { active_count, max_concurrency }) => {
-            attrs.push(KeyValue::new("active", (*active_count as i64).into()));
-            attrs.push(KeyValue::new("max", (*max_concurrency as i64).into()));
-            (Severity::Info, attrs, "bulkhead_acquired".to_string())
+            let attrs = vec![
+                ("active", (*active_count).try_into().unwrap_or(i64::MAX)),
+                ("max", (*max_concurrency).try_into().unwrap_or(i64::MAX)),
+            ];
+            (Severity::Info, "bulkhead_acquired".to_string(), event_kind, attrs)
         }
         PolicyEvent::Bulkhead(BulkheadEvent::Rejected { active_count, max_concurrency }) => {
-            attrs.push(KeyValue::new("active", (*active_count as i64).into()));
-            attrs.push(KeyValue::new("max", (*max_concurrency as i64).into()));
-            (Severity::Warn, attrs, "bulkhead_rejected".to_string())
+            let attrs = vec![
+                ("active", (*active_count).try_into().unwrap_or(i64::MAX)),
+                ("max", (*max_concurrency).try_into().unwrap_or(i64::MAX)),
+            ];
+            (Severity::Warn, "bulkhead_rejected".to_string(), event_kind, attrs)
         }
         PolicyEvent::Timeout(TimeoutEvent::Occurred { timeout }) => {
-            attrs.push(KeyValue::new("timeout_ms", timeout.as_millis() as i64));
-            (Severity::Warn, attrs, "timeout".to_string())
+            let attrs = vec![("timeout_ms", timeout.as_millis().try_into().unwrap_or(i64::MAX))];
+            (Severity::Warn, "timeout".to_string(), event_kind, attrs)
         }
         PolicyEvent::Request(RequestOutcome::Success { duration }) => {
-            attrs.push(KeyValue::new("duration_ms", duration.as_millis() as i64));
-            (Severity::Info, attrs, "request_success".to_string())
+            let attrs = vec![("duration_ms", duration.as_millis().try_into().unwrap_or(i64::MAX))];
+            (Severity::Info, "request_success".to_string(), event_kind, attrs)
         }
         PolicyEvent::Request(RequestOutcome::Failure { duration }) => {
-            attrs.push(KeyValue::new("duration_ms", duration.as_millis() as i64));
-            (Severity::Warn, attrs, "request_failure".to_string())
+            let attrs = vec![("duration_ms", duration.as_millis().try_into().unwrap_or(i64::MAX))];
+            (Severity::Warn, "request_failure".to_string(), event_kind, attrs)
         }
     }
 }
 
-#[cfg(feature = "client")]
 fn kind(event: &PolicyEvent) -> &'static str {
     match event {
         PolicyEvent::Retry(_) => "retry",

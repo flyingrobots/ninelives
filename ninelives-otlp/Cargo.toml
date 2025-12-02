@@ -1,21 +1,25 @@
 [package]
 name = "ninelives-otlp"
-version = "0.2.0"
-edition = "2021"
-authors = ["James Ross <james@flyingrobots.dev>"]
-description = "OTLP telemetry sink for ninelives"
-license = "Apache-2.0"
-publish = false
-repository = "https://github.com/flyingrobots/ninelives"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "OTLP telemetry sink for ninelives (bring-your-own Logger)"
+license.workspace = true
+publish = true
+repository.workspace = true
+readme = "README.md"
 
 [dependencies]
-ninelives = { version = "0.2.0", path = ".." }
-tower-service = "0.3"
-tracing = "0.1"
+ninelives = { workspace = true }
+tracing.workspace = true
+tower-service = { workspace = true }
+opentelemetry.workspace = true
+opentelemetry_sdk = { workspace = true, features = ["logs", "rt-tokio"] }
+tokio = { workspace = true, features = ["rt", "macros"] }
 
-opentelemetry = { version = "0.21", optional = true }
-opentelemetry-otlp = { version = "0.14", optional = true, default-features = true, features = ["grpc-tonic"] }
-tokio = { version = "1", features = ["rt", "macros"], optional = true }
+[dev-dependencies]
+opentelemetry-otlp = { version = "0.31", features = ["logs", "http-proto", "reqwest-client", "reqwest-rustls"] }
+opentelemetry_sdk = { version = "0.31", features = ["testing"] }
 
 [features]
-client = ["opentelemetry", "opentelemetry-otlp", "tokio"]
+default = []

@@ -39,6 +39,13 @@ pub enum ResilienceError<E> {
     },
     /// The underlying operation failed
     Inner(E),
+    /// The operation was rejected by a rate limiter.
+    RateLimited {
+        /// Time to wait before retrying.
+        wait: Duration,
+    },
+    /// Infrastructure failure (e.g., rate limiter backend down).
+    Infrastructure(String),
 }
 impl<E: fmt::Display> fmt::Display for ResilienceError<E> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -79,6 +86,8 @@ impl<E: fmt::Display> fmt::Display for ResilienceError<E> {
                 }
             }
             Self::Inner(e) => write!(f, "{}", e),
+            Self::RateLimited { wait } => write!(f, "rate limited, retry after {:?}", wait),
+            Self::Infrastructure(msg) => write!(f, "infrastructure error: {}", msg),
         }
     }
 }

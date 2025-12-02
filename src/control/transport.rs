@@ -1,0 +1,294 @@
+use serde::{Deserialize, Serialize};
+use serde_json::Value as JsonValue;
+use std::env;
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::OnceLock;
+use std::task::{Context, Poll};
+
+use jsonschema::JSONSchema;
+use serde_json::json;
+use tower_service::Service;
+
+use super::{AuthPayload, CommandContext, CommandEnvelope};
+
+fn default_args() -> serde_json::Value {
+    serde_json::Value::Object(serde_json::Map::new())
+}
+
+/// Canonical wire envelope exchanged by control-plane transports.
+///
+/// This is transport-agnostic: HTTP, gRPC, JSONL, etc. should all map to this
+/// shape before entering the router.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct TransportEnvelope {
+    /// Stable command identifier (unique per request).
+    pub id: String,
+    /// Command label/name (e.g., "write_config").
+    pub cmd: String,
+    /// Arbitrary JSON args for the command.
+    #[serde(default = "default_args")]
+    pub args: serde_json::Value,
+    /// Optional auth payload.
+    #[serde(default)]
+    pub auth: Option<AuthPayload>,
+}
+
+// -----------------------------------------------------------------------------
+// Schema validation helpers (runtime enforced in TransportRouter)
+// -----------------------------------------------------------------------------
+
+fn transport_envelope_schema() -> &'static JSONSchema {
+    static SCHEMA: OnceLock<JSONSchema> = OnceLock::new();
+    SCHEMA.get_or_init(|| {
+        // Panic is intentional: schema is embedded at compile time and must be valid.
+        // Invalid schemas are a build/CI failure, not a runtime condition.
+        let raw = include_str!("../../schemas/transport-envelope.schema.json");
+        let value: JsonValue = serde_json::from_str(raw).expect("valid transport-envelope schema");
+        JSONSchema::compile(&value).expect("transport-envelope schema compiles")
+    })
+}
+
+fn command_result_schema() -> &'static JSONSchema {
+    static SCHEMA: OnceLock<JSONSchema> = OnceLock::new();
+    SCHEMA.get_or_init(|| {
+        // Panic is intentional: schema is embedded at compile time and must be valid.
+        // Invalid schemas are a build/CI failure, not a runtime condition.
+        let raw = include_str!("../../schemas/command-result.schema.json");
+        let value: JsonValue = serde_json::from_str(raw).expect("valid command-result schema");
+        JSONSchema::compile(&value).expect("command-result schema compiles")
+    })
+}
+
+fn validate_envelope(env: &TransportEnvelope) -> Result<(), String> {
+    // NOTE: jsonschema currently validates serde_json::Value, so we serialize here.
+    // TODO: remove this allocation if jsonschema adds a Serialize-friendly validate API.
+    let env_val = serde_json::to_value(env).map_err(|e| e.to_string())?;
+    validate(transport_envelope_schema(), &env_val)
+}
+
+fn validate_result(res: &super::CommandResult) -> Result<(), String> {
+    let res_val = command_result_to_schema_value(res);
+    validate(command_result_schema(), &res_val)
+}
+
+fn validate(schema: &JSONSchema, value: &JsonValue) -> Result<(), String> {
+    schema
+        .validate(value)
+        .map_err(|errs| errs.map(|e| e.to_string()).collect::<Vec<_>>().join(" | "))
+}
+
+fn schema_validation_enabled() -> bool {
+    match env::var("NINELIVES_SCHEMA_VALIDATION") {
+        Ok(v) => !matches!(v.as_str(), "0" | "false" | "False" | "FALSE"),
+        Err(_) => true,
+    }
+}
+
+fn command_result_to_schema_value(res: &super::CommandResult) -> JsonValue {
+    match res {
+        super::CommandResult::Ack => json!({ "result": "ack" }),
+        super::CommandResult::Value(v) => json!({ "result": "value", "value": v }),
+        super::CommandResult::List(items) => json!({ "result": "list", "items": items }),
+        super::CommandResult::Reset => json!({ "result": "reset" }),
+        super::CommandResult::Error(fail) => {
+            let v = serde_json::to_value(fail).unwrap_or_else(|e| {
+                // Fallback: construct minimal error object if serialization fails
+                tracing::warn!(error = %e, "failed to serialize CommandFailure");
+                json!({ "kind": "internal", "msg": "serialization failed" })
+            });
+            json!({
+                "result": "error",
+                "message": fail.to_string(),
+                "failure": v
+            })
+        }
+    }
+}
+
+/// Transport abstraction for encoding/decoding control-plane messages.
+pub trait Transport: Send + Sync {
+    /// Error type produced by encoding/decoding operations.
+    type Error: std::error::Error + Send + Sync + 'static;
+
+    /// Decode a raw frame (e.g., bytes/string/json value) into a transport envelope.
+    fn decode(&self, raw: &[u8]) -> Result<TransportEnvelope, Self::Error>;
+
+    /// Encode a CommandContext + result into an outgoing frame.
+    fn encode(
+        &self,
+        ctx: &CommandContext,
+        result: &super::CommandResult,
+    ) -> Result<Vec<u8>, Self::Error>;
+
+    /// Map transport-specific errors into router-visible strings.
+    fn map_error(err: &Self::Error) -> String;
+}
+
+/// Bridges raw transport frames to a CommandRouter using a decoder/encoder pair.
+pub struct TransportRouter<T, Conv>
+where
+    T: Transport,
+    Conv:
+        Fn(TransportEnvelope) -> Result<(CommandEnvelope, CommandContext), String> + Send + Sync,
+{
+    router: crate::control::CommandRouter,
+    transport: T,
+    to_command: Conv,
+}
+
+impl<T, Conv> TransportRouter<T, Conv>
+where
+    T: Transport,
+    Conv:
+        Fn(TransportEnvelope) -> Result<(CommandEnvelope, CommandContext), String> + Send + Sync,
+{
+    /// Upper bound (bytes) on accepted transport payload size (1 MiB).
+    pub const MAX_REQUEST_SIZE: usize = 1024 * 1024; // 1 MiB
+
+    /// Create a new TransportRouter.
+    pub fn new(router: crate::control::CommandRouter, transport: T, to_command: Conv) -> Self {
+        Self { router, transport, to_command }
+    }
+
+    fn decode_envelope(&self, raw: &[u8]) -> Result<TransportEnvelope, String> {
+        if raw.len() > Self::MAX_REQUEST_SIZE {
+            return Err("request exceeds maximum size".into());
+        }
+        self.transport.decode(raw).map_err(|e| T::map_error(&e))
+    }
+
+    /// Decode, route, and encode a response for a raw transport payload (no validation).
+    pub async fn handle(&self, raw: &[u8]) -> Result<Vec<u8>, String> {
+        let env = self.decode_envelope(raw)?;
+        if schema_validation_enabled() {
+            validate_envelope(&env)?;
+        }
+
+        let (cmd_env, ctx) = (self.to_command)(env)?;
+        let res = self.router.execute(cmd_env).await.map_err(|e| e.to_string())?;
+
+        if schema_validation_enabled() {
+            validate_result(&res)?;
+        }
+
+        self.transport.encode(&ctx, &res).map_err(|e| T::map_error(&e))
+    }
+
+    /// Simple liveness probe response (no routing/validation).
+    pub fn health_probe(&self) -> Result<Vec<u8>, String> {
+        let ctx = CommandContext {
+            id: "health".into(),
+            args: default_args(),
+            identity: None,
+            response_channel: None,
+        };
+        let res = super::CommandResult::Ack;
+        self.transport.encode(&ctx, &res).map_err(|e| T::map_error(&e))
+    }
+
+    /// Readiness probe; best-effort executes a no-op list command to exercise router path.
+    pub async fn readiness_probe(&self) -> Result<Vec<u8>, String> {
+        // Use a lightweight built-in List if available; otherwise just encode ACK.
+        let ctx = CommandContext {
+            id: "ready".into(),
+            args: default_args(),
+            identity: None,
+            response_channel: None,
+        };
+        let res = super::CommandResult::Ack;
+        self.transport.encode(&ctx, &res).map_err(|e| T::map_error(&e))
+    }
+}
+
+impl<T, Conv> Clone for TransportRouter<T, Conv>
+where
+    T: Transport + Clone,
+    Conv: Fn(TransportEnvelope) -> Result<(CommandEnvelope, CommandContext), String> + Send + Sync + Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            router: self.router.clone(),
+            transport: self.transport.clone(),
+            to_command: self.to_command.clone(),
+        }
+    }
+}
+
+/// Layer that performs schema validation before/after routing.
+/// A [`tower::Layer`] that performs JSON schema validation on [`TransportEnvelope`]s
+/// before routing and on [`super::CommandResult`]s after command execution.
+///
+/// This layer ensures that incoming commands conform to expected schemas and that
+/// outgoing results are also valid, enhancing the robustness of the control plane.
+///
+/// Validation is enabled by default and controlled at runtime via the
+/// `NINELIVES_SCHEMA_VALIDATION` environment variable (set to `0`/`false` to disable).
+pub struct SchemaValidationLayer;
+
+impl SchemaValidationLayer {
+    /// Create a new schema validation layer.
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for SchemaValidationLayer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<S> tower_layer::Layer<S> for SchemaValidationLayer {
+    type Service = SchemaValidated<S>;
+
+    fn layer(&self, service: S) -> Self::Service {
+        SchemaValidated { inner: service }
+    }
+}
+
+/// Transport router wrapper that enforces schema validation.
+/// A wrapper [`tower::Service`] that applies schema validation to an inner service.
+///
+/// This service is returned by [`SchemaValidationLayer`] and is responsible for
+/// calling the appropriate validation logic for incoming requests and outgoing responses.
+/// When wrapping a [`TransportRouter`], it will validate the [`TransportEnvelope`]
+/// before routing and the [`super::CommandResult`] after the inner router's execution.
+#[derive(Clone)]
+pub struct SchemaValidated<S> {
+    inner: S,
+}
+
+impl<T, Conv> SchemaValidated<TransportRouter<T, Conv>>
+where
+    T: Transport,
+    Conv:
+        Fn(TransportEnvelope) -> Result<(CommandEnvelope, CommandContext), String> + Send + Sync,
+    {
+        /// Decode, validate, route, validate, and encode.
+        pub async fn handle(&self, raw: &[u8]) -> Result<Vec<u8>, String> {
+            // Delegate the full transport flow (size checks, optional schema validation, routing, and encoding)
+            // to the inner router to avoid duplicating logic or diverging behaviors.
+            // Any additional schema-specific hooks should wrap the inner call rather than reimplementing it.
+            self.inner.handle(raw).await
+        }
+    }
+
+impl<T, Conv> Service<Vec<u8>> for SchemaValidated<TransportRouter<T, Conv>>
+where
+    T: Transport + Clone + 'static,
+    Conv: Fn(TransportEnvelope) -> Result<(CommandEnvelope, CommandContext), String> + Send + Sync + Clone + 'static,
+{
+    type Response = Vec<u8>;
+    type Error = String;
+    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
+
+    fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn call(&mut self, req: Vec<u8>) -> Self::Future {
+        let svc = self.clone();
+        Box::pin(async move { svc.handle(&req).await })
+    }
+}

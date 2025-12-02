@@ -1,0 +1,31 @@
+services:
+  redpanda:
+    image: redpandadata/redpanda:v25.3.1
+    command:
+      - redpanda
+      - start
+      - --overprovisioned
+      - --smp
+      - "1"
+      - --memory
+      - 1G
+      - --reserve-memory
+      - 256M
+      - --node-id
+      - "0"
+      - --check=true
+    ports:
+      - "9092:9092"
+      - "9644:9644"
+      - "8081:8081" # Schema Registry
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD", "bash", "-c", "nc -z localhost 9092"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    # Note: volume provides persistence; remove or ignore for ephemeral CI runs.
+
+volumes:
+  redpanda-data:

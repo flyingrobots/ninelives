@@ -18,12 +18,121 @@ jobs:
       - name: Lint workflows
         uses: rhysd/actionlint@v1.7.4
 
+  markdownlint:
+    needs: actionlint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.1.6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install markdownlint deps
+        run: npm ci
+      - name: Lint Markdown
+        run: npx markdownlint-cli2 "**/*.md"
+
+  commit-policy:
+    needs: actionlint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.1.6
+        with:
+          fetch-depth: 0
+      - name: Determine base ref
+        id: base
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "ref=${{ github.event.pull_request.base.sha }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=origin/main" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Inspect commit message
+        id: msg
+        run: |
+          msg=$(git log -1 --pretty=%s)
+          echo "msg=$msg" >> "$GITHUB_OUTPUT"
+          echo "Commit message: $msg"
+      - name: Ensure feat/fix add tests
+        if: startsWith(steps.msg.outputs.msg, 'feat') || startsWith(steps.msg.outputs.msg, 'fix')
+        run: |
+          # For push events the ref is already present (fetch-depth: 0); skip fetching origin/* refs.
+          if [[ ! "${{ steps.base.outputs.ref }}" =~ ^origin/ ]]; then
+            git fetch origin "${{ steps.base.outputs.ref }}" --quiet
+          fi
+          files=$(git diff --name-only "${{ steps.base.outputs.ref }}"...HEAD)
+          if echo "$files" | grep -E '(tests?/|_test\\.rs|tests\\.rs)' >/dev/null; then
+            echo "Tests detected in diff"
+          else
+            echo "error: feat/fix commits must add or modify tests" >&2
+            exit 1
+          fi
+      - name: Coverage guard for chore/refactor
+        if: startsWith(steps.msg.outputs.msg, 'chore') || startsWith(steps.msg.outputs.msg, 'refactor')
+        run: |
+          sudo apt-get update >/dev/null && sudo apt-get install -y jq >/dev/null
+          cargo install cargo-llvm-cov --locked --version 0.6.21
+          # Skip fetch for push events where the ref is already present (origin/*).
+          if [[ ! "${{ steps.base.outputs.ref }}" =~ ^origin/ ]]; then
+            git fetch origin "${{ steps.base.outputs.ref }}" --quiet
+          fi
+          # Ensure a clean target directory for the worktree.
+          rm -rf /tmp/base
+          git worktree add /tmp/base "${{ steps.base.outputs.ref }}"
+          run_cov() {
+            dir=$1
+            pushd "$dir" >/dev/null
+            if ! cargo llvm-cov --workspace --all-features \
+              --exclude xtask --exclude ninelives-nats --exclude ninelives-kafka \
+              --exclude ninelives-elastic --exclude ninelives-etcd --exclude ninelives-otlp \
+              --exclude ninelives-prometheus --exclude ninelives-jsonl \
+              --summary-only --json > /tmp/cov.json; then
+              echo "error: cargo llvm-cov failed in $dir" >&2
+              popd >/dev/null
+              return 1
+            fi
+            jq -r '.line.percent // empty' /tmp/cov.json
+            popd >/dev/null
+          }
+          base_raw=$(run_cov /tmp/base)
+          head_raw=$(run_cov .)
+          echo "base coverage (raw): $base_raw"
+          echo "head coverage (raw): $head_raw"
+
+          # Validate raw values before formatting.
+          is_num() {
+            [[ -n "$1" && "$1" != "null" && "$1" =~ ^[0-9]+(\.[0-9]+)?$ ]]
+          }
+          if ! is_num "$base_raw" || ! is_num "$head_raw"; then
+            echo "error: coverage output is not numeric. Base: '$base_raw', Head: '$head_raw'." >&2
+            exit 1
+          fi
+
+          # Format floats to 2 decimal places after validation.
+          bcov=$(printf '%.2f' "$base_raw")
+          hcov=$(printf '%.2f' "$head_raw")
+
+          # Perform integer-based comparison on whole percentages (rounded)
+          b_int=$(awk -v val="$bcov" 'BEGIN { print int(val + 0.5) }') # Round to nearest integer
+          h_int=$(awk -v val="$hcov" 'BEGIN { print int(val + 0.5) }') # Round to nearest integer
+
+          echo "Base coverage (rounded %): $b_int"
+          echo "Head coverage (rounded %): $h_int"
+
+          if [ "$h_int" -lt "$b_int" ]; then
+            echo "error: Coverage decreased (Base: $b_int% -> Head: $h_int%)." >&2
+            exit 1
+          fi
+
+      - name: Clean worktree
+        if: always()
+        run: git worktree prune
+
   fmt-clippy-test:
     needs: actionlint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4.1.6
-      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+      - uses: dtolnay/rust-toolchain@v1
         with:
           toolchain: 1.82.0
       - name: Cache cargo
@@ -35,12 +144,15 @@ jobs:
       - name: Tests (all features)
         run: cargo test --all-features --all-targets
 
+  # Integration tests have been moved to .github/workflows/integration-tests.yml
+  # to reduce duplication and improve maintainability.
+
   msrv:
     needs: actionlint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4.1.6
-      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+      - uses: dtolnay/rust-toolchain@v1
         with:
           toolchain: 1.70.0
       - name: Cache cargo
@@ -53,7 +165,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4.1.6
-      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+      - uses: dtolnay/rust-toolchain@v1
         with:
           toolchain: 1.82.0
       - name: Cache cargo
@@ -68,22 +180,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4.1.6
-      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+      - uses: dtolnay/rust-toolchain@v1
         with:
           toolchain: 1.82.0
-          components: llvm-tools-preview
+      - name: Install cargo-llvm-cov
+        run: cargo install cargo-llvm-cov --locked --version 0.6.21
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2.7.3
-      - name: Install cargo-llvm-cov
-        run: cargo install cargo-llvm-cov --locked
-      - name: Install protoc
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
-      - name: Run coverage (all features)
-        run: |
-          mkdir -p coverage
-          cargo llvm-cov --package ninelives --all-features --lcov --output-path coverage/lcov.info
-      - name: Upload coverage artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: lcov.info
-          path: coverage/lcov.info
+      - name: Coverage (fail under 80%)
+        run: >
+          cargo llvm-cov -p ninelives --all-features
+          --fail-under-lines 80 --summary-only

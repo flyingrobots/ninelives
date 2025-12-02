@@ -1,22 +1,22 @@
 [package]
 name = "ninelives-nats"
-version = "0.2.0"
-edition = "2021"
-authors = ["James Ross <james@flyingrobots.dev>"]
-description = "Optional NATS telemetry sink for ninelives"
-license = "Apache-2.0"
-publish = false
-repository = "https://github.com/flyingrobots/ninelives"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "NATS telemetry sink for ninelives (bring-your-own client)"
+license.workspace = true
+publish = true
+repository.workspace = true
+readme = "README.md"
 
 [dependencies]
-ninelives = { version = "0.2.0", path = ".." }
-tower-service = "0.3"
+ninelives = { workspace = true, features = ["telemetry-json"] }
+serde_json.workspace = true
+tower-service = { workspace = true }
+async-nats = "0.45"
+tokio = { workspace = true, features = ["rt", "macros"] }
+tracing.workspace = true
 
-# Client dependency is optional to keep core builds light
-nats = { version = "0.25", optional = true }
-tokio = { version = "1", features = ["rt", "macros"], optional = true }
-tracing = "0.1"
-
-[features]
-# default = [] keeps builds fast. Enable `client` to actually publish to NATS.
-client = ["nats", "tokio"]
+[dev-dependencies]
+tokio = { workspace = true, features = ["full"] }
+futures-util = { workspace = true }

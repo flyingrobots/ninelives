@@ -1,8 +1,9 @@
 # Build artifacts
 /target
 /.cargo/
+/node_modules/
 
-# Cargo lockfile is committed
+# Keep Cargo.lock under version control for reproducible builds.
 
 # macOS noise
 .DS_Store
@@ -33,3 +34,10 @@ Thumbs.db
 # Misc project-local
 .env
 .env.local
+.obsidian/
+# Claude conversations/artifacts (developer local)
+.claude/
+
+# ignore. files
+ignore.*
+
