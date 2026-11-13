@@ -9,7 +9,7 @@ repository = "https://github.com/flyingrobots/ninelives"
 readme = "README.md"
 keywords = ["resilience", "retry", "circuit-breaker", "bulkhead", "timeout"]
 categories = ["asynchronous", "network-programming"]
-rust-version = "1.70"
+rust-version = "1.85"
 
 [workspace]
 members = [
@@ -25,16 +25,16 @@ members = [
 resolver = "2"
 
 [dependencies]
-tokio = { version = "~1.48.0", features = ["time", "sync", "macros"] }
-tracing = "~0.1.40"
-rand = "~0.9.0"
-async-trait = "~0.1.86"
+tokio = { version = "~1.54.1", features = ["time", "sync", "macros"] }
+tracing = "~0.1.44"
+rand = "~0.9.5"
+async-trait = "~0.1.92"
 tower-service = "0.3"
 tower-layer = "0.3"
-futures = "~0.3.31"
-tower = { version = "0.5.2", features = ["full"] }
+futures = "~0.3.34"
+tower = { version = "0.5.3", features = ["full"] }
 
 [dev-dependencies]
-tokio = { version = "~1.48.0", features = ["full", "test-util"] }
-tracing-subscriber = "~0.3.20"
-futures = "~0.3.31"
+tokio = { version = "~1.54.1", features = ["full", "test-util"] }
+tracing-subscriber = "~0.3.23"
+futures = "~0.3.34"
