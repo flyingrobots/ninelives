@@ -4,6 +4,18 @@ All notable changes will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-11-13
+
+### Security
+- tokio 1.48 -> 1.54.1: fixes [RUSTSEC-2026-0386](https://rustsec.org/advisories/RUSTSEC-2026-0386) (`AsyncFd` constructors violate I/O safety). The `~1.48.0` requirement held every dependent on the affected release; tokio is now required as `1.54.1` (any later 1.x), so future tokio fixes reach dependents without a ninelives release.
+
+### Changed
+- Dependencies updated within their compatible ranges: tracing 0.1.44, rand 0.9.5, async-trait 0.1.92, futures 0.3.34, tower 0.5.3, tracing-subscriber 0.3.23. rand 0.10 is left for a breaking release because `Jitter::apply_with_rng` exposes rand's `Rng` trait.
+- MSRV 1.70 -> 1.88 (tokio 1.54 needs 1.85; hdrhistogram 7.6, via tower's `full` feature, needs 1.88). CI's MSRV job now really builds with 1.88.
+- Development toolchain pinned to Rust 1.96.0, matching the shared dev container.
+
+### Fixed
+- The release-PR workflow job runs on pushes to `main`; on pull requests it always failed (detached checkout).
 
 ## [0.2.0] - 2025-11-25
 

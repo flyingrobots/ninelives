@@ -265,7 +265,7 @@ mod tests {
     }
     #[test]
     fn into_inner_extracts_error() {
-        let io_err = io::Error::new(io::ErrorKind::Other, "test");
+        let io_err = io::Error::other("test");
         let err = ResilienceError::Inner(io_err);
         let extracted = err.into_inner().unwrap();
         assert_eq!(extracted.to_string(), "test");

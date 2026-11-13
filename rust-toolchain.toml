@@ -1,4 +1,4 @@
 [toolchain]
-# Pin to stable to track latest toolchain; update if MSRV changes.
-channel = "stable"
+# Pinned to the flyingrobots/rust-dev image builds and tests run in (flyingrobots/devcontainers).
+channel = "1.96.0"
 components = ["rustfmt", "clippy"]
