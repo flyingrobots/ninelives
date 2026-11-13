@@ -9,7 +9,7 @@ repository = "https://github.com/flyingrobots/ninelives"
 readme = "README.md"
 keywords = ["resilience", "retry", "circuit-breaker", "bulkhead", "timeout"]
 categories = ["asynchronous", "network-programming"]
-rust-version = "1.85"
+rust-version = "1.88"
 
 [workspace]
 members = [
